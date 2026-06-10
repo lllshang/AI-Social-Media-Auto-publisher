@@ -140,6 +140,17 @@ class OperationLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class ReviewLog(Base):
+    __tablename__ = "review_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(20), nullable=False)
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewer_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class PublishTaskLog(Base):
     __tablename__ = "publish_task_logs"
 

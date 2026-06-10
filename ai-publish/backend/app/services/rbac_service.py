@@ -4,7 +4,12 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import Role, User
-from app.utils.permissions import ADMIN_PERMISSIONS, OPERATOR_PERMISSIONS, VIEWER_PERMISSIONS
+from app.utils.permissions import (
+    ADMIN_PERMISSIONS,
+    OPERATOR_PERMISSIONS,
+    REVIEWER_PERMISSIONS,
+    VIEWER_PERMISSIONS,
+)
 
 
 def seed_password_hints() -> dict[str, str]:
@@ -13,6 +18,7 @@ def seed_password_hints() -> dict[str, str]:
         settings.admin_username: settings.admin_password,
         settings.operator_username: settings.operator_password,
         settings.viewer_username: settings.viewer_password,
+        settings.reviewer_username: settings.reviewer_password,
     }
 
 
@@ -65,6 +71,7 @@ def ensure_default_roles(db: Session) -> None:
     seeds = [
         ("admin", ADMIN_PERMISSIONS),
         ("operator", OPERATOR_PERMISSIONS),
+        ("reviewer", REVIEWER_PERMISSIONS),
         ("viewer", VIEWER_PERMISSIONS),
     ]
     for role_name, permissions in seeds:

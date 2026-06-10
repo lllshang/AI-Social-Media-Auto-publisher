@@ -45,6 +45,17 @@ def run_migrations() -> None:
         if "remark" not in account_columns:
             statements.append("ALTER TABLE platform_accounts ADD COLUMN remark VARCHAR(255)")
 
+    if not inspector.has_table("review_logs"):
+        statements.append(
+            "CREATE TABLE review_logs ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "task_id INTEGER NOT NULL, "
+            "action VARCHAR(20) NOT NULL, "
+            "comment TEXT, "
+            "reviewer_id INTEGER, "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+
     if not statements:
         return
 

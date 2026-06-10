@@ -16,6 +16,7 @@ from app.api.logs import router as logs_router
 from app.api.materials import router as materials_router
 from app.api.platform_accounts import router as platform_accounts_router
 from app.api.publish_tasks import router as publish_tasks_router
+from app.api.reviews import router as reviews_router
 from app.api.roles import router as roles_router
 from app.api.system import router as system_router
 from app.api.system_configs import router as system_configs_router
@@ -100,6 +101,7 @@ app.include_router(ai_models_router)
 app.include_router(platform_accounts_router)
 app.include_router(materials_router)
 app.include_router(publish_tasks_router)
+app.include_router(reviews_router)
 app.include_router(logs_router)
 app.include_router(system_router)
 app.include_router(system_configs_router)

@@ -53,6 +53,7 @@ def ensure_admin_user(db: Session) -> None:
     seeds = [
         (settings.admin_username, settings.admin_password, "admin"),
         (settings.operator_username, settings.operator_password, "operator"),
+        (settings.reviewer_username, settings.reviewer_password, "reviewer"),
         (settings.viewer_username, settings.viewer_password, "viewer"),
     ]
     for username, password, role_name in seeds:

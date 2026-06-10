@@ -99,6 +99,17 @@ CREATE TABLE IF NOT EXISTS publish_tasks (
     CONSTRAINT fk_task_account FOREIGN KEY (account_id) REFERENCES platform_accounts(id)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS review_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    task_id BIGINT NOT NULL,
+    action VARCHAR(20) NOT NULL,
+    comment TEXT NULL,
+    reviewer_id BIGINT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_review_task_id (task_id),
+    CONSTRAINT fk_review_task FOREIGN KEY (task_id) REFERENCES publish_tasks(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS publish_task_logs (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     task_id BIGINT NOT NULL,

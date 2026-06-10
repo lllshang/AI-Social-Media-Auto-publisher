@@ -242,6 +242,8 @@ bash scripts/upgrade.sh
 | `/api/system/configs` | 系统配置 |
 | `/api/roles` | 角色权限 |
 | `/api/users` | 用户管理（`users:write`，仅管理员） |
+| `/api/reviews/pending` | 待审核任务列表（分页） |
+| `/api/reviews/history` | 审核历史记录 |
 | `/api/auth/change-password` | 当前用户修改密码 |
 | `/health` | 健康检查 |
 | `/docs` | Swagger UI |
@@ -273,6 +275,7 @@ DDL 见：`ai-publish/scripts/init_db.sql`；SQLite 增量迁移见 `backend/app
 |------|----------|--------------|----------|
 | admin（管理员） | `admin` | `admin123` | `ADMIN_USERNAME` / `ADMIN_PASSWORD` |
 | operator（运营人员） | `operator` | `operator123` | `OPERATOR_USERNAME` / `OPERATOR_PASSWORD` |
+| reviewer（审核主管） | `reviewer` | `reviewer123` | `REVIEWER_USERNAME` / `REVIEWER_PASSWORD` |
 | viewer（只读用户） | `viewer` | `viewer123` | `VIEWER_USERNAME` / `VIEWER_PASSWORD` |
 
 > 环境变量仅在**首次创建对应账号**时写入密码；生产环境务必修改并妥善保管。
@@ -280,7 +283,8 @@ DDL 见：`ai-publish/scripts/init_db.sql`；SQLite 增量迁移见 `backend/app
 | 角色 | 权限说明 |
 |------|----------|
 | **admin（管理员）** | 全部权限 |
-| **operator（运营人员）** | 查看工作台；查看/管理平台账号；查看/管理素材库；查看/管理/执行发布任务；使用发布向导；查看/配置 AI 模型；查看日志中心 |
+| **operator（运营人员）** | 查看工作台；查看/管理平台账号；查看/管理素材库；查看/管理/执行发布任务；使用发布向导；**内容审核**；查看/配置 AI 模型；查看日志中心 |
+| **reviewer（审核主管）** | 查看工作台、平台账号、素材库、发布任务；**内容审核**（通过/驳回，不可发布与执行） |
 | **viewer（只读用户）** | 查看工作台、平台账号、素材库、发布任务、AI 模型、日志中心（不可修改与执行） |
 
 - 菜单与部分 API 按权限控制；修改角色后需重新登录生效

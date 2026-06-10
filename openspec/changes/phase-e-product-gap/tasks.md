@@ -35,20 +35,20 @@
 
 ### 后端专家
 
-- [ ] E.2.1 审核列表 API：`GET /api/publish-tasks?status=pending_review` 增强（分页、按平台/时间筛选）或专用 `GET /api/reviews`
-- [ ] E.2.2 审核记录：驳回原因、审核人、审核时间写入任务或独立 `review_logs`（择一，需 DDL）
-- [ ] E.2.3 `require_content_review=true` 时，提交任务默认进 `pending_review`（与系统设置联动，回归测试）
+- [x] E.2.1 审核列表 API：`GET /api/publish-tasks?status=pending_review` 增强（分页、按平台/时间筛选）或专用 `GET /api/reviews`
+- [x] E.2.2 审核记录：驳回原因、审核人、审核时间写入任务或独立 `review_logs`（择一，需 DDL）
+- [x] E.2.3 `require_content_review=true` 时，提交任务默认进 `pending_review`（与系统设置联动，回归测试）
 
 ### 前端专家
 
-- [ ] E.2.4 新增「内容审核」菜单（`tasks:write` 或独立 `review:write` 权限）
-- [ ] E.2.5 审核列表页：待审任务、正文/素材预览、通过/驳回（驳回填原因）
-- [ ] E.2.6 审核历史 Tab：已审记录查询（对接 E.2.2）
+- [x] E.2.4 新增「内容审核」菜单（`tasks:write` 或独立 `review:write` 权限）
+- [x] E.2.5 审核列表页：待审任务、正文/素材预览、通过/驳回（驳回填原因）
+- [x] E.2.6 审核历史 Tab：已审记录查询（对接 E.2.2）
 
 ### 文档与验证
 
-- [ ] E.2.7 更新 `daily-usage.md` 审核流程图；开启 `require_content_review` 的验收步骤
-- [ ] E.2.8 验证：运营主管角色可仅审核不发布（可选新建 `reviewer` 角色）
+- [x] E.2.7 更新 `daily-usage.md` 审核流程图；开启 `require_content_review` 的验收步骤
+- [x] E.2.8 验证：运营主管角色可仅审核不发布（可选新建 `reviewer` 角色）
 
 ---
 

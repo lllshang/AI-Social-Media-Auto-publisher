@@ -197,6 +197,39 @@ class PublishTaskLogResponse(BaseModel):
         from_attributes = True
 
 
+class ReviewPendingListResponse(BaseModel):
+    items: list[PublishTaskResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class ReviewHistoryItem(BaseModel):
+    id: int
+    task_id: int
+    task_title: str
+    platform: str
+    action: str
+    comment: str | None = None
+    reviewer_id: int | None = None
+    reviewer_name: str | None = None
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+    class Config:
+        from_attributes = True
+
+
+class ReviewHistoryListResponse(BaseModel):
+    items: list[ReviewHistoryItem]
+    total: int
+    page: int
+    page_size: int
+
+
 class DashboardFailedTask(BaseModel):
     id: int
     title: str

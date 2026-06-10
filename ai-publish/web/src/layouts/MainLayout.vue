@@ -8,6 +8,7 @@
         <el-menu-item v-if="can('models:read')" index="/models">AI 模型</el-menu-item>
         <el-menu-item v-if="can('materials:read')" index="/materials">素材库</el-menu-item>
         <el-menu-item v-if="can('tasks:read')" index="/tasks">发布任务</el-menu-item>
+        <el-menu-item v-if="canReview(auth.permissions)" index="/reviews">内容审核</el-menu-item>
         <el-menu-item v-if="can('publish:write')" index="/publish">发布向导</el-menu-item>
         <el-menu-item v-if="can('logs:read')" index="/logs">日志中心</el-menu-item>
         <el-menu-item v-if="can('settings:write')" index="/settings">系统设置</el-menu-item>
@@ -34,7 +35,7 @@ import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
 import { useAuthStore } from '@/stores/auth'
-import { can as canPerm, userDisplayLabel } from '@/utils/permissions'
+import { can as canPerm, canReview, userDisplayLabel } from '@/utils/permissions'
 
 const route = useRoute()
 const router = useRouter()

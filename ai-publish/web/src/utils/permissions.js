@@ -9,6 +9,7 @@ export const PERMISSION_LABELS = {
   'tasks:read': '查看发布任务',
   'tasks:write': '管理发布任务',
   'tasks:execute': '执行发布任务',
+  'review:write': '内容审核',
   'publish:write': '使用发布向导',
   'models:read': '查看 AI 模型',
   'models:write': '配置 AI 模型',
@@ -20,6 +21,7 @@ export const PERMISSION_LABELS = {
 export const ROLE_LABELS = {
   admin: '管理员',
   operator: '运营人员',
+  reviewer: '审核主管',
   viewer: '只读用户',
 }
 
@@ -51,4 +53,9 @@ export function can(permissions, required) {
 
 export function canAny(permissions, requiredList) {
   return requiredList.some((item) => can(permissions, item))
+}
+
+/** 是否可执行审核（运营或审核主管） */
+export function canReview(permissions) {
+  return canAny(permissions, ['tasks:write', 'review:write'])
 }

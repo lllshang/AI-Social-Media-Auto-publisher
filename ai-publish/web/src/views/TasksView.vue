@@ -179,11 +179,11 @@ function canRetry(row) {
 }
 
 function canApprove(row) {
-  return can('tasks:write') && row.status === 'pending_review'
+  return (can('tasks:write') || can('review:write')) && row.status === 'pending_review'
 }
 
 function canReject(row) {
-  return can('tasks:write') && row.status === 'pending_review'
+  return (can('tasks:write') || can('review:write')) && row.status === 'pending_review'
 }
 
 function canReopen(row) {

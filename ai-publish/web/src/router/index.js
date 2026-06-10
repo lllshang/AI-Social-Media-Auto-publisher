@@ -1,6 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { can as canPerm } from '@/utils/permissions'
+import { can as canPerm, canAny as canAnyPerm } from '@/utils/permissions'
 
 const routes = [
   {
@@ -18,6 +18,12 @@ const routes = [
       { path: 'models', name: 'models', meta: { permission: 'models:read' }, component: () => import('@/views/ModelsView.vue') },
       { path: 'materials', name: 'materials', meta: { permission: 'materials:read' }, component: () => import('@/views/MaterialsView.vue') },
       { path: 'tasks', name: 'tasks', meta: { permission: 'tasks:read' }, component: () => import('@/views/TasksView.vue') },
+      {
+        path: 'reviews',
+        name: 'reviews',
+        meta: { permissionAny: ['review:write', 'tasks:write'] },
+        component: () => import('@/views/ReviewView.vue'),
+      },
       { path: 'logs', name: 'logs', meta: { permission: 'logs:read' }, component: () => import('@/views/LogsView.vue') },
       { path: 'settings', name: 'settings', meta: { permission: 'settings:write' }, component: () => import('@/views/SettingsView.vue') },
       { path: 'publish', name: 'publish', meta: { permission: 'publish:write' }, component: () => import('@/views/PublishView.vue') },
@@ -45,7 +51,14 @@ router.beforeEach(async (to) => {
     .map((record) => record.meta?.permission)
     .filter(Boolean)
     .at(-1)
+  const requiredAny = to.matched
+    .map((record) => record.meta?.permissionAny)
+    .filter(Boolean)
+    .at(-1)
   if (required && !canPerm(auth.permissions, required)) {
+    return { name: 'dashboard' }
+  }
+  if (requiredAny && !canAnyPerm(auth.permissions, requiredAny)) {
     return { name: 'dashboard' }
   }
 })

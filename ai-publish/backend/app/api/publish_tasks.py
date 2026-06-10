@@ -1,16 +1,19 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import require_permission
+from app.dependencies import require_any_permission, require_permission
+from app.services.log_service import LogService
 from app.utils.permissions import (
+    PERM_REVIEW_WRITE,
     PERM_TASKS_EXECUTE,
     PERM_TASKS_READ,
     PERM_TASKS_WRITE,
 )
+from app.utils.request_ip import get_client_ip
 from app.models import Material, PublishTask, User
 from app.schemas import (
     MaterialSummary,
@@ -148,12 +151,20 @@ def submit_task(
 @router.post("/{task_id}/approve", response_model=PublishTaskResponse)
 def approve_task(
     task_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(PERM_TASKS_WRITE)),
+    current_user: User = Depends(require_any_permission(PERM_TASKS_WRITE, PERM_REVIEW_WRITE)),
 ):
     service = PublishService(db)
     try:
-        task = service.approve_task(task_id)
+        task = service.approve_task(task_id, reviewer_id=current_user.id)
+        LogService(db).add_operation(
+            "review.approve",
+            current_user.id,
+            "publish_task",
+            task_id,
+            ip=get_client_ip(request),
+        )
         return _task_response(task, service.get_task_materials(task))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -163,12 +174,20 @@ def approve_task(
 def reject_task(
     task_id: int,
     data: RejectTaskRequest,
+    request: Request,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(PERM_TASKS_WRITE)),
+    current_user: User = Depends(require_any_permission(PERM_TASKS_WRITE, PERM_REVIEW_WRITE)),
 ):
     service = PublishService(db)
     try:
-        task = service.reject_task(task_id, data.reason)
+        task = service.reject_task(task_id, data.reason, reviewer_id=current_user.id)
+        LogService(db).add_operation(
+            "review.reject",
+            current_user.id,
+            "publish_task",
+            task_id,
+            ip=get_client_ip(request),
+        )
         return _task_response(task, service.get_task_materials(task))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

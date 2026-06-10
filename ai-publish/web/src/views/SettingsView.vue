@@ -30,7 +30,7 @@
       <el-table :data="users" size="small">
         <el-table-column prop="username" label="用户名" width="140" />
         <el-table-column label="角色" width="160">
-          <template #default="{ row }">{{ roleDisplayLabel(row.role_name) }}</template>
+          <template #default="{ row }">{{ roleLabel(row.role_name) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
@@ -58,7 +58,7 @@
       <p class="muted" style="margin-bottom: 12px">各角色拥有的权限说明；账号与密码请在上方「用户管理」中维护。</p>
       <el-table :data="roles" size="small">
         <el-table-column label="角色" width="200">
-          <template #default="{ row }">{{ roleDisplayLabel(row.role_name) }}</template>
+          <template #default="{ row }">{{ roleLabel(row.role_name) }}</template>
         </el-table-column>
         <el-table-column label="权限说明" min-width="360">
           <template #default="{ row }">
@@ -80,7 +80,7 @@
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="userForm.role_id" placeholder="选择角色" style="width: 100%">
-            <el-option v-for="r in roles" :key="r.id" :label="roleDisplayLabel(r.role_name)" :value="r.id" />
+            <el-option v-for="r in roles" :key="r.id" :label="roleLabel(r.role_name)" :value="r.id" />
           </el-select>
         </el-form-item>
       </el-form>
@@ -112,7 +112,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import { usePermission } from '@/composables/usePermission'
-import { permissionLabel, roleDisplayLabel } from '@/utils/permissions'
+import { permissionLabel, roleLabel } from '@/utils/permissions'
 
 const { can } = usePermission()
 const canManageUsers = computed(() => can('users:write'))

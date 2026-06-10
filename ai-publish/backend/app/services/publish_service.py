@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.adapters.base import PublishContext
 from app.adapters.factory import get_adapter_factory
 from app.config import get_settings
-from app.models import Material, PublishTask, PublishTaskLog
+from app.models import Material, PublishTask, PublishTaskLog, ReviewLog
 from app.services.material_service import MaterialService
 from app.services.platform_account_service import PlatformAccountService
 from app.services.system_config_service import SystemConfigService
@@ -176,7 +176,7 @@ class PublishService:
         self.db.refresh(task)
         return task
 
-    def approve_task(self, task_id: int) -> PublishTask:
+    def approve_task(self, task_id: int, reviewer_id: int | None = None) -> PublishTask:
         task = self.get_task(task_id)
         if not task:
             raise ValueError("任务不存在")
@@ -184,18 +184,34 @@ class PublishService:
             raise ValueError("仅 pending_review 任务可审核通过")
         task.status = "pending"
         task.error_message = None
+        self.db.add(
+            ReviewLog(
+                task_id=task.id,
+                action="approved",
+                reviewer_id=reviewer_id,
+            )
+        )
         self.db.commit()
         self.db.refresh(task)
         return task
 
-    def reject_task(self, task_id: int, reason: str | None = None) -> PublishTask:
+    def reject_task(self, task_id: int, reason: str | None = None, reviewer_id: int | None = None) -> PublishTask:
         task = self.get_task(task_id)
         if not task:
             raise ValueError("任务不存在")
         if task.status != "pending_review":
             raise ValueError("仅 pending_review 任务可驳回")
+        comment = reason or "审核驳回"
         task.status = "rejected"
-        task.error_message = reason or "审核驳回"
+        task.error_message = comment
+        self.db.add(
+            ReviewLog(
+                task_id=task.id,
+                action="rejected",
+                comment=comment,
+                reviewer_id=reviewer_id,
+            )
+        )
         self.db.commit()
         self.db.refresh(task)
         return task
