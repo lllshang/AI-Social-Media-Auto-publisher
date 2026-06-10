@@ -3,8 +3,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import require_permission
 from app.models import User
+from app.utils.permissions import PERM_MODELS_READ, PERM_MODELS_WRITE
 from app.services.ai_model_service import AiModelService
 
 router = APIRouter(prefix="/api/ai/models", tags=["ai-models"])
@@ -35,13 +36,13 @@ class AiCustomProviderRequest(BaseModel):
 
 
 @router.get("/providers")
-def list_providers(_: User = Depends(get_current_user)):
+def list_providers(_: User = Depends(require_permission(PERM_MODELS_READ))):
     service = AiModelService()
     return {"items": service.list_provider_configs()}
 
 
 @router.post("/providers/custom")
-def add_custom_provider(data: AiCustomProviderRequest, _: User = Depends(get_current_user)):
+def add_custom_provider(data: AiCustomProviderRequest, _: User = Depends(require_permission(PERM_MODELS_WRITE))):
     service = AiModelService()
     try:
         item = service.add_custom_provider(
@@ -60,7 +61,7 @@ def add_custom_provider(data: AiCustomProviderRequest, _: User = Depends(get_cur
 
 
 @router.delete("/providers/custom/{provider}")
-def delete_custom_provider(provider: str, _: User = Depends(get_current_user)):
+def delete_custom_provider(provider: str, _: User = Depends(require_permission(PERM_MODELS_WRITE))):
     service = AiModelService()
     try:
         service.delete_custom_provider(provider)
@@ -72,7 +73,7 @@ def delete_custom_provider(provider: str, _: User = Depends(get_current_user)):
 
 
 @router.put("/providers/config")
-def save_provider_config(data: AiProviderConfigRequest, _: User = Depends(get_current_user)):
+def save_provider_config(data: AiProviderConfigRequest, _: User = Depends(require_permission(PERM_MODELS_WRITE))):
     service = AiModelService()
     try:
         item = service.save_provider_config(
@@ -89,14 +90,14 @@ def save_provider_config(data: AiProviderConfigRequest, _: User = Depends(get_cu
 
 
 @router.get("")
-async def list_models(_: User = Depends(get_current_user)):
+async def list_models(_: User = Depends(require_permission(PERM_MODELS_READ))):
     service = AiModelService()
     result = await service.detect_all()
     return result.to_dict()
 
 
 @router.post("/detect")
-async def detect_models(_: User = Depends(get_current_user)):
+async def detect_models(_: User = Depends(require_permission(PERM_MODELS_WRITE))):
     service = AiModelService()
     runtime = service.load_runtime()
     runtime.mode = "auto"
@@ -106,7 +107,7 @@ async def detect_models(_: User = Depends(get_current_user)):
 
 
 @router.get("/current")
-async def current_models(_: User = Depends(get_current_user)):
+async def current_models(_: User = Depends(require_permission(PERM_MODELS_READ))):
     service = AiModelService()
     runtime = service.load_runtime()
     text_provider, text_model = service._resolve_text_target()
@@ -119,7 +120,7 @@ async def current_models(_: User = Depends(get_current_user)):
 
 
 @router.post("/select")
-async def select_models(data: AiModelSelectRequest, _: User = Depends(get_current_user)):
+async def select_models(data: AiModelSelectRequest, _: User = Depends(require_permission(PERM_MODELS_WRITE))):
     service = AiModelService()
     runtime = service.set_selection(
         mode=data.mode or "manual",

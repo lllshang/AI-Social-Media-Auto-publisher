@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import require_any_permission, require_permission
 from app.models import User
+from app.utils.permissions import PERM_MATERIALS_READ, PERM_MATERIALS_WRITE, PERM_PUBLISH_WRITE
 from app.schemas import ImageGenerateRequest, MaterialResponse, PromptBuildRequest, PromptBuildResponse, TextGenerateRequest
 from app.utils.prompt_templates import build_prompt
 from app.services.material_service import AiContentService, MaterialService
@@ -17,7 +18,7 @@ async def upload_material(
     name: str | None = Form(default=None),
     category: str | None = Form(default=None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PERM_MATERIALS_WRITE)),
 ):
     service = MaterialService(db)
     return await service.upload(file, current_user.id, name=name, category=category)
@@ -26,7 +27,7 @@ async def upload_material(
 @router.get("/api/materials/categories")
 def list_categories(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_MATERIALS_READ)),
 ):
     service = MaterialService(db)
     return {"items": service.list_categories()}
@@ -38,7 +39,7 @@ def list_materials(
     category: str | None = Query(default=None),
     keyword: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_MATERIALS_READ)),
 ):
     service = MaterialService(db)
     return service.list_materials(material_type=material_type, category=category, keyword=keyword)
@@ -48,7 +49,7 @@ def list_materials(
 def get_material(
     material_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_MATERIALS_READ)),
 ):
     service = MaterialService(db)
     material = service.get(material_id)
@@ -61,7 +62,7 @@ def get_material(
 def delete_material(
     material_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_MATERIALS_WRITE)),
 ):
     service = MaterialService(db)
     try:
@@ -74,7 +75,7 @@ def delete_material(
 @router.post("/api/ai/prompt/build", response_model=PromptBuildResponse)
 def build_ai_prompt(
     data: PromptBuildRequest,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_any_permission(PERM_PUBLISH_WRITE, PERM_MATERIALS_WRITE)),
 ):
     if data.kind not in {"text", "image"}:
         raise HTTPException(status_code=400, detail="kind 仅支持 text 或 image")
@@ -99,7 +100,7 @@ def build_ai_prompt(
 async def generate_text(
     data: TextGenerateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_any_permission(PERM_PUBLISH_WRITE, PERM_MATERIALS_WRITE)),
 ):
     from app.adapters.ai_text.openai_compatible import AiProviderError
 
@@ -121,7 +122,7 @@ async def generate_text(
 async def generate_image(
     data: ImageGenerateRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PERM_MATERIALS_WRITE)),
 ):
     service = AiContentService(db)
     try:

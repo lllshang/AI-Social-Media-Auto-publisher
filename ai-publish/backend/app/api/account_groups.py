@@ -3,8 +3,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import require_permission
 from app.models import PlatformAccount, User
+from app.utils.permissions import PERM_ACCOUNTS_READ, PERM_ACCOUNTS_WRITE
 from app.schemas import AccountGroupCreate, AccountGroupResponse, AccountGroupUpdate
 from app.services.account_group_service import AccountGroupService
 from app.services.log_service import LogService
@@ -31,7 +32,7 @@ def _group_response(service: AccountGroupService, group) -> AccountGroupResponse
 @router.get("", response_model=list[AccountGroupResponse])
 def list_groups(
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_READ)),
 ):
     service = AccountGroupService(db)
     return [AccountGroupResponse(**item) for item in service.list_groups()]
@@ -41,7 +42,7 @@ def list_groups(
 def create_group(
     data: AccountGroupCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = AccountGroupService(db)
     try:
@@ -57,7 +58,7 @@ def update_group(
     group_id: int,
     data: AccountGroupUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = AccountGroupService(db)
     try:
@@ -72,7 +73,7 @@ def update_group(
 def delete_group(
     group_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = AccountGroupService(db)
     try:

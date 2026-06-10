@@ -23,6 +23,18 @@ export const useAuthStore = defineStore('auth', {
       localStorage.setItem('ai_publish_role', this.roleName)
       localStorage.setItem('ai_publish_permissions', JSON.stringify(this.permissions))
     },
+    async refreshSession() {
+      if (!this.token) return
+      try {
+        const data = await api.getMe()
+        this.roleName = data.role_name || ''
+        this.permissions = data.permissions || []
+        localStorage.setItem('ai_publish_role', this.roleName)
+        localStorage.setItem('ai_publish_permissions', JSON.stringify(this.permissions))
+      } catch {
+        this.logout()
+      }
+    },
     logout() {
       this.token = ''
       this.username = ''

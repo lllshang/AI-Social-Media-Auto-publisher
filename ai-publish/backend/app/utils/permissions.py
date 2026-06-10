@@ -61,7 +61,7 @@ def has_permission(permissions: list[str], required: str) -> bool:
 
 
 def get_user_permissions(user: User, role_permissions: list[str] | None) -> list[str]:
-    if role_permissions:
+    if role_permissions is not None:
         return normalize_permissions(role_permissions)
     # 兼容历史用户未分配角色：默认运营权限
     return OPERATOR_PERMISSIONS.copy()

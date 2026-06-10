@@ -29,9 +29,9 @@
               </el-table-column>
               <el-table-column prop="error_message" label="错误" show-overflow-tooltip />
               <el-table-column label="操作" width="90">
-                <template #default="{ row }">
-                  <el-button size="small" type="warning" @click="retryTask(row)">重试</el-button>
-                </template>
+              <template #default="{ row }">
+                <el-button v-if="can('tasks:execute')" size="small" type="warning" @click="retryTask(row)">重试</el-button>
+              </template>
               </el-table-column>
             </el-table>
           </div>
@@ -108,7 +108,7 @@
             <p>文生图：{{ models.image || '-' }}</p>
             <p class="muted">文生图 Key 未配置时将使用占位图，发布请上传真实图片。</p>
           </div>
-          <div class="panel-actions">
+          <div v-if="can('publish:write')" class="panel-actions">
             <el-button type="primary" @click="$router.push('/publish')">发布图文</el-button>
             <el-button @click="$router.push({ path: '/publish', query: { platform: 'xhs', content_type: 'video' } })">
               发布小红书视频
@@ -126,6 +126,9 @@ import { ElMessage } from 'element-plus'
 import { api } from '@/api'
 import { platformLabel } from '@/constants/platforms'
 import { formatAiUsage } from '@/utils/aiUsage'
+import { usePermission } from '@/composables/usePermission'
+
+const { can } = usePermission()
 
 const loading = ref(false)
 const summary = ref(null)

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { can as canPerm } from '@/utils/permissions'
 
 const routes = [
   {
@@ -12,14 +13,14 @@ const routes = [
     path: '/',
     component: () => import('@/layouts/MainLayout.vue'),
     children: [
-      { path: '', name: 'dashboard', component: () => import('@/views/DashboardView.vue') },
-      { path: 'accounts', name: 'accounts', component: () => import('@/views/AccountsView.vue') },
-      { path: 'models', name: 'models', component: () => import('@/views/ModelsView.vue') },
-      { path: 'materials', name: 'materials', component: () => import('@/views/MaterialsView.vue') },
-      { path: 'tasks', name: 'tasks', component: () => import('@/views/TasksView.vue') },
-      { path: 'logs', name: 'logs', component: () => import('@/views/LogsView.vue') },
-      { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
-      { path: 'publish', name: 'publish', component: () => import('@/views/PublishView.vue') },
+      { path: '', name: 'dashboard', meta: { permission: 'dashboard:read' }, component: () => import('@/views/DashboardView.vue') },
+      { path: 'accounts', name: 'accounts', meta: { permission: 'accounts:read' }, component: () => import('@/views/AccountsView.vue') },
+      { path: 'models', name: 'models', meta: { permission: 'models:read' }, component: () => import('@/views/ModelsView.vue') },
+      { path: 'materials', name: 'materials', meta: { permission: 'materials:read' }, component: () => import('@/views/MaterialsView.vue') },
+      { path: 'tasks', name: 'tasks', meta: { permission: 'tasks:read' }, component: () => import('@/views/TasksView.vue') },
+      { path: 'logs', name: 'logs', meta: { permission: 'logs:read' }, component: () => import('@/views/LogsView.vue') },
+      { path: 'settings', name: 'settings', meta: { permission: 'settings:write' }, component: () => import('@/views/SettingsView.vue') },
+      { path: 'publish', name: 'publish', meta: { permission: 'publish:write' }, component: () => import('@/views/PublishView.vue') },
     ],
   },
 ]
@@ -29,12 +30,22 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!to.meta.public && !auth.isLoggedIn) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
+  if (auth.isLoggedIn) {
+    await auth.refreshSession()
+  }
   if (to.name === 'login' && auth.isLoggedIn) {
+    return { name: 'dashboard' }
+  }
+  const required = to.matched
+    .map((record) => record.meta?.permission)
+    .filter(Boolean)
+    .at(-1)
+  if (required && !canPerm(auth.permissions, required)) {
     return { name: 'dashboard' }
   }
 })

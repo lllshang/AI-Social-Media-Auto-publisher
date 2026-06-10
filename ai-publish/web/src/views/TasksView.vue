@@ -2,7 +2,7 @@
   <div>
     <div class="toolbar">
       <h2 class="page-title">发布任务</h2>
-      <el-button type="primary" @click="$router.push('/publish')">新建发布</el-button>
+      <el-button v-if="can('publish:write')" type="primary" @click="$router.push('/publish')">新建发布</el-button>
     </div>
 
     <div class="page-card filter-bar">
@@ -113,6 +113,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import { PLATFORMS, contentTypeLabel, platformLabel } from '@/constants/platforms'
 import { formatDateTime } from '@/utils/datetime'
+import { usePermission } from '@/composables/usePermission'
+
+const { can } = usePermission()
 
 const route = useRoute()
 const router = useRouter()
@@ -160,31 +163,31 @@ function statusType(status) {
 }
 
 function canEditDraft(row) {
-  return row.status === 'draft'
+  return can('publish:write') && row.status === 'draft'
 }
 
 function canDelete(row) {
-  return row.status === 'draft'
+  return can('tasks:write') && row.status === 'draft'
 }
 
 function canExecute(row) {
-  return row.status === 'pending'
+  return can('tasks:execute') && row.status === 'pending'
 }
 
 function canRetry(row) {
-  return row.status === 'failed'
+  return can('tasks:execute') && row.status === 'failed'
 }
 
 function canApprove(row) {
-  return row.status === 'pending_review'
+  return can('tasks:write') && row.status === 'pending_review'
 }
 
 function canReject(row) {
-  return row.status === 'pending_review'
+  return can('tasks:write') && row.status === 'pending_review'
 }
 
 function canReopen(row) {
-  return row.status === 'rejected'
+  return can('tasks:write') && row.status === 'rejected'
 }
 
 function buildParams() {

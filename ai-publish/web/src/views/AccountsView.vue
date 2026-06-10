@@ -2,7 +2,7 @@
   <div>
     <div class="toolbar">
       <h2 class="page-title">平台账号</h2>
-      <div>
+      <div v-if="can('accounts:write')">
         <el-button @click="showGroupManage = true">分组管理</el-button>
         <el-button type="primary" @click="openCreate">新建账号</el-button>
       </div>
@@ -50,6 +50,7 @@
         <el-table-column label="分组" width="140">
           <template #default="{ row }">
             <el-select
+              v-if="can('accounts:write')"
               :model-value="row.group_id"
               clearable
               placeholder="未分组"
@@ -59,6 +60,7 @@
             >
               <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
             </el-select>
+            <span v-else>{{ row.group_name || '未分组' }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
@@ -66,7 +68,7 @@
             <el-tag :type="statusType(row.status)">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="380">
+        <el-table-column v-if="can('accounts:write')" label="操作" width="380">
           <template #default="{ row }">
             <el-button size="small" @click="check(row)">检测 Cookie</el-button>
             <el-button size="small" type="warning" :loading="loggingInId === row.id" @click="login(row)">
@@ -129,6 +131,9 @@ import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import { PLATFORMS, platformAppName, platformLabel } from '@/constants/platforms'
+import { usePermission } from '@/composables/usePermission'
+
+const { can } = usePermission()
 
 const loading = ref(false)
 const loggingIn = ref(false)

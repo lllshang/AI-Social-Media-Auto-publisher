@@ -40,3 +40,13 @@ def require_permission(permission: str) -> Callable:
         return user
 
     return _checker
+
+
+def require_any_permission(*permissions: str) -> Callable:
+    def _checker(user: User = Depends(get_current_user)) -> User:
+        perms = getattr(user, "permissions", [])
+        if not any(has_permission(perms, item) for item in permissions):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限执行此操作")
+        return user
+
+    return _checker

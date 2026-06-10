@@ -4,8 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
-from app.dependencies import get_current_user
+from app.dependencies import require_permission
 from app.models import User
+from app.utils.permissions import PERM_ACCOUNTS_READ, PERM_ACCOUNTS_WRITE
 from app.models import PlatformAccount
 from app.schemas import (
     AccountGroupAssignRequest,
@@ -40,7 +41,7 @@ def list_accounts(
     platform: str | None = Query(default=None),
     group_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_READ)),
 ):
     service = PlatformAccountService(db)
     group_service = AccountGroupService(db)
@@ -52,7 +53,7 @@ def list_accounts(
 def create_account(
     data: PlatformAccountCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = PlatformAccountService(db)
     group_service = AccountGroupService(db)
@@ -68,7 +69,7 @@ def assign_account_group(
     account_id: int,
     data: AccountGroupAssignRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     account_service = PlatformAccountService(db)
     group_service = AccountGroupService(db)
@@ -83,7 +84,7 @@ def assign_account_group(
 def delete_account(
     account_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = PlatformAccountService(db)
     try:
@@ -136,7 +137,7 @@ async def _run_login_session(session_id: str, account_id: int) -> None:
 async def start_login_account(
     account_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     if not qr_login_supported():
         raise HTTPException(status_code=400, detail=docker_login_hint())
@@ -167,7 +168,7 @@ async def start_login_account(
 @router.get("/login-sessions/{session_id}", response_model=LoginSessionResponse)
 async def get_login_session(
     session_id: str,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     session = await login_session_service.get(session_id)
     if not session:
@@ -179,7 +180,7 @@ async def get_login_session(
 async def login_account(
     account_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     if not qr_login_supported():
         raise HTTPException(status_code=400, detail=docker_login_hint())
@@ -238,7 +239,7 @@ async def login_account(
 async def check_cookie(
     account_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = PlatformAccountService(db)
     try:

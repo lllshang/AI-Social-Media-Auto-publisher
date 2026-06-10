@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_permission
+from app.dependencies import require_permission
 from app.utils.permissions import (
     PERM_TASKS_EXECUTE,
     PERM_TASKS_READ,
@@ -95,7 +95,7 @@ def create_task(
 def get_task(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_READ)),
 ):
     service = PublishService(db)
     task = service.get_task(task_id)
@@ -109,7 +109,7 @@ def update_task(
     task_id: int,
     data: PublishTaskUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_WRITE)),
 ):
     service = PublishService(db)
     try:
@@ -135,7 +135,7 @@ def update_task(
 def submit_task(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_WRITE)),
 ):
     service = PublishService(db)
     try:
@@ -149,7 +149,7 @@ def submit_task(
 def approve_task(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_WRITE)),
 ):
     service = PublishService(db)
     try:
@@ -164,7 +164,7 @@ def reject_task(
     task_id: int,
     data: RejectTaskRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_WRITE)),
 ):
     service = PublishService(db)
     try:
@@ -199,7 +199,7 @@ def execute_task(
 def reopen_task(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_WRITE)),
 ):
     service = PublishService(db)
     try:
@@ -213,7 +213,7 @@ def reopen_task(
 def retry_task(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_EXECUTE)),
 ):
     service = PublishService(db)
     try:
@@ -227,7 +227,7 @@ def retry_task(
 def list_logs(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_READ)),
 ):
     service = PublishService(db)
     if not service.get_task(task_id):
@@ -239,7 +239,7 @@ def list_logs(
 def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_WRITE)),
 ):
     service = PublishService(db)
     try:

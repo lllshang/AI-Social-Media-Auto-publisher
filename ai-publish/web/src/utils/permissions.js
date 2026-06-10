@@ -43,7 +43,11 @@ export function userDisplayLabel(username, roleName) {
 }
 
 export function can(permissions, required) {
-  if (!permissions || permissions.length === 0) return true
+  if (!permissions || permissions.length === 0) return false
   if (permissions.includes('*')) return true
   return permissions.includes(required)
+}
+
+export function canAny(permissions, requiredList) {
+  return requiredList.some((item) => can(permissions, item))
 }

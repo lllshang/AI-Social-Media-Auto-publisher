@@ -2,21 +2,31 @@
   <div>
     <div class="toolbar">
       <h2 class="page-title">AI 模型</h2>
-      <div>
+      <div v-if="canWrite">
         <el-button @click="detect">自动匹配</el-button>
         <el-button type="primary" @click="apply">应用模型选择</el-button>
       </div>
     </div>
 
+    <el-alert
+      v-if="!canWrite"
+      type="info"
+      :closable="false"
+      show-icon
+      title="只读模式"
+      description="当前账号仅可查看模型配置，无法修改或切换模型。"
+      style="margin-bottom: 16px"
+    />
+
     <el-row :gutter="16">
-      <el-col :span="12">
+      <el-col :span="canWrite ? 12 : 24">
         <div class="page-card">
           <h3>当前配置</h3>
           <p>文案：{{ current.text }}</p>
           <p>文生图：{{ current.image }}</p>
         </div>
       </el-col>
-      <el-col :span="12">
+      <el-col v-if="canWrite" :span="12">
         <div class="page-card">
           <h3>测试文案生成</h3>
           <el-input v-model="topic" placeholder="输入主题" />
@@ -26,7 +36,7 @@
       </el-col>
     </el-row>
 
-    <div class="page-card" style="margin-top: 16px">
+    <div v-if="canWrite" class="page-card" style="margin-top: 16px">
       <h3>切换文案模型</h3>
       <el-select v-model="selectedText" placeholder="选择文案模型" style="width: 100%">
         <el-option
@@ -39,7 +49,7 @@
       </el-select>
     </div>
 
-    <div class="page-card" style="margin-top: 16px">
+    <div v-if="canWrite" class="page-card" style="margin-top: 16px">
       <h3>切换文生图模型</h3>
       <el-select v-model="selectedImage" placeholder="选择文生图模型" style="width: 100%">
         <el-option
@@ -58,7 +68,7 @@
           <h3>厂商 API Key 配置</h3>
           <p class="muted">内置主流厂商可直接配置 Key；也可新增 OpenAI 兼容的自定义厂商。</p>
         </div>
-        <el-button type="primary" plain @click="openAddProvider">新增厂商</el-button>
+        <el-button v-if="canWrite" type="primary" plain @click="openAddProvider">新增厂商</el-button>
       </div>
       <el-table v-loading="loading" :data="providers" size="small">
         <el-table-column prop="label" label="厂商" min-width="180" />
@@ -70,7 +80,7 @@
         </el-table-column>
         <el-table-column prop="api_key_masked" label="Key 预览" width="140" />
         <el-table-column prop="base_url" label="Base URL" show-overflow-tooltip />
-        <el-table-column label="操作" width="180">
+        <el-table-column v-if="canWrite" label="操作" width="180">
           <template #default="{ row }">
             <el-button size="small" @click="openProvider(row)">配置</el-button>
             <el-button v-if="row.custom" size="small" type="danger" plain @click="removeProvider(row)">删除</el-button>
@@ -142,7 +152,10 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
+import { usePermission } from '@/composables/usePermission'
 
+const { can } = usePermission()
+const canWrite = computed(() => can('models:write'))
 const modelData = ref(null)
 const providers = ref([])
 const selectedText = ref('')
