@@ -17,6 +17,7 @@ const routes = [
       { path: 'models', name: 'models', component: () => import('@/views/ModelsView.vue') },
       { path: 'materials', name: 'materials', component: () => import('@/views/MaterialsView.vue') },
       { path: 'tasks', name: 'tasks', component: () => import('@/views/TasksView.vue') },
+      { path: 'logs', name: 'logs', component: () => import('@/views/LogsView.vue') },
       { path: 'publish', name: 'publish', component: () => import('@/views/PublishView.vue') },
     ],
   },

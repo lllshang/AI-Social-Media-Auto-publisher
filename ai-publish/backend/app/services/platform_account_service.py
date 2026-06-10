@@ -16,10 +16,16 @@ class PlatformAccountService:
         self.settings = get_settings()
         self.factory = get_adapter_factory()
 
-    def list_accounts(self, platform: str | None = None) -> list[PlatformAccount]:
+    def list_accounts(
+        self,
+        platform: str | None = None,
+        group_id: int | None = None,
+    ) -> list[PlatformAccount]:
         query = self.db.query(PlatformAccount)
         if platform:
             query = query.filter(PlatformAccount.platform == platform)
+        if group_id is not None:
+            query = query.filter(PlatformAccount.group_id == group_id)
         return query.order_by(PlatformAccount.id.desc()).all()
 
     def create_account(self, platform: str, account_name: str, user_id: int | None = None) -> PlatformAccount:

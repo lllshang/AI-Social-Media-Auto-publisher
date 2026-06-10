@@ -191,6 +191,20 @@ def execute_task(
     return _task_response(task, service.get_task_materials(task))
 
 
+@router.post("/{task_id}/reopen", response_model=PublishTaskResponse)
+def reopen_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    service = PublishService(db)
+    try:
+        task = service.reopen_to_draft(task_id)
+        return _task_response(task, service.get_task_materials(task))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/{task_id}/retry", response_model=PublishTaskResponse)
 def retry_task(
     task_id: int,

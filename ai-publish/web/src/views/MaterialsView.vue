@@ -84,16 +84,33 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showAiGenerate" title="AI 生成图片" width="480px">
-      <el-form label-width="80px">
+    <el-dialog v-model="showAiGenerate" title="AI 生成图片" width="560px">
+      <el-form label-width="90px">
+        <el-form-item label="平台">
+          <el-select v-model="aiForm.platform" style="width: 100%" @change="onPlatformChange">
+            <el-option v-for="p in PLATFORMS" :key="p.value" :label="p.label" :value="p.value" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="主题">
           <el-input v-model="aiForm.topic" placeholder="如：春茶上新封面" />
         </el-form-item>
         <el-form-item label="封面文案">
           <el-input v-model="aiForm.cover_text" placeholder="可选，显示在封面上的文字" />
         </el-form-item>
+        <el-form-item label="比例">
+          <el-select v-model="aiForm.ratio" style="width: 100%">
+            <el-option v-for="r in ratioOptions" :key="r" :label="r" :value="r" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="数量">
+          <el-input-number v-model="aiForm.count" :min="1" :max="4" />
+        </el-form-item>
+        <el-form-item label="Prompt 预览">
+          <el-input v-model="builtPrompt" type="textarea" :rows="3" readonly placeholder="点击预览 Prompt" />
+        </el-form-item>
       </el-form>
       <template #footer>
+        <el-button @click="previewPrompt" :loading="previewing">预览 Prompt</el-button>
         <el-button @click="showAiGenerate = false">取消</el-button>
         <el-button type="primary" :loading="aiGenerating" @click="submitAiGenerate">生成</el-button>
       </template>
@@ -105,6 +122,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
+import { PLATFORMS, platformCoverRatio } from '@/constants/platforms'
 import { formatDateTime } from '@/utils/datetime'
 
 const loading = ref(false)
@@ -114,10 +132,36 @@ const categories = ref([])
 const showUpload = ref(false)
 const showAiGenerate = ref(false)
 const aiGenerating = ref(false)
+const previewing = ref(false)
+const builtPrompt = ref('')
 const uploadFile = ref(null)
+const ratioOptions = ['1:1', '3:4', '4:3', '9:16', '16:9']
 const filters = reactive({ category: '', material_type: '', keyword: '' })
 const uploadForm = reactive({ name: '', category: '默认' })
-const aiForm = reactive({ topic: '春茶上新', cover_text: '' })
+const aiForm = reactive({ platform: 'xhs', topic: '春茶上新', cover_text: '', ratio: '3:4', count: 1 })
+
+function onPlatformChange() {
+  aiForm.ratio = platformCoverRatio(aiForm.platform)
+}
+
+async function previewPrompt() {
+  if (!aiForm.topic.trim()) return ElMessage.warning('请填写主题')
+  previewing.value = true
+  try {
+    const res = await api.buildPrompt({
+      kind: 'image',
+      platform: aiForm.platform,
+      topic: aiForm.topic,
+      ratio: aiForm.ratio,
+      cover_text: aiForm.cover_text || null,
+    })
+    builtPrompt.value = res.prompt
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    previewing.value = false
+  }
+}
 
 function onFileChange(file) {
   uploadFile.value = file.raw
@@ -188,9 +232,16 @@ async function submitAiGenerate() {
   if (!aiForm.topic.trim()) return ElMessage.warning('请填写主题')
   aiGenerating.value = true
   try {
-    await api.generateImage(aiForm.topic, 'xhs', '3:4', 1, aiForm.cover_text || undefined)
-    ElMessage.success('图片已生成并入库')
+    const res = await api.generateImage(
+      aiForm.topic,
+      aiForm.platform,
+      aiForm.ratio,
+      aiForm.count,
+      aiForm.cover_text || undefined,
+    )
+    ElMessage.success(`已生成 ${res.materials?.length || aiForm.count} 张图片`)
     showAiGenerate.value = false
+    builtPrompt.value = ''
     load()
   } catch (e) {
     ElMessage.error(e.message)

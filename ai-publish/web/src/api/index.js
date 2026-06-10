@@ -51,7 +51,20 @@ http.interceptors.response.use(
 export const api = {
   login: (username, password) => http.post('/api/auth/login', { username, password }),
   getRuntimeInfo: () => http.get('/api/system/runtime'),
-  listAccounts: (platform) => http.get('/api/platform-accounts', { params: { platform } }),
+  getDashboardSummary: () => http.get('/api/dashboard/summary'),
+  listAccountGroups: () => http.get('/api/account-groups'),
+  createAccountGroup: (payload) => http.post('/api/account-groups', payload),
+  updateAccountGroup: (id, payload) => http.put(`/api/account-groups/${id}`, payload),
+  deleteAccountGroup: (id) => http.delete(`/api/account-groups/${id}`),
+  assignAccountGroup: (accountId, groupId) =>
+    http.post(`/api/platform-accounts/${accountId}/group`, { group_id: groupId }),
+  listAccounts: (params) => {
+    const query = typeof params === 'string' ? { platform: params } : params || {}
+    return http.get('/api/platform-accounts', { params: query })
+  },
+  buildPrompt: (payload) => http.post('/api/ai/prompt/build', payload),
+  listAiGenerations: (params) => http.get('/api/logs/ai-generations', { params }),
+  listOperationLogs: (params) => http.get('/api/logs/operations', { params }),
   createAccount: (platform, account_name) => http.post('/api/platform-accounts', { platform, account_name }),
   deleteAccount: (id) => http.delete(`/api/platform-accounts/${id}`),
   loginAccount: (id) => http.post(`/api/platform-accounts/${id}/login`),
@@ -90,6 +103,7 @@ export const api = {
   rejectTask: (id, reason) => http.post(`/api/publish-tasks/${id}/reject`, { reason }),
   executeTask: (id) => http.post(`/api/publish-tasks/${id}/execute`),
   retryTask: (id) => http.post(`/api/publish-tasks/${id}/retry`),
+  reopenTask: (id) => http.post(`/api/publish-tasks/${id}/reopen`),
   deleteTask: (id) => http.delete(`/api/publish-tasks/${id}`),
   getTaskLogs: (id) => http.get(`/api/publish-tasks/${id}/logs`),
 }

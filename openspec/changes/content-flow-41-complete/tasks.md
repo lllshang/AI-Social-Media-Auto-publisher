@@ -66,12 +66,12 @@
 
 ### 阶段 B — 后台模块补全（P1）
 
-- [ ] B.1 工作台：失败任务、账号健康、AI 调用统计
-- [ ] B.2 账号分组（account_groups）
-- [ ] B.3 AI 文生图 UI：多比例、批量生成
-- [ ] B.4 提示词重构 API
-- [ ] B.5 日志中心（operation_logs、ai_generation_records 查询）
-- [ ] B.6 已驳回任务退回草稿
+- [x] B.1 工作台：失败任务、账号健康、AI 调用统计
+- [x] B.2 账号分组（account_groups）
+- [x] B.3 AI 文生图 UI：多比例、批量生成
+- [x] B.4 提示词重构 API
+- [x] B.5 日志中心（operation_logs、ai_generation_records 查询）
+- [x] B.6 已驳回任务退回草稿
 
 ### 阶段 C — 基础设施（P2）
 

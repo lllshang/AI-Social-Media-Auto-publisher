@@ -2,7 +2,10 @@
   <div>
     <div class="toolbar">
       <h2 class="page-title">平台账号</h2>
-      <el-button type="primary" @click="openCreate">新建账号</el-button>
+      <div>
+        <el-button @click="showGroupManage = true">分组管理</el-button>
+        <el-button type="primary" @click="openCreate">新建账号</el-button>
+      </div>
     </div>
     <el-alert
       v-if="runtime.docker && runtime.xhs_qr_login_supported"
@@ -24,9 +27,18 @@
     />
     <div class="page-card filter-bar">
       <el-radio-group v-model="filterPlatform" @change="load">
-        <el-radio-button label="">全部</el-radio-button>
+        <el-radio-button label="">全部平台</el-radio-button>
         <el-radio-button v-for="p in PLATFORMS" :key="p.value" :label="p.value">{{ p.label }}</el-radio-button>
       </el-radio-group>
+      <el-select
+        v-model="filterGroupId"
+        clearable
+        placeholder="全部分组"
+        style="width: 160px; margin-left: 12px"
+        @change="load"
+      >
+        <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
+      </el-select>
     </div>
     <div class="page-card">
       <el-table :data="accounts" v-loading="loading">
@@ -34,6 +46,20 @@
         <el-table-column prop="account_name" label="账号名" />
         <el-table-column label="平台" width="100">
           <template #default="{ row }">{{ platformLabel(row.platform) }}</template>
+        </el-table-column>
+        <el-table-column label="分组" width="140">
+          <template #default="{ row }">
+            <el-select
+              :model-value="row.group_id"
+              clearable
+              placeholder="未分组"
+              size="small"
+              style="width: 120px"
+              @change="(val) => assignGroup(row, val)"
+            >
+              <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
+            </el-select>
+          </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
@@ -69,6 +95,27 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="showGroupManage" title="账号分组" width="520px">
+      <el-form inline @submit.prevent>
+        <el-form-item label="新分组">
+          <el-input v-model="groupForm.name" placeholder="分组名称" style="width: 160px" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="createGroup">添加</el-button>
+        </el-form-item>
+      </el-form>
+      <el-table :data="groups" size="small">
+        <el-table-column prop="name" label="名称" />
+        <el-table-column prop="account_count" label="账号数" width="80" />
+        <el-table-column prop="remark" label="备注" show-overflow-tooltip />
+        <el-table-column label="操作" width="90">
+          <template #default="{ row }">
+            <el-button size="small" type="danger" link @click="removeGroup(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
     <el-dialog v-model="qrVisible" title="扫码登录" width="420px" :close-on-click-modal="false">
       <p class="muted">{{ qrMessage }}</p>
       <div v-if="!qrDataUrl && loggingIn" class="qr-loading">正在生成二维码...</div>
@@ -87,8 +134,12 @@ const loading = ref(false)
 const loggingIn = ref(false)
 const loggingInId = ref(null)
 const accounts = ref([])
+const groups = ref([])
 const filterPlatform = ref('')
+const filterGroupId = ref(null)
 const showCreate = ref(false)
+const showGroupManage = ref(false)
+const groupForm = reactive({ name: '' })
 const form = reactive({ platform: 'xhs', account_name: 'test1' })
 const qrVisible = ref(false)
 const qrDataUrl = ref('')
@@ -167,13 +218,56 @@ async function pollLoginSession(sessionId) {
   }
 }
 
+async function loadGroups() {
+  groups.value = await api.listAccountGroups()
+}
+
 async function load() {
   loading.value = true
   try {
-    accounts.value = await api.listAccounts(filterPlatform.value || undefined)
+    const params = {}
+    if (filterPlatform.value) params.platform = filterPlatform.value
+    if (filterGroupId.value) params.group_id = filterGroupId.value
+    accounts.value = await api.listAccounts(params)
     runtime.value = await api.getRuntimeInfo()
   } finally {
     loading.value = false
+  }
+}
+
+async function createGroup() {
+  if (!groupForm.name.trim()) return ElMessage.warning('请输入分组名称')
+  try {
+    await api.createAccountGroup({ name: groupForm.name.trim() })
+    groupForm.name = ''
+    await loadGroups()
+    ElMessage.success('分组已创建')
+  } catch (e) {
+    ElMessage.error(e.message)
+  }
+}
+
+async function removeGroup(row) {
+  try {
+    await ElMessageBox.confirm(`确定删除分组「${row.name}」？账号将变为未分组`, '删除确认', { type: 'warning' })
+    await api.deleteAccountGroup(row.id)
+    if (filterGroupId.value === row.id) filterGroupId.value = null
+    await loadGroups()
+    load()
+    ElMessage.success('已删除')
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message)
+  }
+}
+
+async function assignGroup(row, groupId) {
+  try {
+    await api.assignAccountGroup(row.id, groupId ?? null)
+    ElMessage.success('分组已更新')
+    load()
+  } catch (e) {
+    ElMessage.error(e.message)
+    load()
   }
 }
 
@@ -255,7 +349,10 @@ async function remove(row) {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  await loadGroups()
+  load()
+})
 onBeforeUnmount(stopPolling)
 </script>
 

@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
-from app.schemas import ImageGenerateRequest, MaterialResponse, TextGenerateRequest
+from app.schemas import ImageGenerateRequest, MaterialResponse, PromptBuildRequest, PromptBuildResponse, TextGenerateRequest
+from app.utils.prompt_templates import build_prompt
 from app.services.material_service import AiContentService, MaterialService
 
 router = APIRouter(tags=["materials", "ai"])
@@ -68,6 +69,30 @@ def delete_material(
         return {"success": True}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/api/ai/prompt/build", response_model=PromptBuildResponse)
+def build_ai_prompt(
+    data: PromptBuildRequest,
+    _: User = Depends(get_current_user),
+):
+    if data.kind not in {"text", "image"}:
+        raise HTTPException(status_code=400, detail="kind 仅支持 text 或 image")
+    template_name, prompt = build_prompt(
+        data.kind,
+        data.platform,
+        data.topic,
+        content_type=data.content_type,
+        ratio=data.ratio,
+        style=data.style,
+        cover_text=data.cover_text,
+    )
+    return PromptBuildResponse(
+        kind=data.kind,
+        platform=data.platform,
+        template_name=template_name,
+        prompt=prompt,
+    )
 
 
 @router.post("/api/ai/text/generate")

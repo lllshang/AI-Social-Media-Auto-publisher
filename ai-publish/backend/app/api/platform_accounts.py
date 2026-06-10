@@ -6,13 +6,16 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal, get_db
 from app.dependencies import get_current_user
 from app.models import User
+from app.models import PlatformAccount
 from app.schemas import (
+    AccountGroupAssignRequest,
     CookieCheckResponse,
     LoginAccountResponse,
     LoginSessionResponse,
     PlatformAccountCreate,
     PlatformAccountResponse,
 )
+from app.services.account_group_service import AccountGroupService
 from app.services.login_session_service import login_session_service
 from app.services.platform_account_service import PlatformAccountService
 from app.utils.runtime_env import docker_login_hint, platform_scan_hint, qr_login_supported
@@ -20,14 +23,29 @@ from app.utils.runtime_env import docker_login_hint, platform_scan_hint, qr_logi
 router = APIRouter(prefix="/api/platform-accounts", tags=["platform-accounts"])
 
 
+def _account_response(account: PlatformAccount, group_service: AccountGroupService) -> PlatformAccountResponse:
+    return PlatformAccountResponse(
+        id=account.id,
+        platform=account.platform,
+        account_name=account.account_name,
+        group_id=account.group_id,
+        group_name=group_service.get_group_name(account.group_id),
+        status=account.status,
+        created_at=account.created_at,
+    )
+
+
 @router.get("", response_model=list[PlatformAccountResponse])
 def list_accounts(
     platform: str | None = Query(default=None),
+    group_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     service = PlatformAccountService(db)
-    return service.list_accounts(platform)
+    group_service = AccountGroupService(db)
+    accounts = service.list_accounts(platform, group_id)
+    return [_account_response(account, group_service) for account in accounts]
 
 
 @router.post("", response_model=PlatformAccountResponse)
@@ -37,8 +55,26 @@ def create_account(
     current_user: User = Depends(get_current_user),
 ):
     service = PlatformAccountService(db)
+    group_service = AccountGroupService(db)
     try:
-        return service.create_account(data.platform, data.account_name, current_user.id)
+        account = service.create_account(data.platform, data.account_name, current_user.id)
+        return _account_response(account, group_service)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{account_id}/group", response_model=PlatformAccountResponse)
+def assign_account_group(
+    account_id: int,
+    data: AccountGroupAssignRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    account_service = PlatformAccountService(db)
+    group_service = AccountGroupService(db)
+    try:
+        account = group_service.assign_account(account_id, data.group_id)
+        return _account_response(account, group_service)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

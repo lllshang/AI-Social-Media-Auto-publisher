@@ -16,7 +16,7 @@ class PublishService:
     VALID_TRANSITIONS = {
         "draft": {"pending", "pending_review"},
         "pending_review": {"pending", "rejected"},
-        "rejected": set(),
+        "rejected": {"draft"},
         "pending": {"running"},
         "running": {"success", "failed"},
         "failed": {"pending"},
@@ -249,6 +249,18 @@ class PublishService:
             await service.execute_task(task_id)
         finally:
             db.close()
+
+    def reopen_to_draft(self, task_id: int) -> PublishTask:
+        task = self.get_task(task_id)
+        if not task:
+            raise ValueError("任务不存在")
+        if task.status != "rejected":
+            raise ValueError("仅 rejected 任务可退回草稿")
+        task.status = "draft"
+        task.error_message = None
+        self.db.commit()
+        self.db.refresh(task)
+        return task
 
     def retry_task(self, task_id: int) -> PublishTask:
         task = self.get_task(task_id)

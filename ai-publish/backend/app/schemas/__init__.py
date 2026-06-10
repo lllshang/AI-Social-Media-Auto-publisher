@@ -30,6 +30,8 @@ class PlatformAccountResponse(BaseModel):
     id: int
     platform: str
     account_name: str
+    group_id: int | None = None
+    group_name: str | None = None
     status: str
     created_at: datetime
 
@@ -171,6 +173,144 @@ class PublishTaskLogResponse(BaseModel):
     step: str
     status: str
     message: str | None
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+    class Config:
+        from_attributes = True
+
+
+class DashboardFailedTask(BaseModel):
+    id: int
+    title: str
+    platform: str
+    error_message: str | None = None
+    updated_at: datetime
+
+    @field_serializer("updated_at")
+    def serialize_updated_at(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+
+class DashboardUnhealthyAccount(BaseModel):
+    id: int
+    platform: str
+    account_name: str
+    status: str
+
+
+class DashboardOverview(BaseModel):
+    accounts: int
+    materials: int
+    tasks: int
+    success_tasks: int
+    failed_tasks: int
+    pending_tasks: int
+
+
+class DashboardAccountHealth(BaseModel):
+    active: int
+    inactive: int
+    expired: int
+    unhealthy_accounts: list[DashboardUnhealthyAccount]
+
+
+class DashboardAiTypeStat(BaseModel):
+    count: int
+    cost: float
+
+
+class DashboardAiProviderStat(BaseModel):
+    provider: str
+    count: int
+
+
+class DashboardAiStats(BaseModel):
+    total_calls: int
+    total_cost: float
+    last_7_days: dict[str, DashboardAiTypeStat]
+    by_provider: list[DashboardAiProviderStat]
+
+
+class DashboardSummaryResponse(BaseModel):
+    overview: DashboardOverview
+    task_counts: dict[str, int]
+    account_health: DashboardAccountHealth
+    failed_tasks: list[DashboardFailedTask]
+    ai_stats: DashboardAiStats
+
+
+class AccountGroupCreate(BaseModel):
+    name: str
+    remark: str | None = None
+
+
+class AccountGroupUpdate(BaseModel):
+    name: str | None = None
+    remark: str | None = None
+
+
+class AccountGroupResponse(BaseModel):
+    id: int
+    name: str
+    remark: str | None = None
+    account_count: int = 0
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+
+class AccountGroupAssignRequest(BaseModel):
+    group_id: int | None = None
+
+
+class PromptBuildRequest(BaseModel):
+    kind: str = Field(description="text 或 image")
+    platform: str = "xhs"
+    topic: str
+    content_type: str = "note"
+    ratio: str = "3:4"
+    style: str = "default"
+    cover_text: str | None = None
+
+
+class PromptBuildResponse(BaseModel):
+    kind: str
+    platform: str
+    template_name: str
+    prompt: str
+
+
+class AiGenerationRecordResponse(BaseModel):
+    id: int
+    type: str
+    provider: str
+    prompt: str
+    result_summary: str | None = None
+    cost: float
+    created_by: int | None = None
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+    class Config:
+        from_attributes = True
+
+
+class OperationLogResponse(BaseModel):
+    id: int
+    user_id: int | None = None
+    action: str
+    target_type: str | None = None
+    target_id: int | None = None
+    ip: str | None = None
     created_at: datetime
 
     @field_serializer("created_at")

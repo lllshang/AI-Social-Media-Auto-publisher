@@ -8,8 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
+from app.api.account_groups import router as account_groups_router
 from app.api.ai_models import router as ai_models_router
 from app.api.auth import router as auth_router
+from app.api.dashboard import router as dashboard_router
+from app.api.logs import router as logs_router
 from app.api.materials import router as materials_router
 from app.api.platform_accounts import router as platform_accounts_router
 from app.api.publish_tasks import router as publish_tasks_router
@@ -83,10 +86,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(auth_router)
+app.include_router(dashboard_router)
+app.include_router(account_groups_router)
 app.include_router(ai_models_router)
 app.include_router(platform_accounts_router)
 app.include_router(materials_router)
 app.include_router(publish_tasks_router)
+app.include_router(logs_router)
 app.include_router(system_router)
 
 settings = get_settings()

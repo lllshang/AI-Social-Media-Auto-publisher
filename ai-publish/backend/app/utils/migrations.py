@@ -26,6 +26,15 @@ def run_migrations() -> None:
         if "wizard_step" not in task_columns:
             statements.append("ALTER TABLE publish_tasks ADD COLUMN wizard_step INTEGER")
 
+    if not inspector.has_table("account_groups"):
+        statements.append(
+            "CREATE TABLE account_groups ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "name VARCHAR(64) NOT NULL UNIQUE, "
+            "remark VARCHAR(255), "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+
     if not statements:
         return
 

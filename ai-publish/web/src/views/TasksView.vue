@@ -66,6 +66,7 @@
               <el-button v-if="canDelete(row)" size="small" type="danger" plain @click="removeDraft(row)">删除</el-button>
               <el-button v-if="canApprove(row)" size="small" type="success" @click="approve(row)">通过</el-button>
               <el-button v-if="canReject(row)" size="small" type="danger" @click="reject(row)">驳回</el-button>
+              <el-button v-if="canReopen(row)" size="small" @click="reopen(row)">退回草稿</el-button>
               <el-button v-if="canExecute(row)" size="small" type="primary" @click="execute(row)">执行</el-button>
               <el-button v-if="canRetry(row)" size="small" type="warning" @click="retry(row)">重试</el-button>
             </div>
@@ -107,12 +108,13 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import { PLATFORMS, contentTypeLabel, platformLabel } from '@/constants/platforms'
 import { formatDateTime } from '@/utils/datetime'
 
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const tasks = ref([])
@@ -179,6 +181,10 @@ function canApprove(row) {
 
 function canReject(row) {
   return row.status === 'pending_review'
+}
+
+function canReopen(row) {
+  return row.status === 'rejected'
 }
 
 function buildParams() {
@@ -279,6 +285,16 @@ async function approve(row) {
   }
 }
 
+async function reopen(row) {
+  try {
+    await api.reopenTask(row.id)
+    ElMessage.success('已退回草稿，可继续编辑')
+    load()
+  } catch (e) {
+    ElMessage.error(e.message)
+  }
+}
+
 async function reject(row) {
   try {
     const { value } = await ElMessageBox.prompt('请输入驳回原因（可选）', '驳回任务', {
@@ -294,7 +310,12 @@ async function reject(row) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  if (route.query.status) {
+    filters.status = String(route.query.status)
+  }
+  load()
+})
 </script>
 
 <style scoped>
