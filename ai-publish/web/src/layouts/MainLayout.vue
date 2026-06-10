@@ -15,7 +15,7 @@
     </el-aside>
     <el-container>
       <el-header class="header">
-        <span class="muted">当前用户：{{ auth.username }}（{{ roleDisplayLabel(auth.roleName || 'operator') }}）</span>
+        <span class="muted">当前用户：{{ userDisplayLabel(auth.username, auth.roleName || 'operator') }}</span>
         <el-button link type="primary" @click="logout">退出</el-button>
       </el-header>
       <el-main class="main">
@@ -28,7 +28,7 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { can as canPerm, roleDisplayLabel } from '@/utils/permissions'
+import { can as canPerm, userDisplayLabel } from '@/utils/permissions'
 
 const route = useRoute()
 const router = useRouter()

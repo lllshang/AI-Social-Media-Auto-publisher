@@ -36,6 +36,12 @@ export function roleDisplayLabel(name) {
   return label ? `${name} (${label})` : name
 }
 
+/** 顶栏用户展示：admin (管理员) */
+export function userDisplayLabel(username, roleName) {
+  const label = ROLE_LABELS[roleName]
+  return label ? `${username} (${label})` : username
+}
+
 export function can(permissions, required) {
   if (!permissions || permissions.length === 0) return true
   if (permissions.includes('*')) return true

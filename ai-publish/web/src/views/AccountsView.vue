@@ -34,7 +34,7 @@
         v-model="filterGroupId"
         clearable
         placeholder="全部分组"
-        style="width: 160px; margin-left: 12px"
+        class="filter-group-select"
         @change="load"
       >
         <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
@@ -364,6 +364,25 @@ onBeforeUnmount(stopPolling)
 }
 .filter-bar {
   margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.filter-bar :deep(.el-radio-group) {
+  display: inline-flex;
+  vertical-align: middle;
+}
+.filter-group-select {
+  width: 160px;
+}
+.filter-group-select :deep(.el-input__wrapper) {
+  height: 32px;
+}
+.filter-bar :deep(.el-radio-button__inner) {
+  height: 32px;
+  line-height: 32px;
+  padding: 0 15px;
 }
 .runtime-alert {
   margin-bottom: 16px;
