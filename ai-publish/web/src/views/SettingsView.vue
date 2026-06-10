@@ -25,11 +25,13 @@
     <div class="page-card" style="margin-top: 16px">
       <h3>角色列表</h3>
       <el-table :data="roles" size="small">
-        <el-table-column prop="role_name" label="角色" width="120" />
-        <el-table-column label="权限">
+        <el-table-column label="角色" width="120">
+          <template #default="{ row }">{{ roleLabel(row.role_name) }}</template>
+        </el-table-column>
+        <el-table-column label="权限说明">
           <template #default="{ row }">
             <el-tag v-for="p in row.permissions || []" :key="p" size="small" style="margin: 2px 4px 2px 0">
-              {{ p }}
+              {{ permissionLabel(p) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -42,6 +44,7 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
+import { permissionLabel, roleLabel } from '@/utils/permissions'
 
 const loading = ref(false)
 const savingKey = ref('')
