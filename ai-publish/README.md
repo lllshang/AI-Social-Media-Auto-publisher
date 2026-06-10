@@ -6,8 +6,10 @@
 
 | 文档 | 说明 |
 |------|------|
+| [**项目总览（结构 + 全文档地图）**](../docs/project-overview.md) | **新人首选：代码结构、脚本、配置、路线图** |
 | [部署指南（Mac / Windows / Linux / 腾讯云）](../docs/deployment.md) | **上服务器、Docker、腾讯云一键部署** |
 | [日常使用手册](../docs/daily-usage.md) | 登录、发布、AI 配置 |
+| [API 手动测试](../docs/api-test.md) | curl 接口清单 |
 | [多平台扩展路线图](../docs/multi-platform-roadmap.md) | 抖音等平台规划 |
 
 ## 目录结构
