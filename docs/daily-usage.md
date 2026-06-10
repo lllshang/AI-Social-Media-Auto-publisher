@@ -116,6 +116,7 @@ python ../scripts/import_sau_cookie.py
 5. **排期提交** — 可选计划时间 → **保存草稿** 或 **提交待发布**  
 6. 在 **发布任务** 页对 `待发布` 任务点击 **执行** — Playwright 发布  
 7. `GET /api/publish-tasks/{id}/logs` — 查看步骤日志  
+8. **草稿** 可点 **删除** 清理；**待审核**（需 `.env` 开启 `REQUIRE_CONTENT_REVIEW=true`）可 **通过/驳回**  
 
 > 当前版本设置了 `publish_time` 也**不会自动执行**，需手动点「执行」。Celery 定时发布为后续 change。
 

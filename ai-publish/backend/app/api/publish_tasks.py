@@ -228,3 +228,17 @@ def list_logs(
     if not service.get_task(task_id):
         raise HTTPException(status_code=404, detail="任务不存在")
     return service.list_logs(task_id)
+
+
+@router.delete("/{task_id}")
+def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    service = PublishService(db)
+    try:
+        service.delete_task(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True}

@@ -52,13 +52,20 @@
         <el-table-column label="创建时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="320" fixed="right">
+        <el-table-column label="操作" min-width="200" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="showDetail(row)">详情</el-button>
-            <el-button size="small" @click="showLogs(row)">日志</el-button>
-            <el-button v-if="row.status === 'draft'" size="small" @click="editDraft(row)">继续编辑</el-button>
-            <el-button size="small" type="primary" :disabled="!canExecute(row)" @click="execute(row)">执行</el-button>
-            <el-button size="small" type="warning" :disabled="row.status !== 'failed'" @click="retry(row)">重试</el-button>
+            <div class="action-buttons">
+              <el-button size="small" @click="showDetail(row)">详情</el-button>
+              <el-button size="small" @click="showLogs(row)">日志</el-button>
+              <el-button v-if="canEditDraft(row)" size="small" @click="editDraft(row)">继续编辑</el-button>
+              <el-button v-if="canDelete(row)" size="small" type="danger" plain @click="removeDraft(row)">删除</el-button>
+              <el-button v-if="canApprove(row)" size="small" type="success" @click="approve(row)">通过</el-button>
+              <el-button v-if="canReject(row)" size="small" type="danger" @click="reject(row)">驳回</el-button>
+              <el-button v-if="canApprove(row)" size="small" type="success" @click="approve(row)">通过</el-button>
+              <el-button v-if="canReject(row)" size="small" type="danger" @click="reject(row)">驳回</el-button>
+              <el-button v-if="canExecute(row)" size="small" type="primary" @click="execute(row)">执行</el-button>
+              <el-button v-if="canRetry(row)" size="small" type="warning" @click="retry(row)">重试</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -68,6 +75,7 @@
       <template v-if="detail">
         <p><strong>标题：</strong>{{ detail.title }}</p>
         <p><strong>状态：</strong>{{ statusLabel(detail.status) }}</p>
+        <p v-if="detail.error_message"><strong>备注/错误：</strong>{{ detail.error_message }}</p>
         <p><strong>计划时间：</strong>{{ detail.publish_time ? formatDateTime(detail.publish_time) : '未设置' }}</p>
         <p><strong>正文：</strong></p>
         <pre class="block">{{ detail.content || '-' }}</pre>
@@ -96,7 +104,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import { formatDateTime } from '@/utils/datetime'
 
@@ -144,8 +152,28 @@ function statusType(status) {
   return map[status] || 'info'
 }
 
+function canEditDraft(row) {
+  return row.status === 'draft'
+}
+
+function canDelete(row) {
+  return row.status === 'draft'
+}
+
 function canExecute(row) {
   return row.status === 'pending'
+}
+
+function canRetry(row) {
+  return row.status === 'failed'
+}
+
+function canApprove(row) {
+  return row.status === 'pending_review'
+}
+
+function canReject(row) {
+  return row.status === 'pending_review'
 }
 
 function buildParams() {
@@ -191,6 +219,21 @@ function editDraft(row) {
   router.push({ path: '/publish', query: { id: row.id } })
 }
 
+async function removeDraft(row) {
+  try {
+    await ElMessageBox.confirm(`确定删除草稿「${row.title}」？删除后不可恢复。`, '删除草稿', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+    await api.deleteTask(row.id)
+    ElMessage.success('草稿已删除')
+    load()
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message || '删除失败')
+  }
+}
+
 async function copyComment() {
   if (!detail.value?.comment_guide) return ElMessage.warning('无评论引导内容')
   try {
@@ -221,6 +264,31 @@ async function retry(row) {
   }
 }
 
+async function approve(row) {
+  try {
+    await api.approveTask(row.id)
+    ElMessage.success('已通过审核，任务进入待发布')
+    load()
+  } catch (e) {
+    ElMessage.error(e.message)
+  }
+}
+
+async function reject(row) {
+  try {
+    const { value } = await ElMessageBox.prompt('请输入驳回原因（可选）', '驳回任务', {
+      confirmButtonText: '驳回',
+      cancelButtonText: '取消',
+      inputPlaceholder: '如：标题不合规',
+    })
+    await api.rejectTask(row.id, value || undefined)
+    ElMessage.success('已驳回')
+    load()
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message || '驳回失败')
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -232,6 +300,11 @@ onMounted(load)
 }
 .filter-bar {
   margin-bottom: 16px;
+}
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .block {
   white-space: pre-wrap;

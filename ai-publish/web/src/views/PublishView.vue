@@ -1,6 +1,9 @@
 <template>
   <div>
-    <h2 class="page-title">{{ draftId ? `编辑草稿 #${draftId}` : '发布向导（小红书图文）' }}</h2>
+    <div class="page-header">
+      <h2 class="page-title">{{ draftId ? `编辑草稿 #${draftId}` : '发布向导（小红书图文）' }}</h2>
+      <el-button v-if="draftId" type="danger" plain @click="removeDraft">删除草稿</el-button>
+    </div>
     <el-steps :active="step" finish-status="success" align-center style="margin-bottom: 24px">
       <el-step title="主题账号" />
       <el-step title="AI 文案" />
@@ -120,7 +123,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 
 const route = useRoute()
@@ -311,6 +314,22 @@ function submitPending() {
   persistTask(true)
 }
 
+async function removeDraft() {
+  if (!draftId.value) return
+  try {
+    await ElMessageBox.confirm(`确定删除草稿 #${draftId.value}？删除后不可恢复。`, '删除草稿', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+    await api.deleteTask(draftId.value)
+    ElMessage.success('草稿已删除')
+    router.push('/tasks')
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message || '删除失败')
+  }
+}
+
 onMounted(async () => {
   await loadBase()
   const id = route.query.id
@@ -319,6 +338,15 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.page-header .page-title {
+  margin: 0;
+}
 .muted {
   color: #888;
   font-size: 13px;

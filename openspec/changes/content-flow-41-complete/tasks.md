@@ -45,3 +45,20 @@
 - [x] 7.1 审核管理页面、C 方案本机发布 — 后续 change
 - [x] 7.2 Celery 定时执行 — 后续 change
 - [x] 7.3 RBAC、敏感词、多平台 — 后续 change
+
+## 8. 发布后增量（本会话）
+
+- [x] 8.1 草稿删除：`DELETE /api/publish-tasks/{id}` + 任务列表/发布向导删除按钮
+- [x] 8.2 任务操作按钮按状态显示（不可用时隐藏，非 disabled 灰显）
+- [x] 8.3 修复 SPA 路由 `/app/tasks` 等子路径 404（`web_admin.py`）
+- [x] 8.4 `sync-to-server.sh` 自动构建前端 + `--delete` 清理旧静态资源
+- [x] 8.5 待审核任务「通过/驳回」按钮（`pending_review` 状态，API 已有）
+
+## 9. 下一 change 待办（未开始）
+
+- [ ] 9.1 审核管理独立页面（列表筛选、批量审核、审核记录）
+- [ ] 9.2 Celery/APScheduler 到点自动执行 `publish_time`
+- [ ] 9.3 服务器 Docker 环境小红书扫码登录 + 无头发布完善
+- [ ] 9.4 抖音平台 Adapter（见 `docs/multi-platform-roadmap.md` P1）
+- [ ] 9.5 RBAC 权限、敏感词检测、数据看板
+- [ ] 9.6 已驳回任务支持退回草稿重新编辑

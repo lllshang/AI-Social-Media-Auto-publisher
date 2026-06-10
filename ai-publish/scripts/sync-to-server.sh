@@ -20,6 +20,14 @@ PUBLIC_HOST="${PUBLIC_HOST:?请在 deploy.env 中设置 PUBLIC_HOST}"
 SSH_USER="${SSH_USER:-ubuntu}"
 REMOTE_DIR="${INSTALL_DIR:-/opt/ai-publish}"
 
+WEB_DIR="${PROJECT_ROOT}/ai-publish/web"
+if [[ -d "$WEB_DIR" ]]; then
+  echo "[构建] 前端 web/dist ..."
+  (cd "$WEB_DIR" && npm run build)
+else
+  echo "警告: 未找到 web 目录，跳过前端构建"
+fi
+
 echo "同步到 ${SSH_USER}@${PUBLIC_HOST}:${REMOTE_DIR} ..."
 
 ssh "${SSH_USER}@${PUBLIC_HOST}" "mkdir -p ${REMOTE_DIR}" 2>/dev/null || {
@@ -33,7 +41,7 @@ ssh "${SSH_USER}@${PUBLIC_HOST}" "mkdir -p ${REMOTE_DIR}" 2>/dev/null || {
   exit 1
 }
 
-rsync -avz --progress \
+rsync -avz --progress --delete \
   --exclude 'backend/.venv' \
   --exclude 'backend/data' \
   --exclude 'web/node_modules' \

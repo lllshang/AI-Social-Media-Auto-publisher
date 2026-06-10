@@ -89,6 +89,7 @@ export const api = {
   rejectTask: (id, reason) => http.post(`/api/publish-tasks/${id}/reject`, { reason }),
   executeTask: (id) => http.post(`/api/publish-tasks/${id}/execute`),
   retryTask: (id) => http.post(`/api/publish-tasks/${id}/retry`),
+  deleteTask: (id) => http.delete(`/api/publish-tasks/${id}`),
   getTaskLogs: (id) => http.get(`/api/publish-tasks/${id}/logs`),
 }
 

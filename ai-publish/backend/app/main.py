@@ -18,6 +18,7 @@ from app.config import BACKEND_DIR, get_settings
 from app.database import SessionLocal, engine
 from app.models import Base
 from app.services.auth_service import ensure_admin_user
+from app.utils.web_admin import mount_web_admin
 
 
 def setup_logging() -> None:
@@ -90,7 +91,7 @@ app.mount("/static/materials", StaticFiles(directory=str(static_dir)), name="mat
 admin_dir = BACKEND_DIR.parent / "admin"
 web_dist = settings.web_dist_abs_path
 if web_dist:
-    app.mount("/app", StaticFiles(directory=str(web_dist), html=True), name="web-admin")
+    mount_web_admin(app, web_dist)
 elif admin_dir.exists():
     app.mount("/admin", StaticFiles(directory=str(admin_dir), html=True), name="admin")
 

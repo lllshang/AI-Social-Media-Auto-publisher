@@ -261,3 +261,13 @@ class PublishService:
         self.db.commit()
         self.db.refresh(task)
         return task
+
+    def delete_task(self, task_id: int) -> None:
+        task = self.get_task(task_id)
+        if not task:
+            raise ValueError("任务不存在")
+        if task.status != "draft":
+            raise ValueError("仅 draft 状态任务可删除")
+        self.db.query(PublishTaskLog).filter(PublishTaskLog.task_id == task_id).delete()
+        self.db.delete(task)
+        self.db.commit()
