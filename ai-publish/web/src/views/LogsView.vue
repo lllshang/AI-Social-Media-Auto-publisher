@@ -4,6 +4,7 @@
 
     <el-tabs v-model="activeTab">
       <el-tab-pane label="AI 生成记录" name="ai">
+        <p class="muted usage-hint">文案记录的用量为 Token 数；文生图记录为生成张数（部分供应商为 credits）。</p>
         <div class="page-card filter-bar">
           <el-form inline>
             <el-form-item label="类型">
@@ -27,8 +28,8 @@
             <el-table-column prop="provider" label="供应商" width="110" />
             <el-table-column prop="prompt" label="Prompt" show-overflow-tooltip />
             <el-table-column prop="result_summary" label="结果摘要" show-overflow-tooltip />
-            <el-table-column label="成本" width="90">
-              <template #default="{ row }">{{ Number(row.cost || 0).toFixed(4) }}</template>
+            <el-table-column label="用量" width="120">
+              <template #default="{ row }">{{ formatAiUsage(row.type, row.cost) }}</template>
             </el-table-column>
             <el-table-column label="时间" width="170">
               <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
@@ -68,6 +69,7 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { api } from '@/api'
+import { formatAiUsage } from '@/utils/aiUsage'
 import { formatDateTime } from '@/utils/datetime'
 
 const activeTab = ref('ai')
@@ -108,6 +110,10 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.usage-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
 .filter-bar {
   margin-bottom: 16px;
 }

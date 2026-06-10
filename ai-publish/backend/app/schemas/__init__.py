@@ -230,7 +230,8 @@ class DashboardAiProviderStat(BaseModel):
 
 class DashboardAiStats(BaseModel):
     total_calls: int
-    total_cost: float
+    text_tokens_total: float = 0
+    image_units_total: float = 0
     last_7_days: dict[str, DashboardAiTypeStat]
     by_provider: list[DashboardAiProviderStat]
 

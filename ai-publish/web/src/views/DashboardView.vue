@@ -68,7 +68,12 @@
           <h3>AI 调用统计（近 7 天）</h3>
           <el-descriptions :column="2" border>
             <el-descriptions-item label="累计调用">{{ summary?.ai_stats?.total_calls || 0 }}</el-descriptions-item>
-            <el-descriptions-item label="累计成本">{{ formatCost(summary?.ai_stats?.total_cost) }}</el-descriptions-item>
+            <el-descriptions-item label="累计文案 Token">
+              {{ formatAiUsage('text', summary?.ai_stats?.text_tokens_total) }}
+            </el-descriptions-item>
+            <el-descriptions-item label="累计文生图">
+              {{ formatAiUsage('image', summary?.ai_stats?.image_units_total) }}
+            </el-descriptions-item>
             <el-descriptions-item label="文案生成">
               {{ aiTypeStat('text') }}
             </el-descriptions-item>
@@ -110,6 +115,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
 import { platformLabel } from '@/constants/platforms'
+import { formatAiUsage } from '@/utils/aiUsage'
 
 const loading = ref(false)
 const summary = ref(null)
@@ -127,15 +133,10 @@ const overviewCards = computed(() => {
   ]
 })
 
-function formatCost(value) {
-  const num = Number(value || 0)
-  return num.toFixed(4)
-}
-
 function aiTypeStat(type) {
   const stat = summary.value?.ai_stats?.last_7_days?.[type]
   if (!stat) return '0 次'
-  return `${stat.count} 次 / 成本 ${formatCost(stat.cost)}`
+  return `${stat.count} 次 / ${formatAiUsage(type, stat.cost)}`
 }
 
 async function retryTask(row) {

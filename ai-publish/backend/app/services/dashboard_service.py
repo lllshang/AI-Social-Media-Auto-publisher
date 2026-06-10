@@ -70,7 +70,18 @@ class DashboardService:
         )
 
         total_ai = self.db.query(func.count(AiGenerationRecord.id)).scalar() or 0
-        total_cost = self.db.query(func.coalesce(func.sum(AiGenerationRecord.cost), 0)).scalar() or 0
+        text_tokens_total = (
+            self.db.query(func.coalesce(func.sum(AiGenerationRecord.cost), 0))
+            .filter(AiGenerationRecord.type == "text")
+            .scalar()
+            or 0
+        )
+        image_units_total = (
+            self.db.query(func.coalesce(func.sum(AiGenerationRecord.cost), 0))
+            .filter(AiGenerationRecord.type == "image")
+            .scalar()
+            or 0
+        )
 
         return {
             "overview": {
@@ -108,7 +119,8 @@ class DashboardService:
             ],
             "ai_stats": {
                 "total_calls": int(total_ai),
-                "total_cost": float(total_cost),
+                "text_tokens_total": float(text_tokens_total),
+                "image_units_total": float(image_units_total),
                 "last_7_days": ai_by_type,
                 "by_provider": [
                     {"provider": row[0], "count": int(row[1])}
