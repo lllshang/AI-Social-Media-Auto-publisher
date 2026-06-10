@@ -15,7 +15,7 @@ from app.schemas import (
 )
 from app.services.login_session_service import login_session_service
 from app.services.platform_account_service import PlatformAccountService
-from app.utils.runtime_env import docker_login_hint, xhs_qr_login_supported
+from app.utils.runtime_env import docker_login_hint, platform_scan_hint, qr_login_supported
 
 router = APIRouter(prefix="/api/platform-accounts", tags=["platform-accounts"])
 
@@ -62,20 +62,30 @@ async def _run_login_session(session_id: str, account_id: int) -> None:
     if not session:
         return
 
-    async def on_qrcode(payload: dict) -> None:
-        current = await login_session_service.get(session_id)
-        if not current:
-            return
-        current.touch(
-            status="waiting_scan",
-            qrcode_data_url=payload.get("image_data_url") or "",
-            qrcode_path=payload.get("image_path") or "",
-            message="请使用小红书 App 扫码登录",
-        )
-
     db = SessionLocal()
     try:
         service = PlatformAccountService(db)
+        account = service.get_account(account_id)
+        scan_hint = platform_scan_hint(account.platform if account else "xhs")
+
+        async def on_qrcode(payload: dict) -> None:
+            current = await login_session_service.get(session_id)
+            if not current:
+                return
+            current.touch(
+                status="waiting_scan",
+                qrcode_data_url=payload.get("image_data_url") or "",
+                qrcode_path=payload.get("image_path") or "",
+                message=scan_hint,
+            )
+
+        async def on_progress(message: str, status: str = "waiting_scan") -> None:
+            current = await login_session_service.get(session_id)
+            if not current:
+                return
+            current.touch(status=status, message=message)
+
+        await on_progress("正在启动浏览器，请稍候...", "starting")
         result = await service.login(account_id, qrcode_callback=on_qrcode)
         await login_session_service.finish(session_id, result)
     except Exception as exc:
@@ -92,7 +102,7 @@ async def start_login_account(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    if not xhs_qr_login_supported():
+    if not qr_login_supported():
         raise HTTPException(status_code=400, detail=docker_login_hint())
 
     service = PlatformAccountService(db)
@@ -104,7 +114,7 @@ async def start_login_account(
     task = asyncio.create_task(_run_login_session(session.session_id, account_id))
     session.task = task
 
-    for _ in range(60):
+    for _ in range(120):
         current = await login_session_service.get(session.session_id)
         if not current:
             break
@@ -135,14 +145,14 @@ async def login_account(
     db: Session = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    if not xhs_qr_login_supported():
+    if not qr_login_supported():
         raise HTTPException(status_code=400, detail=docker_login_hint())
 
     session = await login_session_service.create(account_id)
     task = asyncio.create_task(_run_login_session(session.session_id, account_id))
     session.task = task
 
-    for _ in range(60):
+    for _ in range(120):
         current = await login_session_service.get(session.session_id)
         if not current:
             break

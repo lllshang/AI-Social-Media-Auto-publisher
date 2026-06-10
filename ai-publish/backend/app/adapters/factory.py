@@ -1,4 +1,6 @@
 from app.adapters.base import AiImageAdapter, AiTextAdapter, PlatformAdapter, StorageAdapter
+from app.adapters.platform.douyin import DouyinPlatformAdapter
+from app.adapters.platform.kuaishou import KuaishouPlatformAdapter
 from app.adapters.platform.xhs import XhsPlatformAdapter
 from app.adapters.storage.local import LocalStorageAdapter
 from app.adapters.storage.stub import StubStorageAdapter
@@ -12,6 +14,8 @@ class AdapterFactory:
     def get_platform_adapter(self, platform: str) -> PlatformAdapter:
         registry: dict[str, type[PlatformAdapter]] = {
             "xhs": XhsPlatformAdapter,
+            "douyin": DouyinPlatformAdapter,
+            "kuaishou": KuaishouPlatformAdapter,
         }
         adapter_cls = registry.get(platform)
         if not adapter_cls:

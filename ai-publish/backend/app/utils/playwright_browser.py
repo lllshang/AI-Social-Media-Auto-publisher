@@ -9,6 +9,12 @@ SYSTEM_CHROMIUM_CANDIDATES = (
     "/usr/bin/google-chrome-stable",
 )
 
+DOCKER_CHROMIUM_ARGS = (
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+)
+
 
 @lru_cache
 def find_chromium_executable() -> str:
@@ -45,3 +51,28 @@ def find_chromium_executable() -> str:
 
 def chromium_available() -> bool:
     return bool(find_chromium_executable())
+
+
+def is_docker_runtime() -> bool:
+    return Path("/.dockerenv").exists()
+
+
+def build_chromium_launch_kwargs(*, headless: bool) -> dict:
+    """Build patchright/playwright chromium.launch kwargs for local or Docker."""
+    kwargs: dict = {"headless": headless}
+    executable = find_chromium_executable()
+    if executable:
+        kwargs["executable_path"] = executable
+    else:
+        channel = os.environ.get("PLAYWRIGHT_CHANNEL", "chrome").strip()
+        if channel:
+            kwargs["channel"] = channel
+
+    args = list(kwargs.get("args", []))
+    if is_docker_runtime():
+        for flag in DOCKER_CHROMIUM_ARGS:
+            if flag not in args:
+                args.append(flag)
+    if args:
+        kwargs["args"] = args
+    return kwargs

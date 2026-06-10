@@ -28,6 +28,7 @@ class PublishContext:
     tags: list[str] = field(default_factory=list)
     content_type: str = "note"
     material_paths: list[str] = field(default_factory=list)
+    thumbnail_path: str | None = None
     publish_time: datetime | None = None
     log_callback: Any | None = None
 
@@ -43,6 +44,7 @@ class PublishResult:
 class TextGenerateInput:
     topic: str
     platform: str = "xhs"
+    content_type: str = "note"
     style: str = "default"
 
 

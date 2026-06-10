@@ -20,9 +20,17 @@ class UploadWorker:
             raise ValueError("账号不存在")
         cookie_file = self.account_service.sync_cookie_file(account)
         material_paths: list[str] = []
+        thumbnail_path: str | None = None
         for material_id in task.material_ids or []:
             material = self.material_service.get(material_id)
-            if material:
+            if not material:
+                continue
+            if task.content_type == "video":
+                if material.type == "video":
+                    material_paths.append(material.file_path)
+                elif material.type == "image" and thumbnail_path is None:
+                    thumbnail_path = material.file_path
+            else:
                 material_paths.append(material.file_path)
 
         async def log_callback(step: str, status: str, message: str) -> None:
@@ -43,6 +51,7 @@ class UploadWorker:
             tags=task.tags or [],
             content_type=task.content_type,
             material_paths=material_paths,
+            thumbnail_path=thumbnail_path,
             publish_time=task.publish_time,
             log_callback=log_callback,
         )

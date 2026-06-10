@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     ai_image_model: str = ""
     default_platform: str = "xhs"
     require_content_review: bool = False
+    scheduler_enabled: bool = True
+    scheduler_poll_interval_seconds: int = 30
 
     dashscope_api_key: str = ""
     openai_api_key: str = ""
@@ -65,7 +67,8 @@ class Settings(BaseSettings):
 
     playwright_headless: bool = False
     playwright_channel: str = "chrome"
-    login_timeout_seconds: int = 120
+    login_timeout_seconds: int = 300
+    login_poll_interval_seconds: int = 1
 
     sau_vendor_path: str = "../../vendor/social-auto-upload"
     web_dist_path: str = ""

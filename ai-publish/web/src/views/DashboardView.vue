@@ -14,7 +14,10 @@
       <p>文案：{{ models.text || '-' }}</p>
       <p>文生图：{{ models.image || '-' }}</p>
       <p class="muted">文生图 Key 未配置时将使用占位图，发布请上传真实图片。</p>
-      <el-button type="primary" @click="$router.push('/publish')">去发布</el-button>
+      <el-button type="primary" @click="$router.push('/publish')">发布图文</el-button>
+      <el-button @click="$router.push({ path: '/publish', query: { platform: 'xhs', content_type: 'video' } })">
+        发布小红书视频
+      </el-button>
     </div>
   </div>
 </template>

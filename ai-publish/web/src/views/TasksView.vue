@@ -12,7 +12,7 @@
         </el-form-item>
         <el-form-item label="平台">
           <el-select v-model="filters.platform" clearable placeholder="全部" style="width: 110px">
-            <el-option label="小红书" value="xhs" />
+            <el-option v-for="p in PLATFORMS" :key="p.value" :label="p.label" :value="p.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
@@ -40,7 +40,12 @@
       <el-table :data="tasks" v-loading="loading">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="title" label="标题" show-overflow-tooltip />
-        <el-table-column prop="platform" label="平台" width="80" />
+        <el-table-column label="平台" width="90">
+          <template #default="{ row }">{{ platformLabel(row.platform) }}</template>
+        </el-table-column>
+        <el-table-column label="类型" width="70">
+          <template #default="{ row }">{{ contentTypeLabel(row.content_type) }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="110">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag>
@@ -61,8 +66,6 @@
               <el-button v-if="canDelete(row)" size="small" type="danger" plain @click="removeDraft(row)">删除</el-button>
               <el-button v-if="canApprove(row)" size="small" type="success" @click="approve(row)">通过</el-button>
               <el-button v-if="canReject(row)" size="small" type="danger" @click="reject(row)">驳回</el-button>
-              <el-button v-if="canApprove(row)" size="small" type="success" @click="approve(row)">通过</el-button>
-              <el-button v-if="canReject(row)" size="small" type="danger" @click="reject(row)">驳回</el-button>
               <el-button v-if="canExecute(row)" size="small" type="primary" @click="execute(row)">执行</el-button>
               <el-button v-if="canRetry(row)" size="small" type="warning" @click="retry(row)">重试</el-button>
             </div>
@@ -75,6 +78,7 @@
       <template v-if="detail">
         <p><strong>标题：</strong>{{ detail.title }}</p>
         <p><strong>状态：</strong>{{ statusLabel(detail.status) }}</p>
+        <p><strong>类型：</strong>{{ contentTypeLabel(detail.content_type) }}</p>
         <p v-if="detail.error_message"><strong>备注/错误：</strong>{{ detail.error_message }}</p>
         <p><strong>计划时间：</strong>{{ detail.publish_time ? formatDateTime(detail.publish_time) : '未设置' }}</p>
         <p><strong>正文：</strong></p>
@@ -106,6 +110,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
+import { PLATFORMS, contentTypeLabel, platformLabel } from '@/constants/platforms'
 import { formatDateTime } from '@/utils/datetime'
 
 const router = useRouter()

@@ -112,9 +112,11 @@ class MaterialService:
                 raise ValueError(f"素材不存在: {material_id}")
             if content_type == "note" and material.type != "image":
                 raise ValueError(f"图文任务需要图片素材: {material_id}")
-            if content_type == "video" and material.type != "video":
-                raise ValueError(f"视频任务需要视频素材: {material_id}")
+            if content_type == "video" and material.type not in {"video", "image"}:
+                raise ValueError(f"视频任务素材类型无效: {material_id}")
             materials.append(material)
+        if content_type == "video" and not any(m.type == "video" for m in materials):
+            raise ValueError("视频任务需要至少一个视频素材")
         return materials
 
 
@@ -124,9 +126,17 @@ class AiContentService:
         self.factory = get_adapter_factory()
         self.material_service = MaterialService(db)
 
-    async def generate_text(self, topic: str, platform: str, user_id: int | None = None) -> dict:
+    async def generate_text(
+        self,
+        topic: str,
+        platform: str,
+        user_id: int | None = None,
+        content_type: str = "note",
+    ) -> dict:
         adapter = self.factory.get_ai_text_adapter()
-        result = await adapter.generate(TextGenerateInput(topic=topic, platform=platform))
+        result = await adapter.generate(
+            TextGenerateInput(topic=topic, platform=platform, content_type=content_type)
+        )
         record = AiGenerationRecord(
             type="text",
             provider=result.provider,

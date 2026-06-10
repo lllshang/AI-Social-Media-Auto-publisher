@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal, get_db
+from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Material, PublishTask, User
 from app.schemas import (
@@ -15,26 +15,13 @@ from app.schemas import (
     PublishTaskUpdate,
 )
 from app.services.publish_service import PublishService
+from app.workers.task_runner import run_execute_task
 
 router = APIRouter(prefix="/api/publish-tasks", tags=["publish-tasks"])
 
 
 class RejectTaskRequest(BaseModel):
     reason: str | None = None
-
-
-def _run_execute_task(task_id: int) -> None:
-    import asyncio
-
-    async def _run():
-        db = SessionLocal()
-        try:
-            service = PublishService(db)
-            await service.execute_task(task_id, already_running=True)
-        finally:
-            db.close()
-
-    asyncio.run(_run())
 
 
 def _task_response(task: PublishTask, materials: list[Material] | None = None) -> PublishTaskResponse:
@@ -199,7 +186,7 @@ def execute_task(
         raise HTTPException(status_code=400, detail="仅 pending 状态任务可执行")
     task.status = "running"
     db.commit()
-    background_tasks.add_task(_run_execute_task, task_id)
+    background_tasks.add_task(run_execute_task, task_id)
     db.refresh(task)
     return _task_response(task, service.get_task_materials(task))
 

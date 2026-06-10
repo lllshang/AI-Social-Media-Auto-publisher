@@ -80,7 +80,12 @@ async def generate_text(
 
     service = AiContentService(db)
     try:
-        return await service.generate_text(data.topic, data.platform, current_user.id)
+        return await service.generate_text(
+            data.topic,
+            data.platform,
+            current_user.id,
+            data.content_type,
+        )
     except AiProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

@@ -41,7 +41,10 @@ services:
       COOKIE_DIR: /data/cookies
       SAU_VENDOR_PATH: /vendor/social-auto-upload
       WEB_DIST_PATH: /web/dist
+      PLAYWRIGHT_HEADLESS: "true"
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE: /usr/bin/chromium
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    shm_size: "256mb"
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:

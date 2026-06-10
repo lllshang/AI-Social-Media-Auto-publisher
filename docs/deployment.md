@@ -17,17 +17,9 @@
 | **A. 本地开发部署** | 个人开发、本机试用、需要小红书扫码发布 | SQLite | `8765` |
 | **B. Docker 部署** | 上服务器、团队共用 API、MySQL 生产库 | MySQL + Redis | `8000` |
 
-> **重要：** 小红书 **Playwright 扫码登录 + 自动发布** 依赖本机 Chrome 图形环境。  
-> 生产环境推荐 **混合部署**：API/MySQL 在 Docker（Linux 服务器），**发布操作在有浏览器的 Mac/Windows 上执行**。
-
-```
-┌─────────────────────────────┐       ┌──────────────────────────────┐
-│  Linux 服务器 (Docker)       │       │  Mac / Windows 发布机         │
-│  • API + MySQL + Redis      │ ◄───► │  • Chrome + Playwright       │
-│  • Vue 管理页 /app/         │  API  │  • 扫码登录 / execute 发布    │
-│  • 素材/Cookie 持久化卷      │       │  • 可选：本地 Ollama          │
-└─────────────────────────────┘       └──────────────────────────────┘
-```
+> **Docker 服务器（推荐）：** API 镜像内置 **apt Chromium**，支持 **管理页无头扫码登录** 与 **无头自动发布**（二维码在网页展示，无需本机 Chrome）。  
+> **本地开发：** 可使用本机 Chrome（`PLAYWRIGHT_HEADLESS=false`）弹窗扫码。  
+> **混合部署（可选）：** 若服务器 Chromium 不可用，可在 Mac/Windows 本地扫码/发布后同步 Cookie。
 
 ---
 
@@ -692,23 +684,30 @@ bash scripts/upgrade.sh
 | 功能 | 服务器部署后 |
 |------|----------------|
 | 管理页登录、素材、任务、AI 配置 | ✅ 可用 |
-| 小红书网页扫码（服务器一体） | 🚧 完善中；管理页会提示 Docker 环境说明 |
-| 小红书发布 | 服务器无头浏览器方案完善中；过渡期可参考 [§5 混合部署](#5-混合部署过渡方案) |
+| 小红书网页扫码（服务器一体） | ✅ 无头 Chromium + 管理页展示二维码 |
+| 小红书无头发布 | ✅ 容器内 Playwright 执行（需 Cookie 有效） |
+| Chromium 自检 | `bash scripts/install-playwright-browser.sh` |
+| 运行时状态 | `GET /api/system/runtime` → `chromium_available`、`qr_login_supported` |
+
+**Docker 扫码/发布验证步骤：**
+
+1. 部署后执行 `bash scripts/install-playwright-browser.sh`（确认 `/usr/bin/chromium` 可用）
+2. 打开 `/app/accounts` → 新建小红书账号 → **扫码登录**（应弹出二维码）
+3. **检测 Cookie** 显示有效后，创建图文任务并 **执行**
+4. 查看 `docker compose logs -f api` 与任务日志抽屉
 
 ---
 
-## 5. 混合部署（过渡方案）
+## 5. 混合部署（备选方案）
 
-适用于：**API 在 Linux Docker 服务器，小红书扫码/发布暂在本机 Mac/Windows**（服务器一体扫码方案完善前）。
+适用于：**服务器 Chromium 不可用**，或希望在本机 Mac/Windows 完成首次扫码。
 
 | 步骤 | 操作 |
 |------|------|
 | 1 | 服务器 `docker compose up`，团队通过 `https://publish.example.com/app/` 管理任务 |
-| 2 | 在 **有 Chrome 的 Mac/Windows** 上克隆同版本代码，配置 `.env` 指向服务器 API（或本地跑 execute 脚本） |
-| 3 | Cookie 可通过 `import_sau_cookie.py` 导入，或在本地扫码后同步 Cookie 文件 |
-| 4 | 在管理页创建任务；**execute 发布** 在有浏览器的环境触发 |
-
-> Docker 容器内 `PLAYWRIGHT_HEADLESS=true` 时难以扫码；不要期望在无 GUI 的 Linux 容器里完成首次小红书登录。
+| 2 | 在 **有 Chrome 的 Mac/Windows** 上本地 `./start.sh` 扫码，或通过 `import_sau_cookie.py` 导入 Cookie |
+| 3 | 将 Cookie 同步到服务器 `cookies_data` 卷，或在管理页重新扫码（推荐服务器一体扫码） |
+| 4 | 在管理页创建任务 → **执行** 发布（服务器无头或本机均可） |
 
 ---
 
@@ -722,7 +721,8 @@ bash scripts/upgrade.sh
 | SAU_VENDOR_PATH | 绝对路径到 vendor | `/vendor/social-auto-upload` |
 | WEB_DIST_PATH | 留空（自动找 web/dist） | `/web/dist` |
 | OLLAMA_BASE_URL | `http://127.0.0.1:11434` | `http://host.docker.internal:11434` |
-| PLAYWRIGHT_HEADLESS | `false`（扫码） | `true`（服务器） |
+| PLAYWRIGHT_HEADLESS | `false`（本机弹窗扫码） | `true`（无头，网页展示二维码） |
+| PLAYWRIGHT_CHROMIUM_EXECUTABLE | 留空（自动检测） | `/usr/bin/chromium` |
 
 AI Key 也可在管理页 **AI 模型 → 厂商配置** 中填写（加密存于 `backend/data/ai_provider_config.json`）。
 

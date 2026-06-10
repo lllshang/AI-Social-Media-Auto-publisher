@@ -70,7 +70,8 @@ export const api = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
-  generateText: (topic, platform = 'xhs') => http.post('/api/ai/text/generate', { topic, platform }),
+  generateText: (topic, platform = 'xhs', content_type = 'note') =>
+    http.post('/api/ai/text/generate', { topic, platform, content_type }),
   generateImage: (topic, platform = 'xhs', ratio = '3:4', count = 1, cover_text) =>
     http.post('/api/ai/image/generate', { topic, platform, ratio, count, cover_text: cover_text || null }),
   getModels: () => http.get('/api/ai/models'),

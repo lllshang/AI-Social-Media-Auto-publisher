@@ -68,6 +68,7 @@ class CookieCheckResponse(BaseModel):
 class TextGenerateRequest(BaseModel):
     topic: str
     platform: str = "xhs"
+    content_type: str = "note"
     style: str = "default"
 
 

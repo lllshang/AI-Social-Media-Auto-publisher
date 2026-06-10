@@ -19,6 +19,7 @@ from app.database import SessionLocal, engine
 from app.models import Base
 from app.services.auth_service import ensure_admin_user
 from app.utils.web_admin import mount_web_admin
+from app.workers.schedule_worker import schedule_worker
 
 
 def setup_logging() -> None:
@@ -61,7 +62,11 @@ async def lifespan(app: FastAPI):
         )
     except Exception as exc:
         logger.warning("AI model auto-detect skipped: {}", exc)
-    yield
+    schedule_worker.start()
+    try:
+        yield
+    finally:
+        schedule_worker.shutdown()
 
 
 app = FastAPI(title=get_settings().app_name, lifespan=lifespan)

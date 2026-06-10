@@ -1,10 +1,8 @@
-from pathlib import Path
-
 import httpx
-import yaml
 
 from app.adapters.base import ImageGenerateInput, ImageGenerateResult
 from app.config import get_settings
+from app.utils.prompt_templates import load_prompt_template
 
 
 class TokenHubImageAdapter:
@@ -15,19 +13,12 @@ class TokenHubImageAdapter:
     def __init__(self, model: str = "hy-image-lite") -> None:
         self.settings = get_settings()
         self.model = model
-        self.prompt_template = self._load_template()
-
-    def _load_template(self) -> str:
-        template_path = Path(__file__).resolve().parents[2] / "templates" / "prompts" / "xhs_image.yaml"
-        if template_path.exists():
-            data = yaml.safe_load(template_path.read_text(encoding="utf-8"))
-            return data.get("template", "")
-        return "为{platform}生成{ratio}比例封面图，主题：{topic}，风格：{style}"
 
     def _build_prompt(self, data: ImageGenerateInput) -> str:
         if len(data.topic) > 30:
             return data.topic
-        return self.prompt_template.replace("{platform}", data.platform).replace("{topic}", data.topic).replace(
+        template = load_prompt_template("image", data.platform)
+        return template.replace("{platform}", data.platform).replace("{topic}", data.topic).replace(
             "{ratio}", data.ratio
         ).replace("{style}", data.style)
 

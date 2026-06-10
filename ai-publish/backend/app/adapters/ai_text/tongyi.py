@@ -1,11 +1,10 @@
 import json
-from pathlib import Path
 
 import httpx
-import yaml
 
 from app.adapters.base import TextGenerateInput, TextGenerateResult
 from app.config import get_settings
+from app.utils.prompt_templates import load_prompt_template
 
 
 class TongyiTextAdapter:
@@ -14,18 +13,11 @@ class TongyiTextAdapter:
     def __init__(self, model: str = "qwen-plus") -> None:
         self.settings = get_settings()
         self.model = model
-        self.prompt_template = self._load_template()
-
-    def _load_template(self) -> str:
-        template_path = Path(__file__).resolve().parents[2] / "templates" / "prompts" / "xhs_text.yaml"
-        if template_path.exists():
-            data = yaml.safe_load(template_path.read_text(encoding="utf-8"))
-            return data.get("template", "")
-        return "请为{platform}平台围绕主题「{topic}」生成标题、正文、标签和封面文案，以JSON返回。"
 
     async def generate(self, data: TextGenerateInput) -> TextGenerateResult:
+        template = load_prompt_template("text", data.platform, content_type=data.content_type)
         prompt = (
-            self.prompt_template.replace("{platform}", data.platform)
+            template.replace("{platform}", data.platform)
             .replace("{topic}", data.topic)
             .replace("{style}", data.style)
         )
