@@ -9,7 +9,14 @@
         <el-table-column prop="remark" label="说明" min-width="220" show-overflow-tooltip />
         <el-table-column label="值" min-width="200">
           <template #default="{ row }">
-            <el-input v-model="row.config_value" />
+            <el-switch
+              v-if="isBoolConfig(row.config_key)"
+              :model-value="boolConfigOn(row.config_value)"
+              active-text="开启"
+              inactive-text="关闭"
+              @change="(v) => setBoolConfig(row, v)"
+            />
+            <el-input v-else v-model="row.config_value" />
           </template>
         </el-table-column>
         <el-table-column label="操作" width="100">
@@ -226,11 +233,29 @@ async function toggleUserStatus(row) {
   }
 }
 
+const BOOL_CONFIG_KEYS = new Set(['require_content_review', 'scheduler_enabled'])
+
+function isBoolConfig(key) {
+  return BOOL_CONFIG_KEYS.has(key)
+}
+
+function boolConfigOn(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase())
+}
+
+function setBoolConfig(row, on) {
+  row.config_value = on ? 'true' : 'false'
+}
+
 async function save(row) {
   savingKey.value = row.config_key
   try {
     await api.updateSystemConfig(row.config_key, { config_value: row.config_value, remark: row.remark })
-    ElMessage.success('已保存')
+    if (row.config_key === 'require_content_review') {
+      ElMessage.success(boolConfigOn(row.config_value) ? '内容审核已开启' : '内容审核已关闭')
+    } else {
+      ElMessage.success('已保存')
+    }
   } catch (e) {
     ElMessage.error(e.message)
   } finally {

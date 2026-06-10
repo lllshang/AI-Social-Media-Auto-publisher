@@ -176,6 +176,18 @@ class PublishService:
         self.db.refresh(task)
         return task
 
+    def assert_can_execute(self, task: PublishTask) -> None:
+        if task.status != "pending":
+            raise ValueError("仅 pending 状态任务可执行")
+        if self.system_config.require_content_review():
+            approved = (
+                self.db.query(ReviewLog.id)
+                .filter(ReviewLog.task_id == task.id, ReviewLog.action == "approved")
+                .first()
+            )
+            if not approved:
+                raise ValueError("内容审核已开启，该任务须先通过审核方可执行")
+
     def approve_task(self, task_id: int, reviewer_id: int | None = None) -> PublishTask:
         task = self.get_task(task_id)
         if not task:
@@ -236,8 +248,7 @@ class PublishService:
         if not already_running:
             if task.status == "running":
                 raise ValueError("任务正在执行中")
-            if task.status not in {"pending"}:
-                raise ValueError("仅 pending 状态任务可执行")
+            self.assert_can_execute(task)
             task.status = "running"
             task.error_message = None
             self.db.commit()

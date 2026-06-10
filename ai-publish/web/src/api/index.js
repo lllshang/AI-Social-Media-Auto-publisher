@@ -60,6 +60,7 @@ export const api = {
   updateSystemConfig: (key, payload) => http.put(`/api/system/configs/${key}`, payload),
   listRoles: () => http.get('/api/roles'),
   getRuntimeInfo: () => http.get('/api/system/runtime'),
+  getSystemFeatures: () => http.get('/api/system/features'),
   getDashboardSummary: () => http.get('/api/dashboard/summary'),
   listAccountGroups: () => http.get('/api/account-groups'),
   createAccountGroup: (payload) => http.post('/api/account-groups', payload),

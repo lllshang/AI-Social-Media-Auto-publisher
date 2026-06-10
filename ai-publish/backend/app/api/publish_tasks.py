@@ -205,8 +205,10 @@ def execute_task(
         raise HTTPException(status_code=404, detail="任务不存在")
     if task.status == "running":
         raise HTTPException(status_code=409, detail="任务正在执行中")
-    if task.status != "pending":
-        raise HTTPException(status_code=400, detail="仅 pending 状态任务可执行")
+    try:
+        service.assert_can_execute(task)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     task.status = "running"
     db.commit()
     db.refresh(task)

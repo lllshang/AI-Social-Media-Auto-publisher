@@ -188,7 +188,17 @@
       </el-form>
       <el-button @click="step = 3">上一步</el-button>
       <el-button :loading="saving" @click="saveDraft">保存草稿</el-button>
-      <el-button type="primary" :loading="saving" @click="submitPending">提交待发布</el-button>
+      <el-alert
+        v-if="requireReview"
+        type="info"
+        :closable="false"
+        show-icon
+        title="内容审核已开启：提交后将进入「待审核」，审核通过后方可发布。"
+        style="margin-bottom: 12px"
+      />
+      <el-button type="primary" :loading="saving" @click="submitPending">
+        {{ requireReview ? '提交审核' : '提交待发布' }}
+      </el-button>
     </div>
   </div>
 </template>
@@ -216,6 +226,7 @@ const draftId = ref(null)
 const generating = ref(false)
 const generatingImage = ref(false)
 const saving = ref(false)
+const requireReview = ref(false)
 const coverPreview = ref('')
 const videoPreviewUrl = ref('')
 
@@ -526,10 +537,16 @@ async function persistTask(submit) {
         task = await api.submitTask(task.id)
       }
     }
-    ElMessage.success(submit ? `任务 #${task.id} 已提交待发布` : `草稿 #${task.id} 已保存`)
     if (submit) {
-      router.push('/tasks')
+      if (task.status === 'pending_review') {
+        ElMessage.success(`任务 #${task.id} 已提交，等待审核`)
+        router.push('/reviews')
+      } else {
+        ElMessage.success(`任务 #${task.id} 已提交待发布`)
+        router.push('/tasks')
+      }
     } else {
+      ElMessage.success(`草稿 #${task.id} 已保存`)
       draftId.value = task.id
       router.replace({ path: '/publish', query: { id: task.id } })
     }
@@ -596,7 +613,17 @@ function applyRouteDefaults() {
   }
 }
 
+async function loadFeatures() {
+  try {
+    const features = await api.getSystemFeatures()
+    requireReview.value = !!features.require_content_review
+  } catch {
+    requireReview.value = false
+  }
+}
+
 onMounted(async () => {
+  await loadFeatures()
   applyRouteDefaults()
   await loadBase()
   const id = route.query.id
