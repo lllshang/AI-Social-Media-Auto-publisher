@@ -33,11 +33,16 @@ class AdapterFactory:
         return AiModelService().get_image_adapter()
 
     def get_storage_adapter(self) -> StorageAdapter:
+        storage = self.settings.storage.lower()
+        if storage in {"cos", "oss", "s3"}:
+            from app.adapters.storage.object_storage import ObjectStorageAdapter
+
+            return ObjectStorageAdapter()
         registry: dict[str, type[StorageAdapter]] = {
             "local": LocalStorageAdapter,
             "stub": StubStorageAdapter,
         }
-        adapter_cls = registry.get(self.settings.storage)
+        adapter_cls = registry.get(storage)
         if not adapter_cls:
             raise ValueError(f"Unsupported storage: {self.settings.storage}")
         return adapter_cls()

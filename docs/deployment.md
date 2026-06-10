@@ -270,9 +270,33 @@ docker compose logs -f api
 curl http://127.0.0.1:8000/health
 ```
 
-访问：**http://127.0.0.1:8000/app/**
+访问：**http://127.0.0.1:8000/app/**（直连 API）或 **http://127.0.0.1:8080/app/**（经 Nginx 反代，默认 `NGINX_HTTP_PORT`）
 
 **访问宿主机 Ollama：** `.env` 中已默认 `OLLAMA_BASE_URL=http://host.docker.internal:11434`（Docker Desktop 支持）。
+
+### 4.2.1 C 阶段服务（Redis 队列 / Worker / Nginx / 对象存储）
+
+`docker compose` 现包含：
+
+| 服务 | 作用 |
+|------|------|
+| `api` | HTTP API；`TASK_QUEUE_EMBEDDED_CONSUMER=false` 时仅入队 |
+| `worker` | 消费 Redis 队列执行发布任务 |
+| `nginx` | 80/443 反代 API；HTTPS 需证书 |
+| `redis` | 任务队列 |
+
+```bash
+# 首次启用 HTTPS 前生成自签证书（开发/内网）
+bash docker/nginx/generate-self-signed-cert.sh
+
+docker compose up -d --build
+docker compose ps    # 应看到 api、worker、nginx、mysql、redis
+docker compose logs -f worker
+```
+
+对象存储（腾讯云 COS / 阿里云 OSS）：在 `.env` 设置 `STORAGE=cos` 或 `oss`，并填写 `OBJECT_STORAGE_*`（S3 兼容 endpoint）。公网访问前缀填 `OBJECT_STORAGE_PUBLIC_BASE_URL`。
+
+系统开关（审核、定时发布间隔等）可在管理后台 **系统设置** 页面修改，无需重启。
 
 ---
 

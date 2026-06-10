@@ -50,6 +50,10 @@ http.interceptors.response.use(
 
 export const api = {
   login: (username, password) => http.post('/api/auth/login', { username, password }),
+  getMe: () => http.get('/api/auth/me'),
+  listSystemConfigs: () => http.get('/api/system/configs'),
+  updateSystemConfig: (key, payload) => http.put(`/api/system/configs/${key}`, payload),
+  listRoles: () => http.get('/api/roles'),
   getRuntimeInfo: () => http.get('/api/system/runtime'),
   getDashboardSummary: () => http.get('/api/dashboard/summary'),
   listAccountGroups: () => http.get('/api/account-groups'),

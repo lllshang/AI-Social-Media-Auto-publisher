@@ -66,6 +66,8 @@ def platform_scan_hint(platform: str) -> str:
 
 
 def get_runtime_info() -> dict:
+    from app.workers.redis_queue import task_queue
+
     settings = get_settings()
     vendor_path = settings.sau_vendor_abs_path
     chrome_path = find_chromium_executable()
@@ -84,4 +86,8 @@ def get_runtime_info() -> dict:
         "local_app_url": "http://127.0.0.1:8765/app/",
         "scheduler_enabled": settings.scheduler_enabled,
         "scheduler_poll_interval_seconds": settings.scheduler_poll_interval_seconds,
+        "task_queue_enabled": settings.task_queue_enabled,
+        "task_queue_embedded_consumer": settings.task_queue_embedded_consumer,
+        "redis_connected": task_queue.ping(),
+        "storage": settings.storage,
     }

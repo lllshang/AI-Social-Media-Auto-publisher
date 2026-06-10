@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(64) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
+    role_id BIGINT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -126,7 +127,26 @@ CREATE TABLE IF NOT EXISTS operation_logs (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+INSERT INTO roles (role_name, permissions)
+SELECT 'admin', JSON_ARRAY('*')
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'admin');
+
+INSERT INTO roles (role_name, permissions)
+SELECT 'operator', JSON_ARRAY(
+    'dashboard:read','accounts:read','accounts:write','materials:read','materials:write',
+    'tasks:read','tasks:write','tasks:execute','publish:write','models:read','models:write','logs:read'
+)
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'operator');
+
+INSERT INTO roles (role_name, permissions)
+SELECT 'viewer', JSON_ARRAY(
+    'dashboard:read','accounts:read','materials:read','tasks:read','models:read','logs:read'
+)
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'viewer');
+
 -- Seed admin: password admin123 (bcrypt)
-INSERT INTO users (username, password_hash, status)
-SELECT 'admin', '$2b$12$sI7NNNo/ivmtH/cVuav7yeneRsXY7KHmv/iYB8IPGoJCRriShdRe6', 'active'
-WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
+INSERT INTO users (username, password_hash, role_id, status)
+SELECT 'admin', '$2b$12$sI7NNNo/ivmtH/cVuav7yeneRsXY7KHmv/iYB8IPGoJCRriShdRe6', r.id, 'active'
+FROM roles r
+WHERE r.role_name = 'admin'
+  AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');

@@ -24,11 +24,21 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./data/aipublish.db"
     redis_url: str = "redis://127.0.0.1:6380/0"
+    task_queue_enabled: bool = True
+    task_queue_embedded_consumer: bool = True
 
     cookie_encryption_key: str = "dev-cookie-key-change-in-prod"
     storage: str = "local"
     storage_local_path: str = "./data/materials"
     cookie_dir: str = "./data/cookies"
+    object_storage_endpoint: str = ""
+    object_storage_region: str = ""
+    object_storage_bucket: str = ""
+    object_storage_access_key: str = ""
+    object_storage_secret_key: str = ""
+    object_storage_public_base_url: str = ""
+    object_storage_prefix: str = "materials"
+    object_storage_addressing_style: str = "virtual"
 
     ai_text_provider: str = "auto"
     ai_text_model: str = ""

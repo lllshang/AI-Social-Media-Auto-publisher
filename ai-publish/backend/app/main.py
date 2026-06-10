@@ -16,12 +16,16 @@ from app.api.logs import router as logs_router
 from app.api.materials import router as materials_router
 from app.api.platform_accounts import router as platform_accounts_router
 from app.api.publish_tasks import router as publish_tasks_router
+from app.api.roles import router as roles_router
 from app.api.system import router as system_router
+from app.api.system_configs import router as system_configs_router
 from app.config import BACKEND_DIR, get_settings
 from app.database import SessionLocal, engine
 from app.models import Base
 from app.services.auth_service import ensure_admin_user
+from app.services.system_config_service import ensure_default_system_configs
 from app.utils.web_admin import mount_web_admin
+from app.workers.redis_queue import task_queue
 from app.workers.schedule_worker import schedule_worker
 
 
@@ -47,6 +51,7 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         ensure_admin_user(db)
+        ensure_default_system_configs(db)
     finally:
         db.close()
     logger.info("AI Publish API started")
@@ -66,9 +71,11 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("AI model auto-detect skipped: {}", exc)
     schedule_worker.start()
+    task_queue.start_embedded_consumer()
     try:
         yield
     finally:
+        task_queue.stop_embedded_consumer()
         schedule_worker.shutdown()
 
 
@@ -94,6 +101,8 @@ app.include_router(materials_router)
 app.include_router(publish_tasks_router)
 app.include_router(logs_router)
 app.include_router(system_router)
+app.include_router(system_configs_router)
+app.include_router(roles_router)
 
 settings = get_settings()
 static_dir = settings.storage_path

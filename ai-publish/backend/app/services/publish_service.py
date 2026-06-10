@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.models import Material, PublishTask, PublishTaskLog
 from app.services.material_service import MaterialService
 from app.services.platform_account_service import PlatformAccountService
+from app.services.system_config_service import SystemConfigService
 from app.workers.upload_worker import UploadWorker
 
 
@@ -30,6 +31,7 @@ class PublishService:
         self.account_service = PlatformAccountService(db)
         self.material_service = MaterialService(db)
         self.worker = UploadWorker(db)
+        self.system_config = SystemConfigService(db)
 
     def get_task(self, task_id: int) -> PublishTask | None:
         return self.db.query(PublishTask).filter(PublishTask.id == task_id).first()
@@ -167,7 +169,7 @@ class PublishService:
             raise ValueError("任务不存在")
         if task.status not in {"draft", "failed"}:
             raise ValueError("当前状态不可提交")
-        next_status = "pending_review" if self.settings.require_content_review else "pending"
+        next_status = "pending_review" if self.system_config.require_content_review() else "pending"
         task.status = next_status
         task.error_message = None
         self.db.commit()

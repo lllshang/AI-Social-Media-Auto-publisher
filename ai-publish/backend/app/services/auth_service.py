@@ -45,9 +45,13 @@ def authenticate_user(db: Session, username: str, password: str) -> User | None:
 
 
 def ensure_admin_user(db: Session) -> None:
+    from app.services.rbac_service import assign_admin_role, ensure_default_roles
+
     settings = get_settings()
+    ensure_default_roles(db)
     exists = db.query(User).filter(User.username == settings.admin_username).first()
     if exists:
+        assign_admin_role(db, settings.admin_username)
         return
     user = User(
         username=settings.admin_username,
@@ -56,3 +60,4 @@ def ensure_admin_user(db: Session) -> None:
     )
     db.add(user)
     db.commit()
+    assign_admin_role(db, settings.admin_username)

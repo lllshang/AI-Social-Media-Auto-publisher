@@ -16,6 +16,14 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    username: str
+    role_name: str
+    permissions: list[str]
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -295,6 +303,35 @@ class AiGenerationRecordResponse(BaseModel):
     result_summary: str | None = None
     cost: float
     created_by: int | None = None
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+    class Config:
+        from_attributes = True
+
+
+class SystemConfigResponse(BaseModel):
+    id: int
+    config_key: str
+    config_value: str | None = None
+    remark: str | None = None
+    updated_at: datetime
+
+    @field_serializer("updated_at")
+    def serialize_updated_at(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+    class Config:
+        from_attributes = True
+
+
+class RoleResponse(BaseModel):
+    id: int
+    role_name: str
+    permissions: list[str] | None = None
     created_at: datetime
 
     @field_serializer("created_at")

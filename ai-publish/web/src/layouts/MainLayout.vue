@@ -3,18 +3,19 @@
     <el-aside width="220px" class="sidebar">
       <div class="brand">AI 发布系统</div>
       <el-menu :default-active="route.path" router background-color="#0f1419" text-color="#c8d1dc" active-text-color="#1d9bf0">
-        <el-menu-item index="/">工作台</el-menu-item>
-        <el-menu-item index="/accounts">平台账号</el-menu-item>
-        <el-menu-item index="/models">AI 模型</el-menu-item>
-        <el-menu-item index="/materials">素材库</el-menu-item>
-        <el-menu-item index="/tasks">发布任务</el-menu-item>
-        <el-menu-item index="/publish">发布向导</el-menu-item>
-        <el-menu-item index="/logs">日志中心</el-menu-item>
+        <el-menu-item v-if="can('dashboard:read')" index="/">工作台</el-menu-item>
+        <el-menu-item v-if="can('accounts:read')" index="/accounts">平台账号</el-menu-item>
+        <el-menu-item v-if="can('models:read')" index="/models">AI 模型</el-menu-item>
+        <el-menu-item v-if="can('materials:read')" index="/materials">素材库</el-menu-item>
+        <el-menu-item v-if="can('tasks:read')" index="/tasks">发布任务</el-menu-item>
+        <el-menu-item v-if="can('publish:write')" index="/publish">发布向导</el-menu-item>
+        <el-menu-item v-if="can('logs:read')" index="/logs">日志中心</el-menu-item>
+        <el-menu-item v-if="can('settings:write')" index="/settings">系统设置</el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
       <el-header class="header">
-        <span class="muted">当前用户：{{ auth.username }}</span>
+        <span class="muted">当前用户：{{ auth.username }}（{{ auth.roleName || 'operator' }}）</span>
         <el-button link type="primary" @click="logout">退出</el-button>
       </el-header>
       <el-main class="main">
@@ -27,10 +28,15 @@
 <script setup>
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { can as canPerm } from '@/utils/permissions'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+
+function can(permission) {
+  return canPerm(auth.permissions, permission)
+}
 
 function logout() {
   auth.logout()

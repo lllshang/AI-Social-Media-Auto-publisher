@@ -75,11 +75,11 @@
 
 ### 阶段 C — 基础设施（P2）
 
-- [ ] C.1 Redis 任务队列（替代进程内 BackgroundTasks）
-- [ ] C.2 RBAC（roles 表 + 权限）
-- [ ] C.3 system_configs 后台可配
-- [ ] C.4 COS/OSS 存储 Adapter
-- [ ] C.5 Nginx + HTTPS 纳入 compose
+- [x] C.1 Redis 任务队列（替代进程内 BackgroundTasks）
+- [x] C.2 RBAC（roles 表 + 权限）
+- [x] C.3 system_configs 后台可配
+- [x] C.4 COS/OSS 存储 Adapter
+- [x] C.5 Nginx + HTTPS 纳入 compose
 
 ### 阶段 D — 风控 C 方案（最后）
 

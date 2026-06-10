@@ -37,6 +37,8 @@ services:
     environment:
       DATABASE_URL: mysql+pymysql://aipublish:aipublish123@mysql:3306/aipublish?charset=utf8mb4
       REDIS_URL: redis://redis:6379/0
+      TASK_QUEUE_ENABLED: "true"
+      TASK_QUEUE_EMBEDDED_CONSUMER: "false"
       STORAGE_LOCAL_PATH: /data/materials
       COOKIE_DIR: /data/cookies
       SAU_VENDOR_PATH: /vendor/social-auto-upload
@@ -61,6 +63,51 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "app.workers.redis_consumer"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql+pymysql://aipublish:aipublish123@mysql:3306/aipublish?charset=utf8mb4
+      REDIS_URL: redis://redis:6379/0
+      TASK_QUEUE_ENABLED: "true"
+      TASK_QUEUE_EMBEDDED_CONSUMER: "false"
+      STORAGE_LOCAL_PATH: /data/materials
+      COOKIE_DIR: /data/cookies
+      SAU_VENDOR_PATH: /vendor/social-auto-upload
+      PLAYWRIGHT_HEADLESS: "true"
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE: /usr/bin/chromium
+    shm_size: "256mb"
+    volumes:
+      - ../vendor/social-auto-upload:/vendor/social-auto-upload
+      - materials_data:/data/materials
+      - cookies_data:/data/cookies
+      - provider_config:/app/data
+      - playwright_browsers:/opt/playwright
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-8080}:80"
+      - "${NGINX_HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
 
 volumes:
   mysql_data:

@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import SessionLocal
 from app.models import PublishTask
-from app.workers.task_runner import run_execute_task
+from app.services.system_config_service import SystemConfigService
+from app.workers.redis_queue import task_queue
 
 
 class ScheduleWorker:
@@ -17,15 +18,23 @@ class ScheduleWorker:
 
     def start(self) -> AsyncIOScheduler | None:
         settings = get_settings()
-        if not settings.scheduler_enabled:
-            logger.info("定时发布调度已关闭（SCHEDULER_ENABLED=false）")
+        db = SessionLocal()
+        try:
+            config = SystemConfigService(db)
+            scheduler_enabled = config.scheduler_enabled()
+            poll_interval = config.scheduler_poll_interval_seconds()
+        finally:
+            db.close()
+
+        if not scheduler_enabled:
+            logger.info("定时发布调度已关闭（scheduler_enabled=false）")
             return None
 
         scheduler = AsyncIOScheduler()
         scheduler.add_job(
             self.poll_due_tasks,
             "interval",
-            seconds=settings.scheduler_poll_interval_seconds,
+            seconds=poll_interval,
             id="publish_schedule_poll",
             replace_existing=True,
             max_instances=1,
@@ -34,7 +43,7 @@ class ScheduleWorker:
         self._scheduler = scheduler
         logger.info(
             "定时发布调度已启动，轮询间隔 {} 秒",
-            settings.scheduler_poll_interval_seconds,
+            poll_interval,
         )
         return scheduler
 
@@ -50,8 +59,8 @@ class ScheduleWorker:
             task_id = self._claim_due_task(db)
             if task_id is None:
                 return
-            logger.info("定时触发发布任务 #{}", task_id)
-            await asyncio.to_thread(run_execute_task, task_id)
+            logger.info("定时触发发布任务 #{}，入队执行", task_id)
+            await asyncio.to_thread(task_queue.enqueue_execute, task_id)
         except Exception as exc:
             logger.exception("定时发布轮询失败: {}", exc)
         finally:

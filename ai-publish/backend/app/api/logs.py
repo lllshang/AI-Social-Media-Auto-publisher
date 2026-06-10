@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import require_permission
+from app.utils.permissions import PERM_LOGS_READ
 from app.models import User
 from app.schemas import AiGenerationRecordResponse, OperationLogResponse
 from app.services.log_service import LogService
@@ -20,7 +21,7 @@ def list_ai_generations(
     created_to: datetime | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_LOGS_READ)),
 ):
     service = LogService(db)
     return service.list_ai_records(
@@ -40,7 +41,7 @@ def list_operations(
     created_to: datetime | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=500),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_LOGS_READ)),
 ):
     service = LogService(db)
     return service.list_operation_logs(

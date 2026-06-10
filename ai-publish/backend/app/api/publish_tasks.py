@@ -1,11 +1,16 @@
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_permission
+from app.utils.permissions import (
+    PERM_TASKS_EXECUTE,
+    PERM_TASKS_READ,
+    PERM_TASKS_WRITE,
+)
 from app.models import Material, PublishTask, User
 from app.schemas import (
     MaterialSummary,
@@ -15,7 +20,7 @@ from app.schemas import (
     PublishTaskUpdate,
 )
 from app.services.publish_service import PublishService
-from app.workers.task_runner import run_execute_task
+from app.workers.redis_queue import task_queue
 
 router = APIRouter(prefix="/api/publish-tasks", tags=["publish-tasks"])
 
@@ -41,7 +46,7 @@ def list_tasks(
     created_from: datetime | None = Query(default=None),
     created_to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_READ)),
 ):
     service = PublishService(db)
     return [_task_response(task) for task in service.list_tasks(
@@ -57,12 +62,12 @@ def list_tasks(
 def create_task(
     data: PublishTaskCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PERM_TASKS_WRITE)),
 ):
     service = PublishService(db)
     try:
         if data.submit:
-            initial_status = "pending_review" if service.settings.require_content_review else "pending"
+            initial_status = "pending_review" if service.system_config.require_content_review() else "pending"
         else:
             initial_status = "draft"
         task = service.create_task(
@@ -172,9 +177,8 @@ def reject_task(
 @router.post("/{task_id}/execute", response_model=PublishTaskResponse)
 def execute_task(
     task_id: int,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_EXECUTE)),
 ):
     service = PublishService(db)
     task = service.get_task(task_id)
@@ -186,8 +190,8 @@ def execute_task(
         raise HTTPException(status_code=400, detail="仅 pending 状态任务可执行")
     task.status = "running"
     db.commit()
-    background_tasks.add_task(run_execute_task, task_id)
     db.refresh(task)
+    task_queue.enqueue_execute(task_id)
     return _task_response(task, service.get_task_materials(task))
 
 

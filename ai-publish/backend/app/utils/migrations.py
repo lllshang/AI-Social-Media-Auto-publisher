@@ -35,6 +35,11 @@ def run_migrations() -> None:
             "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
 
+    if inspector.has_table("users"):
+        user_columns = {col["name"] for col in inspector.get_columns("users")}
+        if "role_id" not in user_columns:
+            statements.append("ALTER TABLE users ADD COLUMN role_id INTEGER")
+
     if not statements:
         return
 
