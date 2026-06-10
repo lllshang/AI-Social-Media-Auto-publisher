@@ -158,14 +158,18 @@ backend/app/
 | **进行中 Change** | `openspec/changes/content-flow-41-complete/` | 发布向导完整流程；含 `proposal.md`、`design.md`、`tasks.md`、子规格 |
 | **已归档 MVP** | `openspec/changes/archive/2026-06-09-mvp-xhs-auto-publish/` | 首版小红书 MVP 的规格与任务记录 |
 
-**任务进度看板：** [openspec/changes/content-flow-41-complete/tasks.md](../openspec/changes/content-flow-41-complete/tasks.md)
+**任务进度看板：**
+
+- 已完成 A/B/C：[content-flow-41-complete/tasks.md](../openspec/changes/content-flow-41-complete/tasks.md)
+- **下一阶段 E**：[phase-e-product-gap/tasks.md](../openspec/changes/phase-e-product-gap/tasks.md)
 
 | 阶段 | 状态 | 要点 |
 |------|------|------|
 | A 平台与发布 P0 | ✅ 完成 | 定时发布、抖音/快手、Docker 扫码、视频向导 |
 | B 后台补全 P1 | ✅ 完成 | 工作台、账号分组、日志中心、提示词 API |
 | C 基础设施 P2 | ✅ 完成 | Redis 队列、RBAC、系统配置、COS/OSS、Nginx |
-| D 风控 C 方案 | ⏳ 未开始 | 审核模块、敏感词、频率限制、本机 Worker |
+| **E 产品缺口补齐** | ⏳ 规划中 | 用户管理、审核模块、文生图增强、平台 E2E、运维监控（**不含 D 风控**） |
+| D 风控 C 方案 | ⏳ 未开始 | 敏感词、频率限制、本机 Worker、图片审核（**最后做**） |
 
 ---
 
@@ -290,7 +294,7 @@ DDL 见：`ai-publish/scripts/init_db.sql`；SQLite 增量迁移见 `backend/app
 | 怎么发布一条内容？ | [daily-usage.md](./daily-usage.md) |
 | 接口怎么调？ | [api-test.md](./api-test.md) 或 `/docs` |
 | 代码在哪？ | 本文 §2 + `ai-publish/backend/app` |
-| 还有哪些功能没做？ | [tasks.md](../openspec/changes/content-flow-41-complete/tasks.md) 阶段 D |
+| 还有哪些功能没做？ | [phase-e-product-gap/tasks.md](../openspec/changes/phase-e-product-gap/tasks.md)（阶段 E）；阶段 D 风控见 [tasks.md](../openspec/changes/content-flow-41-complete/tasks.md) |
 | 为什么用 vendor？ | [spike-report.md](./spike-report.md) |
 
 ---

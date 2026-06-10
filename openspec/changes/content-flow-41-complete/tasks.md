@@ -81,9 +81,13 @@
 - [x] C.4 COS/OSS 存储 Adapter
 - [x] C.5 Nginx + HTTPS 纳入 compose
 
+### 阶段 E — 产品文档缺口补齐（见独立 change）
+
+> 详细任务：[phase-e-product-gap/tasks.md](../phase-e-product-gap/tasks.md)（用户管理、审核模块、文生图增强、平台 E2E、运维监控等，**不含 D 风控**）
+
 ### 阶段 D — 风控 C 方案（最后）
 
-- [ ] D.1 审核管理独立模块
+- [ ] D.1 审核管理独立模块（UI 部分见阶段 E.2）
 - [ ] D.2 敏感词检测
 - [ ] D.3 发布频率与并发限制
 - [ ] D.4 本机发布 Worker（审核通过后本机 Chrome 执行）
