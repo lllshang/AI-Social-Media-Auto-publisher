@@ -1,0 +1,8 @@
+{
+  "mode": "manual",
+  "text_provider": "ollama",
+  "text_model": "qwen3:4b",
+  "image_provider": "stub",
+  "image_model": "stub",
+  "updated_at": "2026-06-09T07:24:01.113307+00:00"
+}

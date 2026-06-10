@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI 发布管理</title>
+  <style>
+    :root { --bg:#0f1419; --card:#1a2332; --text:#e7ecf3; --muted:#8b98a5; --accent:#1d9bf0; --ok:#00ba7c; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; }
+    .sub { color: var(--muted); margin-bottom: 24px; }
+    .card { background: var(--card); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+    label { display:block; color:var(--muted); font-size:12px; margin-bottom:4px; }
+    input, select, button { font: inherit; }
+    input, select { width:100%; padding:10px; border-radius:8px; border:1px solid #2f3b4a; background:#0f1419; color:var(--text); margin-bottom:12px; }
+    button { background:var(--accent); color:#fff; border:none; padding:10px 16px; border-radius:8px; cursor:pointer; margin-right:8px; margin-top:4px; }
+    button.secondary { background:#2f3b4a; }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    pre { background:#0f1419; padding:12px; border-radius:8px; overflow:auto; font-size:12px; max-height:280px; }
+    .tag { display:inline-block; background:#243447; padding:4px 8px; border-radius:6px; font-size:12px; margin-right:6px; }
+    .ok { color: var(--ok); }
+    .err { color:#f4212e; }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>AI 多平台内容发布</h1>
+    <p class="sub">MVP 管理页 · API <a href="/docs" style="color:var(--accent)">/docs</a></p>
+
+    <div id="loginCard" class="card">
+      <h3>登录</h3>
+      <div class="row">
+        <div><label>用户名</label><input id="username" value="admin" /></div>
+        <div><label>密码</label><input id="password" type="password" value="admin123" /></div>
+      </div>
+      <button onclick="login()">登录</button>
+      <span id="loginMsg"></span>
+    </div>
+
+    <div id="mainPanel" class="hidden">
+      <div class="card">
+        <h3>AI 模型</h3>
+        <p>当前文案：<span id="curText" class="tag">-</span> 文生图：<span id="curImage" class="tag">-</span></p>
+        <button onclick="loadModels()">刷新检测</button>
+        <button class="secondary" onclick="autoDetect()">自动匹配</button>
+        <div class="row" style="margin-top:12px">
+          <div>
+            <label>文案 Provider</label>
+            <select id="textProvider"></select>
+          </div>
+          <div>
+            <label>文案 Model</label>
+            <select id="textModel"></select>
+          </div>
+        </div>
+        <button onclick="applyModel()">应用选择</button>
+        <pre id="modelJson"></pre>
+      </div>
+
+      <div class="card">
+        <h3>快速测试文案</h3>
+        <label>主题</label>
+        <input id="topic" value="春茶上新" />
+        <button onclick="genText()">生成文案</button>
+        <pre id="textResult"></pre>
+      </div>
+    </div>
+  </div>
+  <script>
+    const BASE = location.origin;
+    let token = localStorage.getItem('ai_publish_token') || '';
+
+    async function api(path, opts = {}) {
+      const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+      if (token) headers.Authorization = 'Bearer ' + token;
+      const res = await fetch(BASE + path, { ...opts, headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || res.statusText);
+      return data;
+    }
+
+    async function login() {
+      const msg = document.getElementById('loginMsg');
+      try {
+        const data = await api('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value,
+          }),
+        });
+        token = data.access_token;
+        localStorage.setItem('ai_publish_token', token);
+        msg.innerHTML = '<span class="ok">登录成功</span>';
+        document.getElementById('loginCard').classList.add('hidden');
+        document.getElementById('mainPanel').classList.remove('hidden');
+        loadModels();
+      } catch (e) {
+        msg.innerHTML = '<span class="err">' + e.message + '</span>';
+      }
+    }
+
+    function fillSelect(id, options, kind) {
+      const sel = document.getElementById(id);
+      sel.innerHTML = '';
+      options.filter(o => o.kind === kind && o.ready).forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.provider + '::' + o.model;
+        opt.textContent = o.label;
+        sel.appendChild(opt);
+      });
+    }
+
+    async function loadModels() {
+      const data = await api('/api/ai/models');
+      document.getElementById('curText').textContent = data.text.current.provider + ' / ' + data.text.current.model;
+      document.getElementById('curImage').textContent = data.image.current.provider + ' / ' + data.image.current.model;
+      document.getElementById('modelJson').textContent = JSON.stringify(data, null, 2);
+      fillSelect('textProvider', data.text.available, 'text');
+      fillSelect('textModel', data.text.available, 'text');
+    }
+
+    async function autoDetect() {
+      await api('/api/ai/models/detect', { method: 'POST' });
+      loadModels();
+    }
+
+    async function applyModel() {
+      const pick = document.getElementById('textModel').value.split('::');
+      await api('/api/ai/models/select', {
+        method: 'POST',
+        body: JSON.stringify({ mode: 'manual', text_provider: pick[0], text_model: pick[1] }),
+      });
+      loadModels();
+    }
+
+    async function genText() {
+      const topic = document.getElementById('topic').value;
+      const data = await api('/api/ai/text/generate', {
+        method: 'POST',
+        body: JSON.stringify({ topic, platform: 'xhs' }),
+      });
+      document.getElementById('textResult').textContent = JSON.stringify(data, null, 2);
+    }
+
+    if (token) {
+      document.getElementById('loginCard').classList.add('hidden');
+      document.getElementById('mainPanel').classList.remove('hidden');
+      loadModels().catch(() => { token = ''; localStorage.removeItem('ai_publish_token'); location.reload(); });
+    }
+  </script>
+</body>
+</html>

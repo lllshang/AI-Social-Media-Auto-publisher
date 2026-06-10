@@ -1,0 +1,67 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: aipublish
+      MYSQL_USER: aipublish
+      MYSQL_PASSWORD: aipublish123
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql+pymysql://aipublish:aipublish123@mysql:3306/aipublish?charset=utf8mb4
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_LOCAL_PATH: /data/materials
+      COOKIE_DIR: /data/cookies
+      SAU_VENDOR_PATH: /vendor/social-auto-upload
+      WEB_DIST_PATH: /web/dist
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ../vendor/social-auto-upload:/vendor/social-auto-upload
+      - ./web/dist:/web/dist:ro
+      - materials_data:/data/materials
+      - cookies_data:/data/cookies
+      - provider_config:/app/data
+      - playwright_browsers:/opt/playwright
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+  materials_data:
+  cookies_data:
+  provider_config:
+  playwright_browsers:

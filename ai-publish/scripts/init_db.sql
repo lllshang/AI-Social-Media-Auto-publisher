@@ -1,0 +1,125 @@
+-- AI Publish MVP schema
+CREATE DATABASE IF NOT EXISTS aipublish DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE aipublish;
+
+CREATE TABLE IF NOT EXISTS users (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(64) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS roles (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    role_name VARCHAR(64) NOT NULL UNIQUE,
+    permissions JSON,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS platform_accounts (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    platform VARCHAR(32) NOT NULL,
+    account_name VARCHAR(128) NOT NULL,
+    group_id BIGINT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'inactive',
+    created_by BIGINT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_platform_account (platform, account_name)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS account_cookies (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    account_id BIGINT NOT NULL,
+    cookie_data TEXT NOT NULL,
+    expire_time DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_account_id (account_id),
+    CONSTRAINT fk_cookie_account FOREIGN KEY (account_id) REFERENCES platform_accounts(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS materials (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    type VARCHAR(20) NOT NULL,
+    source VARCHAR(32) NOT NULL DEFAULT 'upload',
+    file_path VARCHAR(512) NOT NULL,
+    thumbnail VARCHAR(512) NULL,
+    url VARCHAR(512) NULL,
+    name VARCHAR(128) NULL,
+    category VARCHAR(64) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    ai_record_id BIGINT NULL,
+    created_by BIGINT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS ai_generation_records (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    type VARCHAR(20) NOT NULL,
+    provider VARCHAR(32) NOT NULL,
+    prompt TEXT NOT NULL,
+    result_summary TEXT NULL,
+    cost DECIMAL(10, 4) NOT NULL DEFAULT 0,
+    created_by BIGINT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS publish_tasks (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(256) NOT NULL,
+    content TEXT NULL,
+    comment_guide TEXT NULL,
+    topic VARCHAR(256) NULL,
+    cover_text VARCHAR(128) NULL,
+    wizard_step INT NULL,
+    tags JSON NULL,
+    platform VARCHAR(32) NOT NULL,
+    account_id BIGINT NOT NULL,
+    content_type VARCHAR(20) NOT NULL DEFAULT 'note',
+    material_ids JSON NULL,
+    publish_time DATETIME NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    error_message TEXT NULL,
+    created_by BIGINT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_task_account FOREIGN KEY (account_id) REFERENCES platform_accounts(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS publish_task_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    task_id BIGINT NOT NULL,
+    step VARCHAR(64) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    message TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_task_id (task_id),
+    CONSTRAINT fk_log_task FOREIGN KEY (task_id) REFERENCES publish_tasks(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS system_configs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    config_key VARCHAR(128) NOT NULL UNIQUE,
+    config_value TEXT NULL,
+    remark VARCHAR(255) NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS operation_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NULL,
+    action VARCHAR(64) NOT NULL,
+    target_type VARCHAR(64) NULL,
+    target_id BIGINT NULL,
+    ip VARCHAR(64) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- Seed admin: password admin123 (bcrypt)
+INSERT INTO users (username, password_hash, status)
+SELECT 'admin', '$2b$12$sI7NNNo/ivmtH/cVuav7yeneRsXY7KHmv/iYB8IPGoJCRriShdRe6', 'active'
+WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
