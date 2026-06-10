@@ -328,10 +328,16 @@ class SystemConfigResponse(BaseModel):
         from_attributes = True
 
 
+class RoleUserBrief(BaseModel):
+    username: str
+    initial_password: str | None = None
+
+
 class RoleResponse(BaseModel):
     id: int
     role_name: str
     permissions: list[str] | None = None
+    users: list[RoleUserBrief] = Field(default_factory=list)
     created_at: datetime
 
     @field_serializer("created_at")

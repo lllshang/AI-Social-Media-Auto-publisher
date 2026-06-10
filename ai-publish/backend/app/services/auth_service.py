@@ -45,19 +45,31 @@ def authenticate_user(db: Session, username: str, password: str) -> User | None:
 
 
 def ensure_admin_user(db: Session) -> None:
-    from app.services.rbac_service import assign_admin_role, ensure_default_roles
+    from app.models import Role
+    from app.services.rbac_service import ensure_default_roles
 
     settings = get_settings()
     ensure_default_roles(db)
-    exists = db.query(User).filter(User.username == settings.admin_username).first()
-    if exists:
-        assign_admin_role(db, settings.admin_username)
-        return
-    user = User(
-        username=settings.admin_username,
-        password_hash=hash_password(settings.admin_password),
-        status="active",
-    )
-    db.add(user)
+    seeds = [
+        (settings.admin_username, settings.admin_password, "admin"),
+        (settings.operator_username, settings.operator_password, "operator"),
+        (settings.viewer_username, settings.viewer_password, "viewer"),
+    ]
+    for username, password, role_name in seeds:
+        role = db.query(Role).filter(Role.role_name == role_name).first()
+        if not role:
+            continue
+        exists = db.query(User).filter(User.username == username).first()
+        if exists:
+            if not exists.role_id:
+                exists.role_id = role.id
+            continue
+        db.add(
+            User(
+                username=username,
+                password_hash=hash_password(password),
+                role_id=role.id,
+                status="active",
+            )
+        )
     db.commit()
-    assign_admin_role(db, settings.admin_username)

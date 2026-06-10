@@ -11,33 +11,35 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="16" style="margin-top: 16px">
-      <el-col :span="12">
-        <div class="page-card">
+    <el-row :gutter="16" class="dashboard-row" style="margin-top: 16px">
+      <el-col :span="12" class="dashboard-col">
+        <div class="page-card dashboard-panel">
           <div class="section-head">
             <h3>失败任务</h3>
             <el-button link type="primary" @click="$router.push({ path: '/tasks', query: { status: 'failed' } })">
               查看全部
             </el-button>
           </div>
-          <el-table :data="summary?.failed_tasks || []" empty-text="暂无失败任务">
-            <el-table-column prop="id" label="ID" width="60" />
-            <el-table-column prop="title" label="标题" show-overflow-tooltip />
-            <el-table-column label="平台" width="90">
-              <template #default="{ row }">{{ platformLabel(row.platform) }}</template>
-            </el-table-column>
-            <el-table-column prop="error_message" label="错误" show-overflow-tooltip />
-            <el-table-column label="操作" width="90">
-              <template #default="{ row }">
-                <el-button size="small" type="warning" @click="retryTask(row)">重试</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+          <div class="panel-body">
+            <el-table :data="summary?.failed_tasks || []" empty-text="暂无失败任务">
+              <el-table-column prop="id" label="ID" width="60" />
+              <el-table-column prop="title" label="标题" show-overflow-tooltip />
+              <el-table-column label="平台" width="90">
+                <template #default="{ row }">{{ platformLabel(row.platform) }}</template>
+              </el-table-column>
+              <el-table-column prop="error_message" label="错误" show-overflow-tooltip />
+              <el-table-column label="操作" width="90">
+                <template #default="{ row }">
+                  <el-button size="small" type="warning" @click="retryTask(row)">重试</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
         </div>
       </el-col>
 
-      <el-col :span="12">
-        <div class="page-card">
+      <el-col :span="12" class="dashboard-col">
+        <div class="page-card dashboard-panel">
           <div class="section-head">
             <h3>账号健康</h3>
             <el-button link type="primary" @click="$router.push('/accounts')">管理账号</el-button>
@@ -47,63 +49,71 @@
             <el-tag type="info">未激活 {{ summary?.account_health?.inactive || 0 }}</el-tag>
             <el-tag type="danger">已过期 {{ summary?.account_health?.expired || 0 }}</el-tag>
           </div>
-          <el-table :data="summary?.account_health?.unhealthy_accounts || []" empty-text="账号状态良好">
-            <el-table-column prop="account_name" label="账号" />
-            <el-table-column label="平台" width="90">
-              <template #default="{ row }">{{ platformLabel(row.platform) }}</template>
-            </el-table-column>
-            <el-table-column label="状态" width="100">
-              <template #default="{ row }">
-                <el-tag :type="row.status === 'expired' ? 'danger' : 'info'">{{ row.status }}</el-tag>
-              </template>
-            </el-table-column>
-          </el-table>
+          <div class="panel-body">
+            <el-table :data="summary?.account_health?.unhealthy_accounts || []" empty-text="账号状态良好">
+              <el-table-column prop="account_name" label="账号" />
+              <el-table-column label="平台" width="90">
+                <template #default="{ row }">{{ platformLabel(row.platform) }}</template>
+              </el-table-column>
+              <el-table-column label="状态" width="100">
+                <template #default="{ row }">
+                  <el-tag :type="row.status === 'expired' ? 'danger' : 'info'">{{ row.status }}</el-tag>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
         </div>
       </el-col>
     </el-row>
 
-    <el-row :gutter="16" style="margin-top: 16px">
-      <el-col :span="12">
-        <div class="page-card">
-          <h3>AI 调用统计（近 7 天）</h3>
-          <el-descriptions :column="2" border>
-            <el-descriptions-item label="累计调用">{{ summary?.ai_stats?.total_calls || 0 }}</el-descriptions-item>
-            <el-descriptions-item label="累计文案 Token">
-              {{ formatAiUsage('text', summary?.ai_stats?.text_tokens_total) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="累计文生图">
-              {{ formatAiUsage('image', summary?.ai_stats?.image_units_total) }}
-            </el-descriptions-item>
-            <el-descriptions-item label="文案生成">
-              {{ aiTypeStat('text') }}
-            </el-descriptions-item>
-            <el-descriptions-item label="文生图">
-              {{ aiTypeStat('image') }}
-            </el-descriptions-item>
-          </el-descriptions>
-          <div v-if="summary?.ai_stats?.by_provider?.length" class="provider-list">
-            <span class="muted">按供应商：</span>
-            <el-tag
-              v-for="item in summary.ai_stats.by_provider"
-              :key="item.provider"
-              style="margin: 4px 6px 0 0"
-            >
-              {{ item.provider }} ({{ item.count }})
-            </el-tag>
+    <el-row :gutter="16" class="dashboard-row" style="margin-top: 16px">
+      <el-col :span="12" class="dashboard-col">
+        <div class="page-card dashboard-panel">
+          <h3 class="panel-title">AI 调用统计（近 7 天）</h3>
+          <div class="panel-body">
+            <el-descriptions :column="2" border>
+              <el-descriptions-item label="累计调用">{{ summary?.ai_stats?.total_calls || 0 }}</el-descriptions-item>
+              <el-descriptions-item label="累计文案 Token">
+                {{ formatAiUsage('text', summary?.ai_stats?.text_tokens_total) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="累计文生图">
+                {{ formatAiUsage('image', summary?.ai_stats?.image_units_total) }}
+              </el-descriptions-item>
+              <el-descriptions-item label="文案生成">
+                {{ aiTypeStat('text') }}
+              </el-descriptions-item>
+              <el-descriptions-item label="文生图">
+                {{ aiTypeStat('image') }}
+              </el-descriptions-item>
+            </el-descriptions>
+            <div v-if="summary?.ai_stats?.by_provider?.length" class="provider-list">
+              <span class="muted">按供应商：</span>
+              <el-tag
+                v-for="item in summary.ai_stats.by_provider"
+                :key="item.provider"
+                style="margin: 4px 6px 0 0"
+              >
+                {{ item.provider }} ({{ item.count }})
+              </el-tag>
+            </div>
           </div>
         </div>
       </el-col>
 
-      <el-col :span="12">
-        <div class="page-card">
-          <h3>当前 AI 模型</h3>
-          <p>文案：{{ models.text || '-' }}</p>
-          <p>文生图：{{ models.image || '-' }}</p>
-          <p class="muted">文生图 Key 未配置时将使用占位图，发布请上传真实图片。</p>
-          <el-button type="primary" @click="$router.push('/publish')">发布图文</el-button>
-          <el-button @click="$router.push({ path: '/publish', query: { platform: 'xhs', content_type: 'video' } })">
-            发布小红书视频
-          </el-button>
+      <el-col :span="12" class="dashboard-col">
+        <div class="page-card dashboard-panel">
+          <h3 class="panel-title">当前 AI 模型</h3>
+          <div class="panel-body">
+            <p>文案：{{ models.text || '-' }}</p>
+            <p>文生图：{{ models.image || '-' }}</p>
+            <p class="muted">文生图 Key 未配置时将使用占位图，发布请上传真实图片。</p>
+          </div>
+          <div class="panel-actions">
+            <el-button type="primary" @click="$router.push('/publish')">发布图文</el-button>
+            <el-button @click="$router.push({ path: '/publish', query: { platform: 'xhs', content_type: 'video' } })">
+              发布小红书视频
+            </el-button>
+          </div>
         </div>
       </el-col>
     </el-row>
@@ -189,5 +199,39 @@ onMounted(load)
 }
 .provider-list {
   margin-top: 12px;
+}
+.dashboard-row {
+  align-items: stretch;
+}
+.dashboard-col {
+  display: flex;
+}
+.dashboard-panel {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 280px;
+}
+.panel-title {
+  margin: 0 0 12px;
+}
+.panel-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.panel-body :deep(.el-table) {
+  flex: 1;
+}
+.panel-body :deep(.el-table__empty-block) {
+  min-height: 120px;
+}
+.panel-actions {
+  margin-top: auto;
+  padding-top: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 </style>

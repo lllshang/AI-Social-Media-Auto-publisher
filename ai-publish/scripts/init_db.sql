@@ -144,9 +144,21 @@ SELECT 'viewer', JSON_ARRAY(
 )
 WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'viewer');
 
--- Seed admin: password admin123 (bcrypt)
+-- Seed default users (bcrypt); passwords: admin123 / operator123 / viewer123
 INSERT INTO users (username, password_hash, role_id, status)
 SELECT 'admin', '$2b$12$sI7NNNo/ivmtH/cVuav7yeneRsXY7KHmv/iYB8IPGoJCRriShdRe6', r.id, 'active'
 FROM roles r
 WHERE r.role_name = 'admin'
   AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
+
+INSERT INTO users (username, password_hash, role_id, status)
+SELECT 'operator', '$2b$12$MmJpD3IB/Y2ZteE51NKayOnc9F3jiKBlMsh/qmHqrlueCZPqZ0382', r.id, 'active'
+FROM roles r
+WHERE r.role_name = 'operator'
+  AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'operator');
+
+INSERT INTO users (username, password_hash, role_id, status)
+SELECT 'viewer', '$2b$12$1szlK/qd3qusygb/ovtkiONSReORkrg1mw0MSY77dHqMBnlz1ILSy', r.id, 'active'
+FROM roles r
+WHERE r.role_name = 'viewer'
+  AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'viewer');

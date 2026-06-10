@@ -24,11 +24,32 @@
 
     <div class="page-card" style="margin-top: 16px">
       <h3>角色列表</h3>
+      <p class="muted" style="margin-bottom: 12px">
+        登录密码经 bcrypt 加密存入数据库，<strong>修改后无法在系统中查看</strong>。下表「初始密码」仅对应首次部署时自动创建的默认账号，可在
+        <code>.env</code> 中通过 <code>ADMIN_PASSWORD</code>、<code>OPERATOR_PASSWORD</code>、<code>VIEWER_PASSWORD</code> 配置（仅新建账号时生效）。
+      </p>
       <el-table :data="roles" size="small">
-        <el-table-column label="角色" width="120">
-          <template #default="{ row }">{{ roleLabel(row.role_name) }}</template>
+        <el-table-column label="角色" width="160">
+          <template #default="{ row }">{{ roleDisplayLabel(row.role_name) }}</template>
         </el-table-column>
-        <el-table-column label="权限说明">
+        <el-table-column label="登录账号" width="140">
+          <template #default="{ row }">
+            <span v-if="row.users?.length">{{ row.users.map((u) => u.username).join('、') }}</span>
+            <span v-else class="muted">暂无</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="初始密码" width="160">
+          <template #default="{ row }">
+            <template v-if="row.users?.length">
+              <div v-for="u in row.users" :key="u.username" style="line-height: 1.6">
+                <span v-if="u.initial_password">{{ u.username }}：{{ u.initial_password }}</span>
+                <span v-else class="muted">{{ u.username }}：已加密，不可查看</span>
+              </div>
+            </template>
+            <span v-else class="muted">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="权限说明" min-width="280">
           <template #default="{ row }">
             <el-tag v-for="p in row.permissions || []" :key="p" size="small" style="margin: 2px 4px 2px 0">
               {{ permissionLabel(p) }}
@@ -44,7 +65,7 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
-import { permissionLabel, roleLabel } from '@/utils/permissions'
+import { permissionLabel, roleDisplayLabel } from '@/utils/permissions'
 
 const loading = ref(false)
 const savingKey = ref('')

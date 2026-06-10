@@ -21,6 +21,10 @@ class Settings(BaseSettings):
 
     admin_username: str = "admin"
     admin_password: str = "admin123"
+    operator_username: str = "operator"
+    operator_password: str = "operator123"
+    viewer_username: str = "viewer"
+    viewer_password: str = "viewer123"
 
     database_url: str = "sqlite:///./data/aipublish.db"
     redis_url: str = "redis://127.0.0.1:6380/0"

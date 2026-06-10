@@ -30,6 +30,12 @@ export function roleLabel(name) {
   return ROLE_LABELS[name] || name
 }
 
+/** 角色展示：admin (管理员) */
+export function roleDisplayLabel(name) {
+  const label = ROLE_LABELS[name]
+  return label ? `${name} (${label})` : name
+}
+
 export function can(permissions, required) {
   if (!permissions || permissions.length === 0) return true
   if (permissions.includes('*')) return true
