@@ -16,23 +16,34 @@
     <el-container>
       <el-header class="header">
         <span class="muted">当前用户：{{ userDisplayLabel(auth.username, auth.roleName || 'operator') }}</span>
-        <el-button link type="primary" @click="logout">退出</el-button>
+        <div class="header-actions">
+          <el-button link type="primary" @click="openChangePassword">修改密码</el-button>
+          <el-button link type="primary" @click="logout">退出</el-button>
+        </div>
       </el-header>
       <el-main class="main">
         <router-view />
       </el-main>
     </el-container>
+    <ChangePasswordDialog ref="changePasswordRef" />
   </el-container>
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { can as canPerm, userDisplayLabel } from '@/utils/permissions'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const changePasswordRef = ref(null)
+
+function openChangePassword() {
+  changePasswordRef.value?.open()
+}
 
 function can(permission) {
   return canPerm(auth.permissions, permission)
@@ -66,5 +77,10 @@ function logout() {
 }
 .main {
   padding: 20px;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 </style>

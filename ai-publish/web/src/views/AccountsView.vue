@@ -44,6 +44,7 @@
       <el-table :data="accounts" v-loading="loading">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="account_name" label="账号名" />
+        <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip />
         <el-table-column label="平台" width="100">
           <template #default="{ row }">{{ platformLabel(row.platform) }}</template>
         </el-table-column>
@@ -68,8 +69,9 @@
             <el-tag :type="statusType(row.status)">{{ row.status }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column v-if="can('accounts:write')" label="操作" width="380">
+        <el-table-column v-if="can('accounts:write')" label="操作" width="440">
           <template #default="{ row }">
+            <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" @click="check(row)">检测 Cookie</el-button>
             <el-button size="small" type="warning" :loading="loggingInId === row.id" @click="login(row)">
               扫码登录
@@ -79,6 +81,24 @@
         </el-table-column>
       </el-table>
     </div>
+
+    <el-dialog v-model="showEdit" title="编辑平台账号" width="420px">
+      <el-form label-width="80px">
+        <el-form-item label="平台">
+          <span>{{ platformLabel(editForm.platform) }}</span>
+        </el-form-item>
+        <el-form-item label="账号名">
+          <el-input v-model="editForm.account_name" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="editForm.remark" placeholder="可选" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEdit = false">取消</el-button>
+        <el-button type="primary" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="showCreate" :title="`新建${platformLabel(form.platform)}账号`" width="420px">
       <el-form label-width="80px">
@@ -143,9 +163,11 @@ const groups = ref([])
 const filterPlatform = ref('')
 const filterGroupId = ref(null)
 const showCreate = ref(false)
+const showEdit = ref(false)
 const showGroupManage = ref(false)
 const groupForm = reactive({ name: '' })
 const form = reactive({ platform: 'xhs', account_name: 'test1' })
+const editForm = reactive({ id: null, platform: '', account_name: '', remark: '' })
 const qrVisible = ref(false)
 const qrDataUrl = ref('')
 const qrMessage = ref('')
@@ -168,6 +190,28 @@ function statusType(status) {
 function openCreate() {
   form.platform = filterPlatform.value || 'xhs'
   showCreate.value = true
+}
+
+function openEdit(row) {
+  editForm.id = row.id
+  editForm.platform = row.platform
+  editForm.account_name = row.account_name
+  editForm.remark = row.remark || ''
+  showEdit.value = true
+}
+
+async function saveEdit() {
+  try {
+    await api.updateAccount(editForm.id, {
+      account_name: editForm.account_name,
+      remark: editForm.remark,
+    })
+    ElMessage.success('已保存')
+    showEdit.value = false
+    await load()
+  } catch (e) {
+    ElMessage.error(e.message)
+  }
 }
 
 function stopPolling() {

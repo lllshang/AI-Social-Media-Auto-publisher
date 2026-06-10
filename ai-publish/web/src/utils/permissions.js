@@ -14,6 +14,7 @@ export const PERMISSION_LABELS = {
   'models:write': '配置 AI 模型',
   'logs:read': '查看日志中心',
   'settings:write': '系统设置',
+  'users:write': '用户管理',
 }
 
 export const ROLE_LABELS = {

@@ -19,6 +19,7 @@ from app.api.publish_tasks import router as publish_tasks_router
 from app.api.roles import router as roles_router
 from app.api.system import router as system_router
 from app.api.system_configs import router as system_configs_router
+from app.api.users import router as users_router
 from app.config import BACKEND_DIR, get_settings
 from app.database import SessionLocal, engine
 from app.models import Base
@@ -103,6 +104,7 @@ app.include_router(logs_router)
 app.include_router(system_router)
 app.include_router(system_configs_router)
 app.include_router(roles_router)
+app.include_router(users_router)
 
 settings = get_settings()
 static_dir = settings.storage_path

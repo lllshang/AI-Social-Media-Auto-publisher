@@ -20,6 +20,7 @@ PERM_MODELS_READ = "models:read"
 PERM_MODELS_WRITE = "models:write"
 PERM_LOGS_READ = "logs:read"
 PERM_SETTINGS_WRITE = "settings:write"
+PERM_USERS_WRITE = "users:write"
 
 ADMIN_PERMISSIONS = ["*"]
 

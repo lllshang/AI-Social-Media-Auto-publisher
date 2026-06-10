@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
@@ -15,8 +15,11 @@ from app.schemas import (
     LoginSessionResponse,
     PlatformAccountCreate,
     PlatformAccountResponse,
+    PlatformAccountUpdate,
 )
 from app.services.account_group_service import AccountGroupService
+from app.services.log_service import LogService
+from app.utils.request_ip import get_client_ip
 from app.services.login_session_service import login_session_service
 from app.services.platform_account_service import PlatformAccountService
 from app.utils.runtime_env import docker_login_hint, platform_scan_hint, qr_login_supported
@@ -29,6 +32,7 @@ def _account_response(account: PlatformAccount, group_service: AccountGroupServi
         id=account.id,
         platform=account.platform,
         account_name=account.account_name,
+        remark=account.remark,
         group_id=account.group_id,
         group_name=group_service.get_group_name(account.group_id),
         status=account.status,
@@ -52,6 +56,7 @@ def list_accounts(
 @router.post("", response_model=PlatformAccountResponse)
 def create_account(
     data: PlatformAccountCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
@@ -59,6 +64,41 @@ def create_account(
     group_service = AccountGroupService(db)
     try:
         account = service.create_account(data.platform, data.account_name, current_user.id)
+        LogService(db).add_operation(
+            "platform_account.create",
+            current_user.id,
+            "platform_account",
+            account.id,
+            ip=get_client_ip(request),
+        )
+        return _account_response(account, group_service)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/{account_id}", response_model=PlatformAccountResponse)
+def update_account(
+    account_id: int,
+    data: PlatformAccountUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
+):
+    service = PlatformAccountService(db)
+    group_service = AccountGroupService(db)
+    try:
+        account = service.update_account(
+            account_id,
+            account_name=data.account_name,
+            remark=data.remark,
+        )
+        LogService(db).add_operation(
+            "platform_account.update",
+            current_user.id,
+            "platform_account",
+            account.id,
+            ip=get_client_ip(request),
+        )
         return _account_response(account, group_service)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -83,12 +123,20 @@ def assign_account_group(
 @router.delete("/{account_id}")
 def delete_account(
     account_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
+    current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = PlatformAccountService(db)
     try:
         service.delete_account(account_id)
+        LogService(db).add_operation(
+            "platform_account.delete",
+            current_user.id,
+            "platform_account",
+            account_id,
+            ip=get_client_ip(request),
+        )
         return {"success": True}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

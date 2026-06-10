@@ -1,12 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
-from app.schemas import LoginRequest, LoginResponse
+from app.schemas import ChangePasswordRequest, LoginRequest, LoginResponse
 from app.services.auth_service import authenticate_user, create_access_token
+from app.services.log_service import LogService
 from app.services.rbac_service import RbacService
+from app.services.user_service import UserService
+from app.utils.request_ip import get_client_ip
 from app.utils.permissions import get_user_permissions
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -36,3 +39,25 @@ def me(user: User = Depends(get_current_user)):
         "role_name": getattr(user, "role_name", "operator"),
         "permissions": getattr(user, "permissions", []),
     }
+
+
+@router.post("/change-password")
+def change_password(
+    data: ChangePasswordRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    service = UserService(db)
+    try:
+        service.change_password(user, data.old_password, data.new_password)
+        LogService(db).add_operation(
+            "user.change_password",
+            user.id,
+            "user",
+            user.id,
+            ip=get_client_ip(request),
+        )
+        return {"ok": True}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

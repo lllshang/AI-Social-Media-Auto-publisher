@@ -241,6 +241,8 @@ bash scripts/upgrade.sh
 | `/api/system/runtime` | 运行环境（Docker/Chromium/队列） |
 | `/api/system/configs` | 系统配置 |
 | `/api/roles` | 角色权限 |
+| `/api/users` | 用户管理（`users:write`，仅管理员） |
+| `/api/auth/change-password` | 当前用户修改密码 |
 | `/health` | 健康检查 |
 | `/docs` | Swagger UI |
 
@@ -283,6 +285,9 @@ DDL 见：`ai-publish/scripts/init_db.sql`；SQLite 增量迁移见 `backend/app
 
 - 菜单与部分 API 按权限控制；修改角色后需重新登录生效
 - 系统设置 → **角色列表** 可查看角色、登录账号、初始密码说明与中文权限
+- 系统设置 → **用户管理**（仅 admin）：新建/禁用用户、分配角色、重置密码
+- 顶栏 **修改密码**：所有登录用户可修改本人密码
+- 平台账号页支持编辑账号名与备注（`PUT /api/platform-accounts/{id}`）
 
 ---
 

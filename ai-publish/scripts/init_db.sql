@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS platform_accounts (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     platform VARCHAR(32) NOT NULL,
     account_name VARCHAR(128) NOT NULL,
+    remark VARCHAR(255) NULL,
     group_id BIGINT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'inactive',
     created_by BIGINT NULL,

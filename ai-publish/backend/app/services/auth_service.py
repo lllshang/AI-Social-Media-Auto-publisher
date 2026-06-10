@@ -38,8 +38,8 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
 
 
 def authenticate_user(db: Session, username: str, password: str) -> User | None:
-    user = db.query(User).filter(User.username == username, User.status == "active").first()
-    if not user or not verify_password(password, user.password_hash):
+    user = db.query(User).filter(User.username == username).first()
+    if not user or user.status != "active" or not verify_password(password, user.password_hash):
         return None
     return user
 

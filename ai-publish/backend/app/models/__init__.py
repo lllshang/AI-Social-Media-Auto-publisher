@@ -55,6 +55,7 @@ class PlatformAccount(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     platform: Mapped[str] = mapped_column(String(32), nullable=False)
     account_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    remark: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="inactive")
     created_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

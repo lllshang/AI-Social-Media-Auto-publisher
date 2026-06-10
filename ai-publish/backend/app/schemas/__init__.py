@@ -34,10 +34,16 @@ class PlatformAccountCreate(BaseModel):
     account_name: str
 
 
+class PlatformAccountUpdate(BaseModel):
+    account_name: str | None = None
+    remark: str | None = None
+
+
 class PlatformAccountResponse(BaseModel):
     id: int
     platform: str
     account_name: str
+    remark: str | None = None
     group_id: int | None = None
     group_name: str | None = None
     status: str
@@ -342,6 +348,43 @@ class RoleResponse(BaseModel):
 
     @field_serializer("created_at")
     def serialize_created_at(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+    class Config:
+        from_attributes = True
+
+
+class UserCreateRequest(BaseModel):
+    username: str
+    password: str
+    role_id: int | None = None
+
+
+class UserUpdateRequest(BaseModel):
+    role_id: int | None = None
+    status: str | None = None
+
+
+class UserResetPasswordRequest(BaseModel):
+    new_password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    role_id: int | None = None
+    role_name: str = ""
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_dt(self, value: datetime) -> str:
         return format_utc_datetime(value) or ""
 
     class Config:

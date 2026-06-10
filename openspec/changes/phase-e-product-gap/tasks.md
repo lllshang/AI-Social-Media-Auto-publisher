@@ -10,22 +10,22 @@
 
 ### 后端专家
 
-- [ ] E.1.1 用户管理 API：`GET/POST/PUT /api/users`（列表、创建、禁用/启用、分配 `role_id`）
-- [ ] E.1.2 用户改密 API：`POST /api/users/{id}/reset-password`（管理员重置）+ `POST /api/auth/change-password`（本人修改）
-- [ ] E.1.3 平台账号编辑 API：`PUT /api/platform-accounts/{id}`（账号名、备注等可编辑字段）
-- [ ] E.1.4 操作日志写入客户端 IP：`add_operation` 从 `Request` 取 IP；发布/账号等关键写操作补记操作日志
-- [ ] E.1.5 权限点：用户管理仅 `admin` 或新增 `users:write` 权限（与现有 RBAC 对齐）
+- [x] E.1.1 用户管理 API：`GET/POST/PUT /api/users`（列表、创建、禁用/启用、分配 `role_id`）
+- [x] E.1.2 用户改密 API：`POST /api/users/{id}/reset-password`（管理员重置）+ `POST /api/auth/change-password`（本人修改）
+- [x] E.1.3 平台账号编辑 API：`PUT /api/platform-accounts/{id}`（账号名、备注等可编辑字段）
+- [x] E.1.4 操作日志写入客户端 IP：`add_operation` 从 `Request` 取 IP；发布/账号等关键写操作补记操作日志
+- [x] E.1.5 权限点：用户管理仅 `admin` 或新增 `users:write` 权限（与现有 RBAC 对齐）
 
 ### 前端专家
 
-- [ ] E.1.6 系统设置下新增「用户管理」页：列表、新建用户、禁用、重置密码、分配角色
-- [ ] E.1.7 平台账号页支持编辑账号名；只读角色保持不可编辑
-- [ ] E.1.8 个人改密入口（顶栏或设置页，operator/admin 可用）
+- [x] E.1.6 系统设置下新增「用户管理」页：列表、新建用户、禁用、重置密码、分配角色
+- [x] E.1.7 平台账号页支持编辑账号名；只读角色保持不可编辑
+- [x] E.1.8 个人改密入口（顶栏或设置页，operator/admin 可用）
 
 ### 文档与验证
 
-- [ ] E.1.9 更新 `docs/daily-usage.md`、`docs/project-overview.md` 默认账号与用户管理说明
-- [ ] E.1.10 验证：admin 可建用户并分配 viewer；viewer 无法进入用户管理
+- [x] E.1.9 更新 `docs/daily-usage.md`、`docs/project-overview.md` 默认账号与用户管理说明
+- [x] E.1.10 验证：admin 可建用户并分配 viewer；viewer 无法进入用户管理
 
 ---
 

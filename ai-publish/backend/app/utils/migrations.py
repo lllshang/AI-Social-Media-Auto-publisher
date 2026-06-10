@@ -40,6 +40,11 @@ def run_migrations() -> None:
         if "role_id" not in user_columns:
             statements.append("ALTER TABLE users ADD COLUMN role_id INTEGER")
 
+    if inspector.has_table("platform_accounts"):
+        account_columns = {col["name"] for col in inspector.get_columns("platform_accounts")}
+        if "remark" not in account_columns:
+            statements.append("ALTER TABLE platform_accounts ADD COLUMN remark VARCHAR(255)")
+
     if not statements:
         return
 

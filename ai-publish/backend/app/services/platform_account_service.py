@@ -47,6 +47,38 @@ class PlatformAccountService:
         self.db.refresh(account)
         return account
 
+    def update_account(
+        self,
+        account_id: int,
+        *,
+        account_name: str | None = None,
+        remark: str | None = None,
+    ) -> PlatformAccount:
+        account = self.get_account(account_id)
+        if not account:
+            raise ValueError("账号不存在")
+        if account_name is not None:
+            name = account_name.strip()
+            if not name:
+                raise ValueError("账号名不能为空")
+            exists = (
+                self.db.query(PlatformAccount)
+                .filter(
+                    PlatformAccount.platform == account.platform,
+                    PlatformAccount.account_name == name,
+                    PlatformAccount.id != account_id,
+                )
+                .first()
+            )
+            if exists:
+                raise ValueError("同平台下账号名已存在")
+            account.account_name = name
+        if remark is not None:
+            account.remark = remark.strip() or None
+        self.db.commit()
+        self.db.refresh(account)
+        return account
+
     def get_account(self, account_id: int) -> PlatformAccount | None:
         return self.db.query(PlatformAccount).filter(PlatformAccount.id == account_id).first()
 

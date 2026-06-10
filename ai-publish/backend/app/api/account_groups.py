@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,7 @@ from app.utils.permissions import PERM_ACCOUNTS_READ, PERM_ACCOUNTS_WRITE
 from app.schemas import AccountGroupCreate, AccountGroupResponse, AccountGroupUpdate
 from app.services.account_group_service import AccountGroupService
 from app.services.log_service import LogService
+from app.utils.request_ip import get_client_ip
 
 router = APIRouter(prefix="/api/account-groups", tags=["account-groups"])
 
@@ -41,13 +42,20 @@ def list_groups(
 @router.post("", response_model=AccountGroupResponse)
 def create_group(
     data: AccountGroupCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = AccountGroupService(db)
     try:
         group = service.create_group(data.name, data.remark)
-        LogService(db).add_operation("account_group.create", current_user.id, "account_group", group.id)
+        LogService(db).add_operation(
+            "account_group.create",
+            current_user.id,
+            "account_group",
+            group.id,
+            ip=get_client_ip(request),
+        )
         return _group_response(service, group)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -57,13 +65,20 @@ def create_group(
 def update_group(
     group_id: int,
     data: AccountGroupUpdate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = AccountGroupService(db)
     try:
         group = service.update_group(group_id, data.name, data.remark)
-        LogService(db).add_operation("account_group.update", current_user.id, "account_group", group.id)
+        LogService(db).add_operation(
+            "account_group.update",
+            current_user.id,
+            "account_group",
+            group.id,
+            ip=get_client_ip(request),
+        )
         return _group_response(service, group)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -72,13 +87,20 @@ def update_group(
 @router.delete("/{group_id}")
 def delete_group(
     group_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = AccountGroupService(db)
     try:
         service.delete_group(group_id)
-        LogService(db).add_operation("account_group.delete", current_user.id, "account_group", group_id)
+        LogService(db).add_operation(
+            "account_group.delete",
+            current_user.id,
+            "account_group",
+            group_id,
+            ip=get_client_ip(request),
+        )
         return {"ok": True}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
