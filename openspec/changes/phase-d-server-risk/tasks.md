@@ -90,7 +90,7 @@ D.2 敏感词  →  D.3 限频/并发  →  D.O 可观测  →  D.5 图片审核
 - [x] D.5.2 `ImageModerationProvider` 抽象 + `stub` 实现
 - [x] D.5.3 配置：`image_moderation_enabled`、云 API Key（可选）
 - [x] D.5.4 接入 `upload_material`、文生图入库、`submit_task` 前校验
-- [ ] D.5.5 （可选）腾讯云/阿里云内容安全 Adapter 其一
+- [x] D.5.5 腾讯云 IMS + 阿里云 Green Adapter；开启/切换付费 Provider 时前端费用确认
 
 ### 前端专家
 

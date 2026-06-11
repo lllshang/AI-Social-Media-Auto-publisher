@@ -1,58 +1,20 @@
 from __future__ import annotations
 
 import json
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from app.models import Material
+from app.services.image_moderation.providers import (
+    PAID_PROVIDERS,
+    PROVIDER_REGISTRY,
+    ModerationOutcome,
+    build_provider,
+)
 from app.services.system_config_service import SystemConfigService
 
 
-@dataclass
-class ModerationOutcome:
-    passed: bool
-    provider: str
-    message: str
-    labels: list[str] | None = None
-
-    def to_detail(self) -> dict:
-        return {
-            "provider": self.provider,
-            "message": self.message,
-            "labels": self.labels or [],
-        }
-
-
-class ImageModerationProvider(ABC):
-    @abstractmethod
-    async def moderate(self, file_path: str) -> ModerationOutcome:
-        raise NotImplementedError
-
-
-class StubImageModerationProvider(ImageModerationProvider):
-    async def moderate(self, file_path: str) -> ModerationOutcome:
-        path = Path(file_path)
-        if not path.exists():
-            return ModerationOutcome(
-                passed=False,
-                provider="stub",
-                message="图片文件不存在",
-            )
-        return ModerationOutcome(
-            passed=True,
-            provider="stub",
-            message="Stub 审核通过（开发/未接云 API 时默认放行）",
-        )
-
-
 class ImageModerationService:
-    PROVIDERS: dict[str, type[ImageModerationProvider]] = {
-        "stub": StubImageModerationProvider,
-    }
-
     def __init__(self, db: Session) -> None:
         self.db = db
         self.config = SystemConfigService(db)
@@ -62,10 +24,13 @@ class ImageModerationService:
 
     def provider_name(self) -> str:
         raw = (self.config.image_moderation_provider() or "stub").strip().lower()
-        return raw if raw in self.PROVIDERS else "stub"
+        return raw if raw in PROVIDER_REGISTRY else "stub"
 
-    def get_provider(self) -> ImageModerationProvider:
-        return self.PROVIDERS[self.provider_name()]()
+    def is_paid_provider(self, name: str | None = None) -> bool:
+        return (name or self.provider_name()) in PAID_PROVIDERS
+
+    def get_provider(self):
+        return build_provider(self.provider_name(), self.config)
 
     def is_image_allowed(self, material: Material) -> bool:
         if material.type != "image":
@@ -96,13 +61,13 @@ class ImageModerationService:
         if not self.enabled():
             material.moderation_status = "skipped"
             material.moderation_detail = json.dumps(
-                {"provider": "disabled", "message": "图片审核未开启"},
+                {"provider": "disabled", "message": "图片审核未开启", "billable": False},
                 ensure_ascii=False,
             )
             return material
 
         material.moderation_status = "pending"
-        outcome = await self.get_provider().moderate(material.file_path)
+        outcome: ModerationOutcome = await self.get_provider().moderate(material.file_path)
         material.moderation_status = "passed" if outcome.passed else "rejected"
         material.moderation_detail = json.dumps(outcome.to_detail(), ensure_ascii=False)
         return material

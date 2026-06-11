@@ -4,7 +4,7 @@
     <p class="muted">以下配置保存在数据库，修改后立即生效（优先于部分环境变量）。</p>
 
     <div class="page-card">
-      <el-table :data="configs">
+      <el-table :data="visibleConfigs">
         <el-table-column prop="config_key" label="配置项" width="260" />
         <el-table-column prop="remark" label="说明" min-width="220" show-overflow-tooltip />
         <el-table-column label="值" min-width="200">
@@ -48,6 +48,42 @@
           </template>
         </el-table-column>
       </el-table>
+    </div>
+
+    <div v-if="canManageSettings" class="page-card" style="margin-top: 16px">
+      <div class="section-head">
+        <h3>图片内容审核</h3>
+      </div>
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="开启图片审核后，每次上传或文生图入库可能调用云 API 并按张计费（试用额度用尽后产生费用）。Stub 不产生费用。"
+        style="margin-bottom: 12px"
+      />
+      <el-form label-width="160px" class="image-mod-form">
+        <el-form-item label="腾讯云 SecretId">
+          <el-input v-model="imageModForm.tencent_secret_id" placeholder="选用腾讯云时填写" show-password />
+        </el-form-item>
+        <el-form-item label="腾讯云 SecretKey">
+          <el-input v-model="imageModForm.tencent_secret_key" placeholder="选用腾讯云时填写" show-password />
+        </el-form-item>
+        <el-form-item label="腾讯云地域">
+          <el-input v-model="imageModForm.tencent_region" placeholder="ap-guangzhou" />
+        </el-form-item>
+        <el-form-item label="阿里云 AccessKeyId">
+          <el-input v-model="imageModForm.alibaba_access_key_id" placeholder="选用阿里云时填写" show-password />
+        </el-form-item>
+        <el-form-item label="阿里云 AccessKeySecret">
+          <el-input v-model="imageModForm.alibaba_access_key_secret" placeholder="选用阿里云时填写" show-password />
+        </el-form-item>
+        <el-form-item label="阿里云地域">
+          <el-input v-model="imageModForm.alibaba_region" placeholder="cn-shanghai" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="imageModSaving" @click="saveImageModSecrets">保存密钥配置</el-button>
+        </el-form-item>
+      </el-form>
     </div>
 
     <div v-if="canManageSettings" class="page-card" style="margin-top: 16px">
@@ -202,6 +238,30 @@ const showWordImport = ref(false)
 const newWord = ref('')
 const newWordRemark = ref('')
 const importWordsText = ref('')
+const imageModSaving = ref(false)
+const imageModForm = reactive({
+  tencent_secret_id: '',
+  tencent_secret_key: '',
+  tencent_region: 'ap-guangzhou',
+  alibaba_access_key_id: '',
+  alibaba_access_key_secret: '',
+  alibaba_region: 'cn-shanghai',
+})
+
+const HIDDEN_CONFIG_KEYS = new Set([
+  'image_moderation_tencent_secret_id',
+  'image_moderation_tencent_secret_key',
+  'image_moderation_tencent_region',
+  'image_moderation_alibaba_access_key_id',
+  'image_moderation_alibaba_access_key_secret',
+  'image_moderation_alibaba_region',
+])
+
+const PAID_IMAGE_PROVIDERS = new Set(['tencent', 'alibaba'])
+
+const visibleConfigs = computed(() =>
+  configs.value.filter((row) => !HIDDEN_CONFIG_KEYS.has(row.config_key)),
+)
 const savingKey = ref('')
 const configs = ref([])
 const roles = ref([])
@@ -228,6 +288,7 @@ async function load() {
     const results = await Promise.all(tasks)
     configs.value = results[0]
     syncIntConfigValues()
+    syncImageModForm()
     roles.value = results[1]
     users.value = canManageUsers.value ? results[2] : []
     if (canManageSettings.value) {
@@ -329,7 +390,11 @@ const SELECT_CONFIG_OPTIONS = {
     { label: '拦截 (block)', value: 'block' },
     { label: '仅记录 (warn)', value: 'warn' },
   ],
-  image_moderation_provider: [{ label: 'Stub（默认通过）', value: 'stub' }],
+  image_moderation_provider: [
+    { label: 'Stub（免费，默认通过）', value: 'stub' },
+    { label: '腾讯云 IMS（按量计费）', value: 'tencent' },
+    { label: '阿里云 Green（按量计费）', value: 'alibaba' },
+  ],
 }
 const INT_CONFIG_KEYS = new Set([
   'max_auto_retries',
@@ -441,7 +506,77 @@ function boolConfigOn(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase())
 }
 
-function setBoolConfig(row, on) {
+function configValue(key) {
+  return configs.value.find((row) => row.config_key === key)?.config_value
+}
+
+function providerLabel(provider) {
+  return (
+    {
+      stub: 'Stub（免费）',
+      tencent: '腾讯云 IMS',
+      alibaba: '阿里云 Green',
+    }[provider] || provider
+  )
+}
+
+async function confirmImageModerationBilling(provider, actionText) {
+  const paid = PAID_IMAGE_PROVIDERS.has(provider)
+  const detail = paid
+    ? `将使用 ${providerLabel(provider)}。每次图片上传或文生图入库会调用云内容安全 API，试用额度用尽后按张计费。`
+    : '将使用 Stub，不产生云审费用（默认全部通过，仅用于开发/联调）。'
+  await ElMessageBox.confirm(`${actionText}\n\n${detail}\n\n是否继续？`, '图片内容审核', {
+    type: 'warning',
+    confirmButtonText: '确认',
+    cancelButtonText: '取消',
+  })
+}
+
+function syncImageModForm() {
+  imageModForm.tencent_secret_id = configValue('image_moderation_tencent_secret_id') || ''
+  imageModForm.tencent_secret_key = configValue('image_moderation_tencent_secret_key') || ''
+  imageModForm.tencent_region = configValue('image_moderation_tencent_region') || 'ap-guangzhou'
+  imageModForm.alibaba_access_key_id = configValue('image_moderation_alibaba_access_key_id') || ''
+  imageModForm.alibaba_access_key_secret = configValue('image_moderation_alibaba_access_key_secret') || ''
+  imageModForm.alibaba_region = configValue('image_moderation_alibaba_region') || 'cn-shanghai'
+}
+
+async function saveImageModSecrets() {
+  imageModSaving.value = true
+  try {
+    const entries = [
+      ['image_moderation_tencent_secret_id', imageModForm.tencent_secret_id],
+      ['image_moderation_tencent_secret_key', imageModForm.tencent_secret_key],
+      ['image_moderation_tencent_region', imageModForm.tencent_region || 'ap-guangzhou'],
+      ['image_moderation_alibaba_access_key_id', imageModForm.alibaba_access_key_id],
+      ['image_moderation_alibaba_access_key_secret', imageModForm.alibaba_access_key_secret],
+      ['image_moderation_alibaba_region', imageModForm.alibaba_region || 'cn-shanghai'],
+    ]
+    for (const [key, value] of entries) {
+      const row = configs.value.find((item) => item.config_key === key)
+      await api.updateSystemConfig(key, {
+        config_value: value,
+        remark: row?.remark,
+      })
+      if (row) row.config_value = value
+    }
+    ElMessage.success('图片审核密钥已保存')
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    imageModSaving.value = false
+  }
+}
+
+async function setBoolConfig(row, on) {
+  if (row.config_key === 'image_moderation_enabled' && on) {
+    const provider = configValue('image_moderation_provider') || 'stub'
+    try {
+      await confirmImageModerationBilling(provider, '开启图片内容审核')
+    } catch {
+      return
+    }
+  }
   row.config_value = on ? 'true' : 'false'
 }
 
@@ -461,9 +596,22 @@ function syncIntConfigValues() {
 async function save(row) {
   savingKey.value = row.config_key
   try {
+    if (row.config_key === 'image_moderation_enabled' && boolConfigOn(row.config_value)) {
+      const provider = configValue('image_moderation_provider') || 'stub'
+      await confirmImageModerationBilling(provider, '保存并开启图片内容审核')
+    }
+    if (row.config_key === 'image_moderation_provider' && PAID_IMAGE_PROVIDERS.has(row.config_value)) {
+      await ElMessageBox.confirm(
+        `切换为 ${providerLabel(row.config_value)} 后，开启图片审核将产生按量费用。是否保存？`,
+        '图片审核 Provider',
+        { type: 'warning', confirmButtonText: '保存', cancelButtonText: '取消' },
+      )
+    }
     await api.updateSystemConfig(row.config_key, { config_value: row.config_value, remark: row.remark })
     if (row.config_key === 'require_content_review') {
       ElMessage.success(boolConfigOn(row.config_value) ? '内容审核已开启' : '内容审核已关闭')
+    } else if (row.config_key === 'image_moderation_enabled') {
+      ElMessage.success(boolConfigOn(row.config_value) ? '图片内容审核已开启' : '图片内容审核已关闭')
     } else {
       ElMessage.success('已保存')
     }
@@ -486,5 +634,8 @@ onMounted(load)
 }
 .section-head h3 {
   margin: 0;
+}
+.image-mod-form {
+  max-width: 640px;
 }
 </style>

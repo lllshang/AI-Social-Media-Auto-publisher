@@ -278,7 +278,9 @@ flowchart LR
 | 配置项 | 说明 |
 |--------|------|
 | `image_moderation_enabled` | 上传/文生图入库后执行审核 |
-| `image_moderation_provider` | 当前仅 `stub`（开发环境默认通过）；后续可接云内容安全 API |
+| `image_moderation_provider` | `stub`（免费）/ `tencent`（腾讯云 IMS，按量计费）/ `alibaba`（阿里云 Green，按量计费） |
+
+**费用提示：** 在系统设置开启图片审核或切换为腾讯云/阿里云时，界面会弹出确认框。密钥在「图片内容审核」卡片中配置；`stub` 不产生云审费用。
 
 图片素材 `moderation_status`：`passed` / `rejected` / `pending` / `skipped`。未通过或审核中的图片**不可**绑定到待发布任务；素材库与发布向导会过滤。
 

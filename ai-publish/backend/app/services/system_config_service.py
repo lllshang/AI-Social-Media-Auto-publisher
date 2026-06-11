@@ -105,7 +105,7 @@ class SystemConfigService:
 
     def image_moderation_provider(self) -> str:
         raw = (self.get_value("image_moderation_provider") or "stub").strip().lower()
-        return raw if raw in {"stub"} else "stub"
+        return raw if raw in {"stub", "tencent", "alibaba"} else "stub"
 
 
 def ensure_default_system_configs(db: Session) -> None:
@@ -128,7 +128,13 @@ def ensure_default_system_configs(db: Session) -> None:
         ("rate_limit_max_concurrent", "1", "全局同时执行中的发布任务数"),
         ("rate_limit_include_retry", "true", "自动重试是否受日上限约束"),
         ("image_moderation_enabled", "false", "是否启用图片内容审核"),
-        ("image_moderation_provider", "stub", "图片审核 Provider：stub（默认通过）"),
+        ("image_moderation_provider", "stub", "图片审核：stub / tencent / alibaba"),
+        ("image_moderation_tencent_secret_id", "", "腾讯云 IMS SecretId（按量计费）"),
+        ("image_moderation_tencent_secret_key", "", "腾讯云 IMS SecretKey"),
+        ("image_moderation_tencent_region", "ap-guangzhou", "腾讯云 IMS 地域"),
+        ("image_moderation_alibaba_access_key_id", "", "阿里云 Green AccessKeyId（按量计费）"),
+        ("image_moderation_alibaba_access_key_secret", "", "阿里云 Green AccessKeySecret"),
+        ("image_moderation_alibaba_region", "cn-shanghai", "阿里云 Green 地域"),
     ]
     service = SystemConfigService(db)
     for key, value, remark in defaults:
