@@ -25,6 +25,26 @@
       </el-col>
     </el-row>
 
+    <div class="page-card" style="margin-top: 16px">
+      <div class="section-head">
+        <h3>风控观测（近 {{ riskStats.period_days || 7 }} 天）</h3>
+        <span class="muted">用于评估是否需启用本机 Worker（D.4）</span>
+      </div>
+      <el-row :gutter="12">
+        <el-col :span="4" v-for="item in riskCards" :key="item.label">
+          <div class="risk-stat">
+            <div class="muted">{{ item.label }}</div>
+            <div class="value" :class="item.danger ? 'danger' : item.warn ? 'warn' : ''">{{ item.value }}</div>
+          </div>
+        </el-col>
+      </el-row>
+      <div class="risk-tags">
+        <el-tag type="danger">疑似风控失败 {{ riskStats.failed_risk || 0 }}</el-tag>
+        <el-tag type="warning">技术问题失败 {{ riskStats.failed_technical || 0 }}</el-tag>
+        <el-tag type="info">其他失败 {{ riskStats.failed_other || 0 }}</el-tag>
+      </div>
+    </div>
+
     <el-row :gutter="16" class="dashboard-row" style="margin-top: 16px">
       <el-col :span="12" class="dashboard-col">
         <div class="page-card dashboard-panel">
@@ -40,6 +60,13 @@
               <el-table-column prop="title" label="标题" show-overflow-tooltip />
               <el-table-column label="平台" width="90">
                 <template #default="{ row }">{{ platformLabel(row.platform) }}</template>
+              </el-table-column>
+              <el-table-column label="归类" width="100">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="failureTagType(row.failure_category)">
+                    {{ failureCategoryLabel(row.failure_category) }}
+                  </el-tag>
+                </template>
               </el-table-column>
               <el-table-column prop="error_message" label="错误" show-overflow-tooltip />
               <el-table-column label="操作" width="90">
@@ -201,6 +228,40 @@ const loading = ref(false)
 const summary = ref(null)
 const models = reactive({ text: '', image: '' })
 
+const riskStats = computed(() => summary.value?.risk_stats || {})
+
+const riskCards = computed(() => {
+  const r = riskStats.value
+  return [
+    { label: '敏感词拦截', value: r.sensitive_word_blocks ?? 0 },
+    { label: '限频拦截', value: r.rate_limit_blocks ?? 0, warn: (r.rate_limit_blocks || 0) >= 5 },
+    { label: '发布成功', value: r.success_count ?? 0 },
+    { label: '发布失败', value: r.failed_count ?? 0, danger: (r.failed_count || 0) > 0 },
+    {
+      label: '失败率',
+      value: `${r.failure_rate_percent ?? 0}%`,
+      danger: (r.failure_rate_percent || 0) >= 15,
+    },
+    { label: '疑似风控', value: r.failed_risk ?? 0, danger: (r.failed_risk || 0) >= 3 },
+  ]
+})
+
+function failureCategoryLabel(category) {
+  return (
+    {
+      risk: '疑似风控',
+      technical: '技术',
+      other: '其他',
+    }[category] || category || '其他'
+  )
+}
+
+function failureTagType(category) {
+  if (category === 'risk') return 'danger'
+  if (category === 'technical') return 'warning'
+  return 'info'
+}
+
 const dailyTrend = computed(() => {
   const rows = summary.value?.task_trends?.daily_7d || []
   return rows.map((row) => ({
@@ -285,6 +346,26 @@ onMounted(load)
 }
 .stat .value.danger {
   color: #f56c6c;
+}
+.risk-stat {
+  padding: 8px 4px;
+}
+.risk-stat .value {
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+.risk-stat .value.danger {
+  color: #f56c6c;
+}
+.risk-stat .value.warn {
+  color: #e6a23c;
+}
+.risk-tags {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .section-head {
   display: flex;

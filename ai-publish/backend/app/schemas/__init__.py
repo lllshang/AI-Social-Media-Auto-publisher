@@ -254,6 +254,7 @@ class DashboardFailedTask(BaseModel):
     title: str
     platform: str
     error_message: str | None = None
+    failure_category: str = "other"
     updated_at: datetime
 
     @field_serializer("updated_at")
@@ -327,8 +328,21 @@ class DashboardTaskTrends(BaseModel):
     daily_7d: list[DashboardTaskDailyStat] = []
 
 
+class DashboardRiskStats(BaseModel):
+    period_days: int = 7
+    sensitive_word_blocks: int = 0
+    rate_limit_blocks: int = 0
+    success_count: int = 0
+    failed_count: int = 0
+    failure_rate_percent: float = 0
+    failed_risk: int = 0
+    failed_technical: int = 0
+    failed_other: int = 0
+
+
 class DashboardSummaryResponse(BaseModel):
     alerts: list[DashboardAlert] = []
+    risk_stats: DashboardRiskStats
     overview: DashboardOverview
     task_counts: dict[str, int]
     task_trends: DashboardTaskTrends

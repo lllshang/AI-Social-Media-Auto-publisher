@@ -68,17 +68,17 @@ D.2 敏感词  →  D.3 限频/并发  →  D.O 可观测  →  D.5 图片审核
 
 ### 后端专家
 
-- [ ] D.O.1 Dashboard API 扩展：`risk_stats`（敏感词拦截、限频拦截、疑似风控失败计数）
-- [ ] D.O.2 失败任务关键词归类（风控 / 技术 / 其他）
+- [x] D.O.1 Dashboard API 扩展：`risk_stats`（敏感词拦截、限频拦截、疑似风控失败计数）
+- [x] D.O.2 失败任务关键词归类（风控 / 技术 / 其他）
 
 ### 前端专家
 
-- [ ] D.O.3 工作台展示风控统计卡片或告警提示
+- [x] D.O.3 工作台展示风控统计卡片或告警提示
 
 ### 文档
 
-- [ ] D.O.4 新增 `docs/phase-d-trial-guide.md`：试运行周期、记录表、D.4 评估 checklist
-- [ ] D.O.5 更新 `project-overview.md` 路线图（D.4 暂缓说明）
+- [x] D.O.4 新增 `docs/phase-d-trial-guide.md`：试运行周期、记录表、D.4 评估 checklist
+- [x] D.O.5 更新 `project-overview.md` 路线图（D.4 暂缓说明）
 
 ---
 

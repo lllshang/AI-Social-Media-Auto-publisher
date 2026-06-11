@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import AiGenerationRecord, Material, PlatformAccount, PublishTask
+from app.services.risk_stats_service import RiskStatsService
+from app.utils.failure_classifier import classify_failure_message
 
 
 class DashboardService:
@@ -107,8 +109,35 @@ class DashboardService:
                 }
             )
 
+        risk_stats = RiskStatsService(self.db).get_stats(days=7)
+        if risk_stats["failed_risk"] >= 3:
+            alerts.append(
+                {
+                    "id": "risk_failures",
+                    "level": "warning",
+                    "message": (
+                        f"近 7 天有 {risk_stats['failed_risk']} 条疑似平台风控失败，"
+                        "建议查看试运行记录并评估发布策略"
+                    ),
+                    "link": "/tasks?status=failed",
+                }
+            )
+        if risk_stats["rate_limit_blocks"] >= 10:
+            alerts.append(
+                {
+                    "id": "rate_limit_blocks",
+                    "level": "warning",
+                    "message": (
+                        f"近 7 天限频拦截 {risk_stats['rate_limit_blocks']} 次，"
+                        "可在系统设置调整间隔或日上限"
+                    ),
+                    "link": "/settings",
+                }
+            )
+
         return {
             "alerts": alerts,
+            "risk_stats": risk_stats,
             "task_trends": self._task_trends(),
             "overview": {
                 "accounts": self.db.query(func.count(PlatformAccount.id)).scalar() or 0,
@@ -139,6 +168,7 @@ class DashboardService:
                     "title": t.title,
                     "platform": t.platform,
                     "error_message": t.error_message,
+                    "failure_category": classify_failure_message(t.error_message),
                     "updated_at": t.updated_at,
                 }
                 for t in failed_tasks
