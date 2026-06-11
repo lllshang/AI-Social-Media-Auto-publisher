@@ -7,6 +7,7 @@
         <el-menu-item v-if="can('accounts:read')" index="/accounts">平台账号</el-menu-item>
         <el-menu-item v-if="can('models:read')" index="/models">AI 模型</el-menu-item>
         <el-menu-item v-if="can('materials:read')" index="/materials">素材库</el-menu-item>
+        <el-menu-item v-if="can('templates:read')" index="/templates">内容模板</el-menu-item>
         <el-menu-item v-if="can('tasks:read')" index="/tasks">发布任务</el-menu-item>
         <el-menu-item v-if="canReview(auth.permissions)" index="/reviews">内容审核</el-menu-item>
         <el-menu-item v-if="can('publish:write')" index="/publish">发布向导</el-menu-item>

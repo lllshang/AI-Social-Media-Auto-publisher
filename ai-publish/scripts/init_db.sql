@@ -142,6 +142,26 @@ CREATE TABLE IF NOT EXISTS operation_logs (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS content_templates (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    industry VARCHAR(64) NOT NULL,
+    platform VARCHAR(32) NULL,
+    content_type VARCHAR(20) NOT NULL DEFAULT 'note',
+    template_kind VARCHAR(20) NOT NULL DEFAULT 'text',
+    topic VARCHAR(256) NOT NULL,
+    title_hint VARCHAR(256) NULL,
+    content_body TEXT NULL,
+    tags JSON NULL,
+    image_style VARCHAR(32) NULL,
+    image_ratio VARCHAR(16) NULL,
+    brand_color VARCHAR(32) NULL,
+    brand_hint VARCHAR(255) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
 INSERT INTO roles (role_name, permissions)
 SELECT 'admin', JSON_ARRAY('*')
 WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'admin');
@@ -149,13 +169,14 @@ WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'admin');
 INSERT INTO roles (role_name, permissions)
 SELECT 'operator', JSON_ARRAY(
     'dashboard:read','accounts:read','accounts:write','materials:read','materials:write',
-    'tasks:read','tasks:write','tasks:execute','publish:write','models:read','models:write','logs:read'
+    'tasks:read','tasks:write','tasks:execute','publish:write','models:read','models:write','logs:read',
+    'templates:read','templates:write'
 )
 WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'operator');
 
 INSERT INTO roles (role_name, permissions)
 SELECT 'viewer', JSON_ARRAY(
-    'dashboard:read','accounts:read','materials:read','tasks:read','models:read','logs:read'
+    'dashboard:read','accounts:read','materials:read','tasks:read','models:read','logs:read','templates:read'
 )
 WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'viewer');
 

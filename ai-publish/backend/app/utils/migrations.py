@@ -62,6 +62,28 @@ def run_migrations() -> None:
             "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
 
+    if not inspector.has_table("content_templates"):
+        statements.append(
+            "CREATE TABLE content_templates ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "name VARCHAR(128) NOT NULL, "
+            "industry VARCHAR(64) NOT NULL, "
+            "platform VARCHAR(32), "
+            "content_type VARCHAR(20) DEFAULT 'note', "
+            "template_kind VARCHAR(20) DEFAULT 'text', "
+            "topic VARCHAR(256) NOT NULL, "
+            "title_hint VARCHAR(256), "
+            "content_body TEXT, "
+            "tags TEXT, "
+            "image_style VARCHAR(32), "
+            "image_ratio VARCHAR(16), "
+            "brand_color VARCHAR(32), "
+            "brand_hint VARCHAR(255), "
+            "status VARCHAR(20) DEFAULT 'active', "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+
     if not statements:
         return
 

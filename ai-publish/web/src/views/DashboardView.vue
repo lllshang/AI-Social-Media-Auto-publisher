@@ -83,6 +83,59 @@
     <el-row :gutter="16" class="dashboard-row" style="margin-top: 16px">
       <el-col :span="12" class="dashboard-col">
         <div class="page-card dashboard-panel">
+          <h3 class="panel-title">任务趋势（近 7 天）</h3>
+          <div class="panel-body">
+            <div class="trend-chart">
+              <div v-for="day in dailyTrend" :key="day.date" class="trend-day">
+                <div class="trend-bars">
+                  <div
+                    class="trend-bar success"
+                    :style="{ height: barHeight(day.success) }"
+                    :title="`成功 ${day.success}`"
+                  />
+                  <div
+                    class="trend-bar failed"
+                    :style="{ height: barHeight(day.failed) }"
+                    :title="`失败 ${day.failed}`"
+                  />
+                  <div
+                    class="trend-bar pending"
+                    :style="{ height: barHeight(day.pending) }"
+                    :title="`待处理 ${day.pending}`"
+                  />
+                </div>
+                <span class="trend-label">{{ day.label }}</span>
+              </div>
+            </div>
+            <div class="trend-legend">
+              <span><i class="dot success" />成功</span>
+              <span><i class="dot failed" />失败</span>
+              <span><i class="dot pending" />待处理</span>
+            </div>
+          </div>
+        </div>
+      </el-col>
+
+      <el-col :span="12" class="dashboard-col">
+        <div class="page-card dashboard-panel">
+          <h3 class="panel-title">任务按平台分布</h3>
+          <div class="panel-body platform-bars">
+            <div v-for="item in platformTrend" :key="item.platform" class="platform-row">
+              <span class="platform-name">{{ platformLabel(item.platform) }}</span>
+              <div class="platform-track">
+                <div class="platform-fill" :style="{ width: platformWidth(item.count) }" />
+              </div>
+              <span class="platform-count">{{ item.count }}</span>
+            </div>
+            <p v-if="!platformTrend.length" class="muted">暂无任务数据</p>
+          </div>
+        </div>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="16" class="dashboard-row" style="margin-top: 16px">
+      <el-col :span="12" class="dashboard-col">
+        <div class="page-card dashboard-panel">
           <h3 class="panel-title">AI 调用统计（近 7 天）</h3>
           <div class="panel-body">
             <el-descriptions :column="2" border>
@@ -147,6 +200,39 @@ const { can } = usePermission()
 const loading = ref(false)
 const summary = ref(null)
 const models = reactive({ text: '', image: '' })
+
+const dailyTrend = computed(() => {
+  const rows = summary.value?.task_trends?.daily_7d || []
+  return rows.map((row) => ({
+    ...row,
+    label: row.date.slice(5),
+  }))
+})
+
+const platformTrend = computed(() => summary.value?.task_trends?.by_platform || [])
+
+const trendMax = computed(() => {
+  let max = 1
+  for (const day of dailyTrend.value) {
+    max = Math.max(max, day.success, day.failed, day.pending, day.other || 0)
+  }
+  return max
+})
+
+const platformMax = computed(() => {
+  const counts = platformTrend.value.map((item) => item.count)
+  return Math.max(1, ...counts, 0)
+})
+
+function barHeight(value) {
+  const pct = Math.round((Number(value || 0) / trendMax.value) * 100)
+  return `${Math.max(pct, value ? 8 : 0)}%`
+}
+
+function platformWidth(count) {
+  const pct = Math.round((Number(count || 0) / platformMax.value) * 100)
+  return `${Math.max(pct, count ? 6 : 0)}%`
+}
 
 const overviewCards = computed(() => {
   const o = summary.value?.overview || {}
@@ -250,5 +336,97 @@ onMounted(load)
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+.trend-chart {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 140px;
+  padding-top: 8px;
+}
+.trend-day {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.trend-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 110px;
+  width: 100%;
+  justify-content: center;
+}
+.trend-bar {
+  width: 10px;
+  border-radius: 4px 4px 0 0;
+  min-height: 0;
+}
+.trend-bar.success {
+  background: #67c23a;
+}
+.trend-bar.failed {
+  background: #f56c6c;
+}
+.trend-bar.pending {
+  background: #e6a23c;
+}
+.trend-label {
+  font-size: 12px;
+  color: #888;
+}
+.trend-legend {
+  margin-top: 12px;
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: #666;
+}
+.trend-legend .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 4px;
+}
+.trend-legend .dot.success {
+  background: #67c23a;
+}
+.trend-legend .dot.failed {
+  background: #f56c6c;
+}
+.trend-legend .dot.pending {
+  background: #e6a23c;
+}
+.platform-bars {
+  gap: 10px;
+}
+.platform-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 36px;
+  align-items: center;
+  gap: 8px;
+}
+.platform-name,
+.platform-count {
+  font-size: 13px;
+}
+.platform-track {
+  height: 10px;
+  background: #eef2f6;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.platform-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #409eff, #66b1ff);
+  border-radius: 5px;
+}
+.muted {
+  color: #888;
+  font-size: 13px;
 }
 </style>

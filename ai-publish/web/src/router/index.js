@@ -17,6 +17,12 @@ const routes = [
       { path: 'accounts', name: 'accounts', meta: { permission: 'accounts:read' }, component: () => import('@/views/AccountsView.vue') },
       { path: 'models', name: 'models', meta: { permission: 'models:read' }, component: () => import('@/views/ModelsView.vue') },
       { path: 'materials', name: 'materials', meta: { permission: 'materials:read' }, component: () => import('@/views/MaterialsView.vue') },
+      {
+        path: 'templates',
+        name: 'templates',
+        meta: { permission: 'templates:read' },
+        component: () => import('@/views/ContentTemplatesView.vue'),
+      },
       { path: 'tasks', name: 'tasks', meta: { permission: 'tasks:read' }, component: () => import('@/views/TasksView.vue') },
       {
         path: 'reviews',

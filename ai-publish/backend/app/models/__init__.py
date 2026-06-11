@@ -131,6 +131,28 @@ class PublishTask(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class ContentTemplate(Base):
+    __tablename__ = "content_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    industry: Mapped[str] = mapped_column(String(64), nullable=False)
+    platform: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    content_type: Mapped[str] = mapped_column(String(20), default="note")
+    template_kind: Mapped[str] = mapped_column(String(20), default="text")
+    topic: Mapped[str] = mapped_column(String(256), nullable=False)
+    title_hint: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    content_body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    tags: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)
+    image_style: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    image_ratio: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    brand_color: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    brand_hint: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class OperationLog(Base):
     __tablename__ = "operation_logs"
 

@@ -109,6 +109,7 @@ class DashboardService:
 
         return {
             "alerts": alerts,
+            "task_trends": self._task_trends(),
             "overview": {
                 "accounts": self.db.query(func.count(PlatformAccount.id)).scalar() or 0,
                 "materials": self.db.query(func.count(Material.id)).scalar() or 0,
@@ -152,4 +153,58 @@ class DashboardService:
                     for row in provider_rows
                 ],
             },
+        }
+
+    def _task_trends(self) -> dict:
+        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        since = today - timedelta(days=6)
+
+        platform_rows = (
+            self.db.query(PublishTask.platform, func.count(PublishTask.id))
+            .group_by(PublishTask.platform)
+            .order_by(func.count(PublishTask.id).desc())
+            .all()
+        )
+
+        daily_rows = (
+            self.db.query(
+                func.date(PublishTask.created_at),
+                PublishTask.status,
+                func.count(PublishTask.id),
+            )
+            .filter(PublishTask.created_at >= since)
+            .group_by(func.date(PublishTask.created_at), PublishTask.status)
+            .all()
+        )
+
+        pending_statuses = {"pending", "pending_review", "running", "draft"}
+        daily_map: dict[str, dict[str, int]] = {}
+        for day_value, status, count in daily_rows:
+            day_key = str(day_value)
+            bucket = daily_map.setdefault(
+                day_key,
+                {"success": 0, "failed": 0, "pending": 0, "other": 0},
+            )
+            if status == "success":
+                bucket["success"] += int(count)
+            elif status == "failed":
+                bucket["failed"] += int(count)
+            elif status in pending_statuses:
+                bucket["pending"] += int(count)
+            else:
+                bucket["other"] += int(count)
+
+        daily_7d: list[dict] = []
+        for offset in range(7):
+            day = today + timedelta(days=offset - 6)
+            day_key = day.strftime("%Y-%m-%d")
+            stats = daily_map.get(day_key, {"success": 0, "failed": 0, "pending": 0, "other": 0})
+            daily_7d.append({"date": day_key, **stats})
+
+        return {
+            "by_platform": [
+                {"platform": platform or "unknown", "count": int(count)}
+                for platform, count in platform_rows
+            ],
+            "daily_7d": daily_7d,
         }

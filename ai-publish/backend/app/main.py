@@ -13,6 +13,7 @@ from loguru import logger
 from app.api.account_groups import router as account_groups_router
 from app.api.ai_models import router as ai_models_router
 from app.api.auth import router as auth_router
+from app.api.content_templates import router as content_templates_router
 from app.api.dashboard import router as dashboard_router
 from app.api.logs import router as logs_router
 from app.api.materials import router as materials_router
@@ -56,6 +57,9 @@ async def lifespan(app: FastAPI):
     try:
         ensure_admin_user(db)
         ensure_default_system_configs(db)
+        from app.services.content_template_service import ensure_default_content_templates
+
+        ensure_default_content_templates(db)
     finally:
         db.close()
     logger.info("AI Publish API started")
@@ -98,6 +102,7 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 app.include_router(dashboard_router)
+app.include_router(content_templates_router)
 app.include_router(account_groups_router)
 app.include_router(ai_models_router)
 app.include_router(platform_accounts_router)

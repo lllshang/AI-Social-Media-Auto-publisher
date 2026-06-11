@@ -15,6 +15,23 @@
     <!-- Step 0 -->
     <div v-show="step === 0" class="page-card">
       <el-form label-width="100px">
+        <el-form-item label="内容模板">
+          <el-select
+            v-model="selectedTemplateId"
+            clearable
+            filterable
+            placeholder="可选：从模板快速填充"
+            style="width: 100%"
+            @change="applyTemplate"
+          >
+            <el-option
+              v-for="t in contentTemplates"
+              :key="t.id"
+              :label="`${t.name}（${t.industry}）`"
+              :value="t.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="发布平台">
           <el-select v-model="form.platform" style="width: 100%" @change="onPlatformChange">
             <el-option
@@ -272,6 +289,8 @@ const { can } = usePermission()
 
 const accounts = ref([])
 const materials = ref([])
+const contentTemplates = ref([])
+const selectedTemplateId = ref(null)
 const step = ref(0)
 const draftId = ref(null)
 const generating = ref(false)
@@ -422,10 +441,43 @@ async function loadAccounts() {
   }
 }
 
+async function loadTemplates() {
+  try {
+    contentTemplates.value = await api.listContentTemplates({
+      platform: form.platform || undefined,
+    })
+  } catch {
+    contentTemplates.value = []
+  }
+}
+
+function applyTemplate(templateId) {
+  if (!templateId) return
+  const template = contentTemplates.value.find((item) => item.id === templateId)
+  if (!template) return
+  if (template.platform && PLATFORMS.some((p) => p.value === template.platform)) {
+    form.platform = template.platform
+  }
+  if (template.content_type) {
+    form.content_type = template.content_type
+  }
+  form.topic = template.topic
+  if (template.title_hint) {
+    form.title = template.title_hint
+    if (!form.cover_text) form.cover_text = template.title_hint
+  }
+  if (template.content_body) form.content = template.content_body
+  if (template.tags?.length) form.tagsText = template.tags.join('，')
+  if (template.image_style) form.image_style = template.image_style
+  if (template.brand_color) form.brand_color = template.brand_color
+  if (template.brand_hint) form.brand_hint = template.brand_hint
+  loadAccounts()
+}
+
 async function loadBase() {
   const mats = await api.listMaterials()
   materials.value = mats
-  await loadAccounts()
+  await Promise.all([loadAccounts(), loadTemplates()])
 }
 
 async function onPlatformChange() {
@@ -437,7 +489,7 @@ async function onPlatformChange() {
   if (form.platform === 'bilibili' && !form.bilibili_tid) {
     form.bilibili_tid = 21
   }
-  await loadAccounts()
+  await Promise.all([loadAccounts(), loadTemplates()])
 }
 
 function goAfterText() {
@@ -748,10 +800,25 @@ async function loadFeatures() {
   }
 }
 
+async function applyTemplateFromRoute() {
+  const templateId = Number(route.query.template_id)
+  if (!templateId) return
+  try {
+    const template = await api.getContentTemplate(templateId)
+    const exists = contentTemplates.value.some((item) => item.id === template.id)
+    if (!exists) contentTemplates.value = [template, ...contentTemplates.value]
+    selectedTemplateId.value = template.id
+    applyTemplate(template.id)
+  } catch {
+    // ignore invalid template id
+  }
+}
+
 onMounted(async () => {
   await loadFeatures()
   applyRouteDefaults()
   await loadBase()
+  await applyTemplateFromRoute()
   const id = route.query.id
   if (id) await loadDraft(Number(id))
 })

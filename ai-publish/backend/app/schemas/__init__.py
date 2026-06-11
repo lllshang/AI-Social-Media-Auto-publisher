@@ -309,13 +309,90 @@ class DashboardAlert(BaseModel):
     link: str
 
 
+class DashboardTaskPlatformStat(BaseModel):
+    platform: str
+    count: int
+
+
+class DashboardTaskDailyStat(BaseModel):
+    date: str
+    success: int = 0
+    failed: int = 0
+    pending: int = 0
+    other: int = 0
+
+
+class DashboardTaskTrends(BaseModel):
+    by_platform: list[DashboardTaskPlatformStat] = []
+    daily_7d: list[DashboardTaskDailyStat] = []
+
+
 class DashboardSummaryResponse(BaseModel):
     alerts: list[DashboardAlert] = []
     overview: DashboardOverview
     task_counts: dict[str, int]
+    task_trends: DashboardTaskTrends
     account_health: DashboardAccountHealth
     failed_tasks: list[DashboardFailedTask]
     ai_stats: DashboardAiStats
+
+
+class ContentTemplateCreate(BaseModel):
+    name: str
+    industry: str
+    topic: str
+    platform: str | None = None
+    content_type: str = "note"
+    template_kind: str = "text"
+    title_hint: str | None = None
+    content_body: str | None = None
+    tags: list[str] | None = None
+    image_style: str | None = None
+    image_ratio: str | None = None
+    brand_color: str | None = None
+    brand_hint: str | None = None
+    status: str = "active"
+
+
+class ContentTemplateUpdate(BaseModel):
+    name: str | None = None
+    industry: str | None = None
+    platform: str | None = None
+    content_type: str | None = None
+    template_kind: str | None = None
+    topic: str | None = None
+    title_hint: str | None = None
+    content_body: str | None = None
+    tags: list[str] | None = None
+    image_style: str | None = None
+    image_ratio: str | None = None
+    brand_color: str | None = None
+    brand_hint: str | None = None
+    status: str | None = None
+
+
+class ContentTemplateResponse(BaseModel):
+    id: int
+    name: str
+    industry: str
+    platform: str | None = None
+    content_type: str
+    template_kind: str
+    topic: str
+    title_hint: str | None = None
+    content_body: str | None = None
+    tags: list[str] | None = None
+    image_style: str | None = None
+    image_ratio: str | None = None
+    brand_color: str | None = None
+    brand_hint: str | None = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetime(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
 
 
 class AccountGroupCreate(BaseModel):

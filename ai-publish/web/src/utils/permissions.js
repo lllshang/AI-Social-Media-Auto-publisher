@@ -16,6 +16,8 @@ export const PERMISSION_LABELS = {
   'logs:read': '查看日志中心',
   'settings:write': '系统设置',
   'users:write': '用户管理',
+  'templates:read': '查看内容模板',
+  'templates:write': '管理内容模板',
 }
 
 export const ROLE_LABELS = {
