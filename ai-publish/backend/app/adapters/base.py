@@ -29,6 +29,7 @@ class PublishContext:
     content_type: str = "note"
     material_paths: list[str] = field(default_factory=list)
     thumbnail_path: str | None = None
+    cover_text: str | None = None
     publish_time: datetime | None = None
     bilibili_tid: int | None = None
     log_callback: Any | None = None

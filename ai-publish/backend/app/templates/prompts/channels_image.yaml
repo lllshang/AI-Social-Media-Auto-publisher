@@ -1,0 +1,8 @@
+template: |
+  为微信视频号生成竖版视频封面图，比例 {ratio}（{ratio_hint}），主题「{topic}」，风格 {style_label}，
+  画面清晰、主体突出，适合短视频封面。
+template_en: |
+  WeChat Channels video cover, ratio {ratio} ({ratio_hint}), topic: {topic}, style: {style_en},
+  clean portrait thumbnail for short video.
+negative_prompt: |
+  blurry, low quality, watermark, cluttered text, distorted face, nsfw

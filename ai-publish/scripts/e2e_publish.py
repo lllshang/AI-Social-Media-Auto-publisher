@@ -46,6 +46,15 @@ PLATFORM_CONFIG = {
         "default_account": "kuaishou_test",
         "content_types": ("note", "video"),
     },
+    "channels": {
+        "label": "视频号",
+        "cookie_candidates": [
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/tencent_uploader/account.json",
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/tencent_test.json",
+        ],
+        "default_account": "channels_test",
+        "content_types": ("video",),
+    },
     "bilibili": {
         "label": "B站",
         "cookie_candidates": [

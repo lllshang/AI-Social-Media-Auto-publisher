@@ -258,6 +258,13 @@ flowchart LR
 - 登录：在本地终端执行 `cd vendor/social-auto-upload && sau bilibili login --account <账号名>`，完成后在平台账号页点「校验 Cookie」
 - 发布通过 **biliup CLI** 上传，不支持图文笔记
 
+### 视频号投稿（阶段 E.5.5，实验）
+
+- 发布向导选择 **视频号（实验）**，内容类型为**短视频**
+- 支持可选 **3:4 封面** 与 **短标题**（6-16 字，对应 `cover_text`）
+- 登录：平台账号页 **扫码登录**（微信 App 扫视频号创作者二维码）
+- E2E：`python ai-publish/scripts/e2e_publish.py --platform channels --skip-execute`
+
 ---
 
 ## 7. 简易 HTML 管理页（旧）
@@ -280,5 +287,5 @@ http://127.0.0.1:8765/admin/（若未构建 Vue 则可用）
 ## 9. 下一步扩展
 
 - **Vue 完整管理后台**：独立 change，基于现有 API
-- **多平台**：抖音、快手已支持；视频号等待新增 `PlatformAdapter`
+- **多平台**：抖音、快手、B站、视频号已接入 Adapter（B站/视频号标为实验）
 - **Docker 部署**：`docker compose up`（需 Docker Desktop）

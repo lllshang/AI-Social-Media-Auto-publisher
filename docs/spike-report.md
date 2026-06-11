@@ -117,3 +117,27 @@ sau xiaohongshu upload-note --account test1 --images videos/demo.png --title "�
 | kuaishou | `--platform kuaishou` | 同上，Cookie 路径因环境而异，用 `--cookie` 指定 |
 
 未在本环境完成真实发布（无有效多平台 Cookie）。建议部署后按 `daily-usage.md` §5 逐平台跑通并记录日志。
+
+## 10. 视频号 Spike 结论（阶段 E.5.5）
+
+**日期**: 2026-06-10  
+**Vendor 模块**: `uploader/tencent_uploader/main.py`（`tencent_cookie_gen`、`cookie_auth`、`TencentVideo`）  
+**Gate 结论**: ✅ **通过（代码级）** — 首发 **短视频**（`TencentVideo.tencent_upload_video`），不支持图文
+
+| 项 | 结论 |
+|----|------|
+| 登录 | Playwright 扫码，`channels.weixin.qq.com`，与小红书同类流程 |
+| Cookie | `storage_state` JSON，可加密存 DB |
+| 发布 | 仅视频；支持 3:4 封面（`thumbnail_portrait_path`）、短标题（`short_title`） |
+| 定时 | `publish_date` 支持排期 |
+| 风险 | DOM 变更、上传进度等待超时；服务器需 Chromium |
+
+**ai-publish 封装**: `ChannelsPlatformAdapter`（`platform=channels`），注册于 `AdapterFactory`。
+
+**验证命令**:
+
+```bash
+python ai-publish/scripts/e2e_publish.py --platform channels --content-type video --skip-execute
+# 有 Cookie 后去掉 --skip-execute
+sau tencent login --account <name> --headed   # vendor 目录下
+```

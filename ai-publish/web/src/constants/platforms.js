@@ -32,6 +32,16 @@ export const PLATFORMS = [
     ],
   },
   {
+    value: 'channels',
+    label: '视频号',
+    appName: '微信 App',
+    coverRatio: '3:4',
+    videoCoverRatio: '3:4',
+    experimental: true,
+    videoHint: '仅支持短视频（竖屏 MP4 等）；可选 3:4 封面与短标题（6-16字）',
+    contentTypes: [{ value: 'video', label: '短视频' }],
+  },
+  {
     value: 'bilibili',
     label: 'B站',
     appName: '哔哩哔哩 App',

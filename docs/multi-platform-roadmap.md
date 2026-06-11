@@ -17,7 +17,7 @@ MVP 已完成小红书（xhs）图文发布。扩展其他平台遵循同一 Ada
 | 小红书 | xhs | ✅ | `e2e_publish.py --platform xhs` | 已验收 |
 | 抖音 | douyin | ✅ | `e2e_publish.py --platform douyin` | 脚本就绪，需有效 Cookie 实测 |
 | 快手 | kuaishou | ✅ | `e2e_publish.py --platform kuaishou` | 脚本就绪，需有效 Cookie 实测 |
-| 视频号 | channels | 待 spike | — | 未开始 |
+| 视频号 | channels | ✅ | `e2e_publish.py --platform channels` | 脚本就绪，需有效 Cookie 实测 |
 | B站 | bilibili | ✅ | `e2e_publish.py --platform bilibili` | 脚本就绪，需本地 biliup 登录与 Cookie |
 
 > E2E 脚本支持 `--skip-execute` 仅验证 API 链路；`--cookie` 指定 Cookie JSON 路径。

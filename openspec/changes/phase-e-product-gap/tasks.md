@@ -105,7 +105,7 @@
 ### 后端专家 — 新平台（P3）
 
 - [x] E.5.4 Bilibili Adapter + 前端平台常量 + prompt 模板
-- [ ] E.5.5 视频号 Adapter Spike + 最小可用发布（图文或短视频择一）
+- [x] E.5.5 视频号 Adapter Spike + 最小可用发布（图文或短视频择一）
 - [ ] E.5.6 百家号 / TikTok：仅 Spike 报告，不强制本阶段交付
 
 ### 前端专家

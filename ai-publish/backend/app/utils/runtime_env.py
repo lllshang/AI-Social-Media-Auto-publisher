@@ -58,6 +58,7 @@ PLATFORM_APP_NAMES = {
     "douyin": "抖音 App",
     "kuaishou": "快手 App",
     "bilibili": "哔哩哔哩 App",
+    "channels": "微信 App",
 }
 
 

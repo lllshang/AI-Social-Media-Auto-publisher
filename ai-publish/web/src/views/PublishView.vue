@@ -76,8 +76,11 @@
         <el-form-item label="标签">
           <el-input v-model="form.tagsText" placeholder="逗号分隔" />
         </el-form-item>
-        <el-form-item v-if="!isVideo || isXhsVideo" label="封面文案">
-          <el-input v-model="form.cover_text" :placeholder="isXhsVideo ? '用于生成视频封面，可选' : ''" />
+        <el-form-item v-if="!isVideo || needsVideoCover" :label="isChannelsVideo ? '短标题' : '封面文案'">
+          <el-input
+            v-model="form.cover_text"
+            :placeholder="isChannelsVideo ? '视频号短标题 6-16 字，可选' : isXhsVideo ? '用于生成视频封面，可选' : ''"
+          />
         </el-form-item>
         <el-form-item label="评论引导">
           <el-input v-model="form.comment_guide" type="textarea" :rows="2" />
@@ -90,9 +93,9 @@
 
     <!-- Step 2 -->
     <div v-show="step === 2" class="page-card">
-      <template v-if="isXhsVideo">
+      <template v-if="needsVideoCover">
         <p class="muted">
-          小红书视频可设置 {{ videoCoverRatio }} 封面（可选）。未设置时由平台自动截取；也可跳过，稍后上传。
+          {{ platformLabel(form.platform) }}视频可设置 {{ videoCoverRatio }} 封面（可选）。未设置时由平台自动截取；也可跳过，稍后上传。
         </p>
         <el-button type="primary" :loading="generatingImage" @click="generateVideoCover">AI 生成视频封面</el-button>
         <el-button v-if="coverPreview" @click="generateVideoCover">重新生成</el-button>
@@ -195,14 +198,14 @@
             <video :src="videoPreviewUrl" controls style="max-width: 100%; max-height: 280px" />
           </div>
         </el-form-item>
-        <el-form-item v-if="isXhsVideo && form.cover_material_id" label="视频封面">
+        <el-form-item v-if="needsVideoCover && form.cover_material_id" label="视频封面">
           <div class="cover-preview-frame cover-preview-frame--small" :style="coverPreviewFrameStyle">
             <img :src="coverPreview" class="cover-preview-img" alt="视频封面预览" />
           </div>
           <p class="muted">封面素材 #{{ form.cover_material_id }}</p>
         </el-form-item>
       </el-form>
-      <el-button @click="step = isVideo ? (isXhsVideo ? 2 : 1) : 2">上一步</el-button>
+      <el-button @click="step = isVideo ? (needsVideoCover ? 2 : 1) : 2">上一步</el-button>
       <el-button :loading="saving" @click="saveDraft">保存草稿</el-button>
       <el-button type="primary" :disabled="!form.material_ids.length" @click="step = 4">下一步：排期提交</el-button>
     </div>
@@ -225,7 +228,7 @@
             <p><strong>标题：</strong>{{ form.title }}</p>
             <p><strong>账号：</strong>{{ accountLabel }}</p>
             <p><strong>素材：</strong>{{ materialSummary }}</p>
-            <p v-if="isXhsVideo && form.cover_material_id"><strong>视频封面：</strong>#{{ form.cover_material_id }}</p>
+            <p v-if="needsVideoCover && form.cover_material_id"><strong>视频封面：</strong>#{{ form.cover_material_id }}</p>
           </div>
         </el-form-item>
       </el-form>
@@ -302,17 +305,19 @@ const form = reactive({
 })
 
 const isBilibili = computed(() => form.platform === 'bilibili')
+const isChannelsVideo = computed(() => form.platform === 'channels' && isVideo.value)
 const isVideo = computed(() => form.content_type === 'video')
 const isXhsVideo = computed(() => form.platform === 'xhs' && isVideo.value)
+const needsVideoCover = computed(() => isXhsVideo.value || isChannelsVideo.value)
 const videoCoverRatio = computed(() => platformVideoCoverRatio(form.platform))
 const videoCoverStepTitle = computed(() => {
   if (!isVideo.value) return 'AI 封面'
-  return isXhsVideo.value ? '视频封面（可选）' : '封面（可跳过）'
+  return needsVideoCover.value ? '视频封面（可选）' : '封面（可跳过）'
 })
 const currentPlatform = computed(() => PLATFORMS.find((p) => p.value === form.platform))
 const currentContentTypes = computed(() => currentPlatform.value?.contentTypes || [])
 const coverRatio = computed(() => platformCoverRatio(form.platform))
-const activeCoverRatio = computed(() => (isXhsVideo.value ? videoCoverRatio.value : coverRatio.value))
+const activeCoverRatio = computed(() => (needsVideoCover.value ? videoCoverRatio.value : coverRatio.value))
 const coverPreviewFrameStyle = computed(() => {
   const parts = activeCoverRatio.value.split(':').map((n) => Number(n))
   if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
@@ -355,7 +360,7 @@ function normalizeMaterialIds() {
 function resolveMaterialIds() {
   normalizeMaterialIds()
   const ids = [...form.material_ids]
-  if (isXhsVideo.value && form.cover_material_id && !ids.includes(form.cover_material_id)) {
+  if (needsVideoCover.value && form.cover_material_id && !ids.includes(form.cover_material_id)) {
     ids.push(form.cover_material_id)
   }
   return ids
@@ -400,7 +405,9 @@ function inferWizardStep(task) {
     return task.wizard_step
   }
   if (task.material_ids?.length) return 4
-  if (task.platform === 'xhs' && task.content_type === 'video' && task.title && task.content) return 2
+  if (['xhs', 'channels'].includes(task.platform) && task.content_type === 'video' && task.title && task.content) {
+    return 2
+  }
   if (task.content_type === 'video' && task.title && task.content) return 3
   if (task.title && task.content) return 2
   if (task.title || task.topic) return 1
@@ -434,7 +441,7 @@ async function onPlatformChange() {
 }
 
 function goAfterText() {
-  if (isXhsVideo.value) step.value = 2
+  if (needsVideoCover.value) step.value = 2
   else if (isVideo.value) step.value = 3
   else step.value = 2
 }
@@ -532,7 +539,7 @@ async function previewCoverPrompt() {
       kind: 'image',
       platform: form.platform,
       topic: form.topic,
-      ratio: isXhsVideo.value ? videoCoverRatio.value : coverRatio.value,
+      ratio: needsVideoCover.value ? videoCoverRatio.value : coverRatio.value,
       style: form.image_style,
       cover_text: form.cover_text || null,
       brand_color: form.brand_color || null,

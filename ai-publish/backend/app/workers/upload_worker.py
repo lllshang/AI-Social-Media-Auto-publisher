@@ -58,6 +58,7 @@ class UploadWorker:
             content_type=task.content_type,
             material_paths=material_paths,
             thumbnail_path=thumbnail_path,
+            cover_text=task.cover_text,
             publish_time=task.publish_time,
             bilibili_tid=bilibili_tid,
             log_callback=log_callback,

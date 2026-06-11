@@ -93,6 +93,8 @@ class PublishService:
                 raise ValueError("B站仅支持视频发布")
             if bilibili_tid is None:
                 bilibili_tid = self.system_config.get_int("bilibili_default_tid", 21)
+        if platform == "channels" and content_type != "video":
+            raise ValueError("视频号仅支持短视频发布")
         if material_ids:
             self.material_service.validate_material_ids(material_ids, content_type)
         task = PublishTask(
