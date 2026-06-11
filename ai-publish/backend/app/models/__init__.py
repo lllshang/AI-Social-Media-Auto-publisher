@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import JSON, DateTime, Integer, Numeric, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -129,6 +129,16 @@ class PublishTask(Base):
     created_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SensitiveWord(Base):
+    __tablename__ = "sensitive_words"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    word: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    remark: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class ContentTemplate(Base):

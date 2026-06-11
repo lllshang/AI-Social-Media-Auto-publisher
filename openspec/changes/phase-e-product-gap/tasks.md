@@ -163,7 +163,7 @@
 - [ ] D.1 审核管理独立模块 → **E.2 覆盖 UI/API 增强；D.4 本机 Worker 仍归 D**
 - [ ] D.2 敏感词检测
 - [ ] D.3 发布频率与并发限制
-- [ ] D.4 本机发布 Worker（审核通过后本机 Chrome 执行）
+- [ ] D.4 本机发布 Worker（审核通过后本机 Chrome 执行）→ **暂缓**，见 [phase-d-server-risk](../phase-d-server-risk/design.md)
 - [ ] D.5 图片内容审核
 
 ---

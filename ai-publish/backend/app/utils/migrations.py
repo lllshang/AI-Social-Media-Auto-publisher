@@ -62,6 +62,16 @@ def run_migrations() -> None:
             "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
 
+    if not inspector.has_table("sensitive_words"):
+        statements.append(
+            "CREATE TABLE sensitive_words ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "word VARCHAR(128) NOT NULL UNIQUE, "
+            "enabled INTEGER DEFAULT 1, "
+            "remark VARCHAR(255), "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+
     if not inspector.has_table("content_templates"):
         statements.append(
             "CREATE TABLE content_templates ("

@@ -395,6 +395,27 @@ class ContentTemplateResponse(BaseModel):
         return format_utc_datetime(value) or ""
 
 
+class SensitiveWordCreate(BaseModel):
+    word: str
+    remark: str | None = None
+
+
+class SensitiveWordBatchCreate(BaseModel):
+    words: list[str]
+
+
+class SensitiveWordResponse(BaseModel):
+    id: int
+    word: str
+    enabled: bool
+    remark: str | None = None
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+
 class AccountGroupCreate(BaseModel):
     name: str
     remark: str | None = None

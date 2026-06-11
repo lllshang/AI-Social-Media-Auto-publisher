@@ -25,6 +25,18 @@
               style="width: 160px"
               @change="(v) => setIntConfig(row, v)"
             />
+            <el-select
+              v-else-if="isSelectConfig(row.config_key)"
+              v-model="row.config_value"
+              style="width: 180px"
+            >
+              <el-option
+                v-for="opt in selectConfigOptions(row.config_key)"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-select>
             <el-input v-else v-model="row.config_value" />
           </template>
         </el-table-column>
@@ -33,6 +45,29 @@
             <el-button size="small" type="primary" :loading="savingKey === row.config_key" @click="save(row)">
               保存
             </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
+    <div v-if="canManageSettings" class="page-card" style="margin-top: 16px">
+      <div class="section-head">
+        <h3>敏感词管理</h3>
+        <div>
+          <el-button size="small" @click="showWordImport = true">批量导入</el-button>
+          <el-button type="primary" size="small" @click="showWordForm = true">新增敏感词</el-button>
+        </div>
+      </div>
+      <p class="muted" style="margin-bottom: 12px">
+        检测范围：标题、正文、主题、封面文案、评论引导、标签。策略由上方「sensitive_word_*」配置项控制。
+      </p>
+      <el-table :data="sensitiveWords" size="small" v-loading="wordsLoading">
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column prop="word" label="敏感词" min-width="160" />
+        <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button size="small" type="danger" @click="removeWord(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -106,6 +141,30 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="showWordForm" title="新增敏感词" width="420px">
+      <el-form label-width="80px">
+        <el-form-item label="敏感词">
+          <el-input v-model="newWord" placeholder="如：绝对化用语" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="newWordRemark" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showWordForm = false">取消</el-button>
+        <el-button type="primary" :loading="wordSaving" @click="submitWord">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showWordImport" title="批量导入敏感词" width="480px">
+      <p class="muted">每行一个词，或用逗号、中文逗号分隔。</p>
+      <el-input v-model="importWordsText" type="textarea" :rows="8" placeholder="最佳&#10;第一&#10;根治" />
+      <template #footer>
+        <el-button @click="showWordImport = false">取消</el-button>
+        <el-button type="primary" :loading="wordSaving" @click="submitWordImport">导入</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="resetDialogVisible" title="重置密码" width="400px">
       <el-form label-width="90px">
         <el-form-item label="用户">
@@ -132,8 +191,17 @@ import { permissionLabel, roleLabel } from '@/utils/permissions'
 
 const { can } = usePermission()
 const canManageUsers = computed(() => can('users:write'))
+const canManageSettings = computed(() => can('settings:write'))
 
 const loading = ref(false)
+const wordsLoading = ref(false)
+const wordSaving = ref(false)
+const sensitiveWords = ref([])
+const showWordForm = ref(false)
+const showWordImport = ref(false)
+const newWord = ref('')
+const newWordRemark = ref('')
+const importWordsText = ref('')
 const savingKey = ref('')
 const configs = ref([])
 const roles = ref([])
@@ -162,6 +230,9 @@ async function load() {
     syncIntConfigValues()
     roles.value = results[1]
     users.value = canManageUsers.value ? results[2] : []
+    if (canManageSettings.value) {
+      await loadSensitiveWords()
+    }
   } finally {
     loading.value = false
   }
@@ -248,7 +319,14 @@ const BOOL_CONFIG_KEYS = new Set([
   'scheduler_enabled',
   'auto_retry_enabled',
   'material_cleanup_enabled',
+  'sensitive_word_enabled',
 ])
+const SELECT_CONFIG_OPTIONS = {
+  sensitive_word_action: [
+    { label: '拦截 (block)', value: 'block' },
+    { label: '仅记录 (warn)', value: 'warn' },
+  ],
+}
 const INT_CONFIG_KEYS = new Set([
   'max_auto_retries',
   'retry_delay_minutes',
@@ -263,6 +341,73 @@ function isBoolConfig(key) {
 
 function isIntConfig(key) {
   return INT_CONFIG_KEYS.has(key)
+}
+
+function isSelectConfig(key) {
+  return Object.prototype.hasOwnProperty.call(SELECT_CONFIG_OPTIONS, key)
+}
+
+function selectConfigOptions(key) {
+  return SELECT_CONFIG_OPTIONS[key] || []
+}
+
+async function loadSensitiveWords() {
+  wordsLoading.value = true
+  try {
+    sensitiveWords.value = await api.listSensitiveWords({ include_disabled: true })
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    wordsLoading.value = false
+  }
+}
+
+async function submitWord() {
+  if (!newWord.value.trim()) return ElMessage.warning('请填写敏感词')
+  wordSaving.value = true
+  try {
+    await api.createSensitiveWord({ word: newWord.value.trim(), remark: newWordRemark.value || null })
+    ElMessage.success('已添加')
+    showWordForm.value = false
+    newWord.value = ''
+    newWordRemark.value = ''
+    await loadSensitiveWords()
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    wordSaving.value = false
+  }
+}
+
+async function submitWordImport() {
+  const words = importWordsText.value
+    .split(/[\n,，]/)
+    .map((w) => w.trim())
+    .filter(Boolean)
+  if (!words.length) return ElMessage.warning('请粘贴至少一个词')
+  wordSaving.value = true
+  try {
+    const res = await api.batchImportSensitiveWords(words)
+    ElMessage.success(`已导入 ${res.added} 个新词`)
+    showWordImport.value = false
+    importWordsText.value = ''
+    await loadSensitiveWords()
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    wordSaving.value = false
+  }
+}
+
+async function removeWord(row) {
+  try {
+    await ElMessageBox.confirm(`删除敏感词「${row.word}」？`, '确认')
+    await api.deleteSensitiveWord(row.id)
+    ElMessage.success('已删除')
+    await loadSensitiveWords()
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message || '删除失败')
+  }
 }
 
 function intConfigMin(key) {

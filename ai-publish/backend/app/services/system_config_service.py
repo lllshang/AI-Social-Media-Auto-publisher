@@ -78,6 +78,13 @@ class SystemConfigService:
     def material_cleanup_enabled(self) -> bool:
         return self.get_bool("material_cleanup_enabled", False)
 
+    def sensitive_word_enabled(self) -> bool:
+        return self.get_bool("sensitive_word_enabled", True)
+
+    def sensitive_word_action(self) -> str:
+        raw = (self.get_value("sensitive_word_action") or "block").strip().lower()
+        return raw if raw in {"block", "warn"} else "block"
+
 
 def ensure_default_system_configs(db: Session) -> None:
     defaults = [
@@ -91,6 +98,8 @@ def ensure_default_system_configs(db: Session) -> None:
         ("material_cleanup_enabled", "false", "是否启用过期素材自动清理"),
         ("material_retention_days", "90", "未关联任务的素材保留天数"),
         ("bilibili_default_tid", "21", "B站默认分区 tid（21=日常）"),
+        ("sensitive_word_enabled", "true", "是否启用敏感词检测"),
+        ("sensitive_word_action", "block", "敏感词策略：block 拦截 / warn 仅记录"),
     ]
     service = SystemConfigService(db)
     for key, value, remark in defaults:

@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.models import Material, PublishTask, PublishTaskLog, ReviewLog
 from app.services.material_service import MaterialService
 from app.services.platform_account_service import PlatformAccountService
+from app.services.sensitive_word_service import SensitiveWordService
 from app.services.system_config_service import SystemConfigService
 from app.workers.upload_worker import UploadWorker
 
@@ -32,6 +33,23 @@ class PublishService:
         self.material_service = MaterialService(db)
         self.worker = UploadWorker(db)
         self.system_config = SystemConfigService(db)
+        self.sensitive_words = SensitiveWordService(db)
+
+    def _log_sensitive_word_hit(self, task_id: int, result) -> None:
+        self.add_log(
+            task_id,
+            "sensitive_word",
+            "failed" if self.sensitive_words.should_block() else "warn",
+            result.message(),
+        )
+
+    def _enforce_sensitive_words(self, task: PublishTask) -> None:
+        self.sensitive_words.enforce_task(
+            task,
+            log_callback=lambda result: self._log_sensitive_word_hit(task.id, result)
+            if task.id
+            else None,
+        )
 
     def get_task(self, task_id: int) -> PublishTask | None:
         return self.db.query(PublishTask).filter(PublishTask.id == task_id).first()
@@ -97,6 +115,15 @@ class PublishService:
             raise ValueError("视频号仅支持短视频发布")
         if material_ids:
             self.material_service.validate_material_ids(material_ids, content_type)
+        precheck = PublishTask(
+            title=title,
+            content=content,
+            comment_guide=comment_guide,
+            topic=topic,
+            cover_text=cover_text,
+            tags=tags or [],
+        )
+        self.sensitive_words.enforce_task(precheck)
         task = PublishTask(
             title=title,
             content=content,
@@ -171,6 +198,7 @@ class PublishService:
         if bilibili_tid is not None:
             task.bilibili_tid = bilibili_tid
 
+        self._enforce_sensitive_words(task)
         self.db.commit()
         self.db.refresh(task)
         return task
@@ -181,6 +209,7 @@ class PublishService:
             raise ValueError("任务不存在")
         if task.status not in {"draft", "failed"}:
             raise ValueError("当前状态不可提交")
+        self._enforce_sensitive_words(task)
         next_status = "pending_review" if self.system_config.require_content_review() else "pending"
         task.status = next_status
         task.error_message = None
@@ -193,6 +222,7 @@ class PublishService:
     def assert_can_execute(self, task: PublishTask) -> None:
         if task.status != "pending":
             raise ValueError("仅 pending 状态任务可执行")
+        self._enforce_sensitive_words(task)
         if self.system_config.require_content_review():
             approved = (
                 self.db.query(ReviewLog.id)
