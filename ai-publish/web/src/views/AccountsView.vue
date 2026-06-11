@@ -238,7 +238,11 @@ async function pollLoginSession(sessionId) {
     qrDataUrl.value = res.qrcode_data_url
   }
   if (res.status === 'waiting_scan' && res.qrcode_data_url) {
-    qrMessage.value = `请使用${platformAppName(loginPlatform.value)}扫码；手机确认后请稍候，正在同步登录状态…`
+    const waited = pollCount.value
+    qrMessage.value =
+      waited >= 15
+        ? `手机已确认？正在同步登录状态（已等待 ${waited} 秒，最长约 5 分钟）…`
+        : `请使用${platformAppName(loginPlatform.value)}扫码；手机确认后请稍候，正在同步登录状态…`
   } else {
     qrMessage.value = res.message || `请使用${platformAppName(loginPlatform.value)}扫码`
   }

@@ -117,29 +117,52 @@ def format_str_for_short_title(origin_title: str) -> str:
     return formatted_string
 
 
+async def _is_tencent_login_ui_visible(page: Page) -> bool:
+    frame = page.frame_locator('[src*="login-for-iframe"]')
+    login_markers = [
+        frame.locator("img.qrcode").first,
+        frame.locator('span:has-text("微信扫码登录")').first,
+        frame.get_by_text("扫码登录", exact=False).first,
+        page.locator("div.login-qrcode-wrap").first,
+        page.locator("div.qrcode-wrap").first,
+        page.locator("img.qrcode").first,
+        page.get_by_text("扫码登录", exact=True).first,
+    ]
+    for marker in login_markers:
+        try:
+            if await marker.count() and await marker.is_visible():
+                return True
+        except Exception:
+            continue
+    return page.url.endswith("/login.html") or "/login" in page.url
+
+
+async def _probe_tencent_logged_in(page: Page) -> bool:
+    """手机确认后页面常仍停在 login.html，需主动访问上传页探测会话。"""
+    try:
+        await page.goto(TENCENT_UPLOAD_URL, wait_until="domcontentloaded", timeout=20000)
+        await asyncio.sleep(1)
+        if page.url.startswith(TENCENT_UPLOAD_URL) or page.url.startswith(TENCENT_MANAGE_URL):
+            return not await _is_tencent_login_ui_visible(page)
+        return False
+    except Exception as exc:
+        tencent_logger.debug(_msg("🧍", f"探测视频号登录状态失败: {exc}"))
+        return False
+
+
 async def cookie_auth(account_file):
     account_file = _resolve_account_file(account_file)
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(**_build_launch_kwargs(headless=True))
         try:
-            context = await browser.new_context(storage_state=account_file)
+            context = await browser.new_context(**_build_login_context_kwargs(), storage_state=account_file)
             context = await set_init_script(context)
             page = await context.new_page()
-            await page.goto(TENCENT_UPLOAD_URL)
-            await page.wait_for_url(TENCENT_UPLOAD_URL, timeout=5000)
-
-            login_markers = [
-                page.get_by_text("扫码登录", exact=True).first,
-                page.get_by_text("发表视频", exact=True).first,
-                page.get_by_role("button", name="发表").first,
-            ]
-
-            if await login_markers[0].count():
-                tencent_logger.info(_msg("🥹", "cookie 已失效，得重新登录一下"))
-                return False
-
-            tencent_logger.success(_msg("🥳", "cookie 有效"))
-            return True
+            if await _probe_tencent_logged_in(page):
+                tencent_logger.success(_msg("🥳", "cookie 有效"))
+                return True
+            tencent_logger.info(_msg("🥹", "cookie 已失效，得重新登录一下"))
+            return False
         except Exception as exc:
             tencent_logger.warning(_msg("😵", f"cookie 校验时出错，按失效处理: {exc}"))
             return False
@@ -222,23 +245,13 @@ async def _is_tencent_login_completed(page: Page) -> bool:
         except Exception:
             continue
 
-    if not (page.url.startswith(TENCENT_UPLOAD_URL) or page.url.startswith(TENCENT_MANAGE_URL)):
-        return False
+    if page.url.startswith(TENCENT_UPLOAD_URL) or page.url.startswith(TENCENT_MANAGE_URL):
+        return not await _is_tencent_login_ui_visible(page)
 
-    login_markers = [
-        page.locator("div.login-qrcode-wrap").first,
-        page.locator("div.qrcode-wrap").first,
-        page.locator("img.qrcode").first,
-        page.locator('span:has-text("微信扫码登录 视频号助手")').first,
-    ]
-    for marker in login_markers:
-        try:
-            if await marker.count() and await marker.is_visible():
-                return False
-        except Exception:
-            continue
+    if "channels.weixin.qq.com/platform/" in page.url and "login" not in page.url.lower():
+        return not await _is_tencent_login_ui_visible(page)
 
-    return True
+    return False
 
 
 async def _is_tencent_qrcode_expired(page: Page) -> bool:
@@ -259,17 +272,23 @@ async def _is_tencent_qrcode_expired(page: Page) -> bool:
 
 
 async def _is_tencent_qrcode_scanned(page: Page) -> bool:
+    frame = page.frame_locator('[src*="login-for-iframe"]')
     scanned_tips = [
         'div.qr-tip div:has-text("已扫码")',
         'div.qr-tip div:has-text("需在手机上进行确认")',
+        'div.qr-tip div:has-text("请在手机上确认")',
+        'div:has-text("已扫码")',
+        'div:has-text("需在手机上进行确认")',
     ]
-    for selector in scanned_tips:
-        tip = page.locator(selector).first
-        try:
-            if await tip.count() and await tip.is_visible():
-                return True
-        except Exception:
-            continue
+    scopes = [frame, page]
+    for scope in scopes:
+        for selector in scanned_tips:
+            tip = scope.locator(selector).first
+            try:
+                if await tip.count() and await tip.is_visible():
+                    return True
+            except Exception:
+                continue
     return False
 
 
@@ -326,10 +345,16 @@ async def _wait_for_tencent_login(
 ) -> dict:
     qrcode_path = Path(qrcode_info["image_path"])
     scanned_logged = False
-    for _ in range(max_checks):
+    for attempt in range(max_checks):
         if await _is_tencent_login_completed(page):
             tencent_logger.info(_msg("🥳", f"扫码成功，已经跳转到登录后页面: {page.url}"))
             return _build_login_result(True, "success", "视频号扫码登录成功", account_file, qrcode_info, page.url)
+
+        # 手机确认后页面常仍停在 login.html，需主动探测上传页
+        if attempt % 2 == 0 or scanned_logged:
+            if await _probe_tencent_logged_in(page):
+                tencent_logger.info(_msg("🥳", f"扫码成功（上传页探测）: {page.url}"))
+                return _build_login_result(True, "success", "视频号扫码登录成功", account_file, qrcode_info, page.url)
 
         if not scanned_logged and await _is_tencent_qrcode_scanned(page):
             tencent_logger.info(_msg("📱", "已经扫码啦，还差手机端确认一下"))
