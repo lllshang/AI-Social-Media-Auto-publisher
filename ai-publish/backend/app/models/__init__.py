@@ -86,6 +86,8 @@ class Material(Base):
     name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
+    moderation_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    moderation_detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ai_record_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -351,8 +351,18 @@ const pageTitle = computed(() => {
   return `发布向导（${platformLabel(form.platform)}${contentTypeLabel.value}）`
 })
 
+function isMaterialSelectable(m) {
+  if (m.type === 'image' && ['rejected', 'pending'].includes(m.moderation_status)) {
+    return false
+  }
+  return true
+}
+
 const selectableMaterials = computed(() =>
-  materials.value.filter((m) => (isVideo.value ? m.type === 'video' : m.type === 'image'))
+  materials.value.filter((m) => {
+    if (!isMaterialSelectable(m)) return false
+    return isVideo.value ? m.type === 'video' : m.type === 'image'
+  })
 )
 
 const accountLabel = computed(() => {

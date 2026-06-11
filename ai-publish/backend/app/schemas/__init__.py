@@ -121,6 +121,8 @@ class MaterialResponse(BaseModel):
     thumbnail_url: str | None = None
     text_preview: str | None = None
     text_content: str | None = None
+    moderation_status: str | None = None
+    moderation_detail: str | None = None
     created_at: datetime
 
     @field_serializer("created_at")

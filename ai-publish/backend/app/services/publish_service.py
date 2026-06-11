@@ -212,6 +212,8 @@ class PublishService:
         if task.status not in {"draft", "failed"}:
             raise ValueError("当前状态不可提交")
         self._enforce_sensitive_words(task)
+        if task.material_ids:
+            self.material_service.validate_material_ids(task.material_ids, task.content_type)
         next_status = "pending_review" if self.system_config.require_content_review() else "pending"
         task.status = next_status
         task.error_message = None
@@ -243,6 +245,11 @@ class PublishService:
         if not limit_result.allowed:
             self._log_rate_limit(task.id, limit_result.message)
             return limit_result.message
+        if task.material_ids:
+            try:
+                self.material_service.validate_material_ids(task.material_ids, task.content_type)
+            except ValueError as exc:
+                return str(exc)
         return None
 
     def assert_can_execute(self, task: PublishTask) -> None:

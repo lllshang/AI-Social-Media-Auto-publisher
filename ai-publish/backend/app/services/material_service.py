@@ -8,6 +8,7 @@ from app.adapters.base import ImageGenerateInput, TextGenerateInput
 from app.adapters.factory import get_adapter_factory
 from app.models import AiGenerationRecord, Material
 from app.schemas import MaterialResponse
+from app.services.image_moderation_service import ImageModerationService
 from app.utils.thumbnail import generate_image_thumbnail
 
 
@@ -38,6 +39,8 @@ class MaterialService:
             thumbnail_url=thumbnail_url,
             text_preview=text_preview,
             text_content=text_content,
+            moderation_status=material.moderation_status,
+            moderation_detail=material.moderation_detail,
             created_at=material.created_at,
         )
 
@@ -125,6 +128,10 @@ class MaterialService:
         self.db.add(material)
         self.db.commit()
         self.db.refresh(material)
+        if material.type == "image":
+            await ImageModerationService(self.db).apply_to_material(material)
+            self.db.commit()
+            self.db.refresh(material)
         return material
 
     def save_text_draft(
@@ -205,6 +212,7 @@ class MaterialService:
             materials.append(material)
         if content_type == "video" and not any(m.type == "video" for m in materials):
             raise ValueError("视频任务需要至少一个视频素材")
+        ImageModerationService(self.db).assert_images_allowed(materials)
         return materials
 
 
@@ -302,6 +310,12 @@ class AiContentService:
             ai_record_id=record.id,
             user_id=user_id,
         )
+        moderation = ImageModerationService(self.db)
+        for material in materials:
+            await moderation.apply_to_material(material)
+        self.db.commit()
+        for material in materials:
+            self.db.refresh(material)
         return {
             "record_id": record.id,
             "materials": [{"id": m.id, "url": m.url, "file_path": m.file_path} for m in materials],

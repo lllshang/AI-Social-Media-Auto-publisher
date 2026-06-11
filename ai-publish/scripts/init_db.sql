@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS materials (
     name VARCHAR(128) NULL,
     category VARCHAR(64) NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
+    moderation_status VARCHAR(20) NULL,
+    moderation_detail TEXT NULL,
     ai_record_id BIGINT NULL,
     created_by BIGINT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -86,21 +86,21 @@ D.2 敏感词  →  D.3 限频/并发  →  D.O 可观测  →  D.5 图片审核
 
 ### 后端专家
 
-- [ ] D.5.1 `materials` 表增加 `moderation_status`、`moderation_detail` + migration
-- [ ] D.5.2 `ImageModerationProvider` 抽象 + `stub` 实现
-- [ ] D.5.3 配置：`image_moderation_enabled`、云 API Key（可选）
-- [ ] D.5.4 接入 `upload_material`、文生图入库、`submit_task` 前校验
+- [x] D.5.1 `materials` 表增加 `moderation_status`、`moderation_detail` + migration
+- [x] D.5.2 `ImageModerationProvider` 抽象 + `stub` 实现
+- [x] D.5.3 配置：`image_moderation_enabled`、云 API Key（可选）
+- [x] D.5.4 接入 `upload_material`、文生图入库、`submit_task` 前校验
 - [ ] D.5.5 （可选）腾讯云/阿里云内容安全 Adapter 其一
 
 ### 前端专家
 
-- [ ] D.5.6 系统设置 — 图片审核开关与 Provider 配置
-- [ ] D.5.7 素材库展示 `moderation_status`；未通过素材不可选入发布任务
+- [x] D.5.6 系统设置 — 图片审核开关与 Provider 配置
+- [x] D.5.7 素材库展示 `moderation_status`；未通过素材不可选入发布任务
 
 ### 文档与验证
 
-- [ ] D.5.8 `daily-usage.md` 图片审核说明
-- [ ] D.5.9 验证：开启后违规图标记 rejected；关闭后与现网一致
+- [x] D.5.8 `daily-usage.md` 图片审核说明
+- [x] D.5.9 验证：开启后违规图标记 rejected；关闭后与现网一致
 
 ---
 

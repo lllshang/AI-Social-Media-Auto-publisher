@@ -269,6 +269,19 @@ flowchart LR
 
 试运行记录模板见 [phase-d-trial-guide.md](./phase-d-trial-guide.md)。
 
+### 图片内容审核（阶段 D.5）
+
+默认 **关闭**（`image_moderation_enabled=false`），行为与升级前一致。
+
+开启后：
+
+| 配置项 | 说明 |
+|--------|------|
+| `image_moderation_enabled` | 上传/文生图入库后执行审核 |
+| `image_moderation_provider` | 当前仅 `stub`（开发环境默认通过）；后续可接云内容安全 API |
+
+图片素材 `moderation_status`：`passed` / `rejected` / `pending` / `skipped`。未通过或审核中的图片**不可**绑定到待发布任务；素材库与发布向导会过滤。
+
 ---
 
 **验收步骤（开启审核）：**

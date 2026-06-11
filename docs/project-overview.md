@@ -169,7 +169,7 @@ backend/app/
 | B 后台补全 P1 | ✅ 完成 | 工作台、账号分组、日志中心、提示词 API |
 | C 基础设施 P2 | ✅ 完成 | Redis 队列、RBAC、系统配置、COS/OSS、Nginx |
 | **E 产品缺口补齐** | ✅ 完成 | E.1～E.7 全部交付（用户/审核/文生图/运维重试/多平台/B站视频号/监控/内容模板）；**不含 D 风控** |
-| D 风控（服务器端先行） | 🔄 进行中 | D.2/D.3/D.O ✅；D.5 图片审核待做；**D.4 暂缓**（见 [phase-d-trial-guide](./phase-d-trial-guide.md)） |
+| D 风控（服务器端先行） | ✅ 完成（D.4 暂缓） | D.2/D.3/D.O/D.5 已交付；云审 API 与 **D.4 本机 Worker** 按需后续（见 [phase-d-trial-guide](./phase-d-trial-guide.md)） |
 
 ---
 

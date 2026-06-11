@@ -100,6 +100,13 @@ class SystemConfigService:
     def rate_limit_include_retry(self) -> bool:
         return self.get_bool("rate_limit_include_retry", True)
 
+    def image_moderation_enabled(self) -> bool:
+        return self.get_bool("image_moderation_enabled", False)
+
+    def image_moderation_provider(self) -> str:
+        raw = (self.get_value("image_moderation_provider") or "stub").strip().lower()
+        return raw if raw in {"stub"} else "stub"
+
 
 def ensure_default_system_configs(db: Session) -> None:
     defaults = [
@@ -120,6 +127,8 @@ def ensure_default_system_configs(db: Session) -> None:
         ("rate_limit_daily_per_account", "10", "单账号每日成功发布上限"),
         ("rate_limit_max_concurrent", "1", "全局同时执行中的发布任务数"),
         ("rate_limit_include_retry", "true", "自动重试是否受日上限约束"),
+        ("image_moderation_enabled", "false", "是否启用图片内容审核"),
+        ("image_moderation_provider", "stub", "图片审核 Provider：stub（默认通过）"),
     ]
     service = SystemConfigService(db)
     for key, value, remark in defaults:

@@ -322,12 +322,14 @@ const BOOL_CONFIG_KEYS = new Set([
   'sensitive_word_enabled',
   'rate_limit_enabled',
   'rate_limit_include_retry',
+  'image_moderation_enabled',
 ])
 const SELECT_CONFIG_OPTIONS = {
   sensitive_word_action: [
     { label: '拦截 (block)', value: 'block' },
     { label: '仅记录 (warn)', value: 'warn' },
   ],
+  image_moderation_provider: [{ label: 'Stub（默认通过）', value: 'stub' }],
 }
 const INT_CONFIG_KEYS = new Set([
   'max_auto_retries',

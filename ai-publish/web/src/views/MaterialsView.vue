@@ -41,6 +41,14 @@
           <template #default="{ row }">{{ typeLabel(row.type) }}</template>
         </el-table-column>
         <el-table-column prop="source" label="来源" width="100" />
+        <el-table-column label="图片审核" width="100">
+          <template #default="{ row }">
+            <el-tag v-if="row.type === 'image'" size="small" :type="moderationTagType(row.moderation_status)">
+              {{ moderationLabel(row.moderation_status) }}
+            </el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="预览" width="120">
           <template #default="{ row }">
             <el-image
@@ -182,6 +190,24 @@ const textPreviewLoading = ref(false)
 
 function typeLabel(type) {
   return { image: '图片', video: '视频', text: '文案' }[type] || type
+}
+
+function moderationLabel(status) {
+  return (
+    {
+      passed: '通过',
+      rejected: '未通过',
+      pending: '审核中',
+      skipped: '未启用',
+    }[status] || '—'
+  )
+}
+
+function moderationTagType(status) {
+  if (status === 'passed') return 'success'
+  if (status === 'rejected') return 'danger'
+  if (status === 'pending') return 'warning'
+  return 'info'
 }
 
 async function previewText(row) {

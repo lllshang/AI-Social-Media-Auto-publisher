@@ -14,6 +14,10 @@ def run_migrations() -> None:
         statements.append("ALTER TABLE materials ADD COLUMN name VARCHAR(128)")
     if "category" not in columns:
         statements.append("ALTER TABLE materials ADD COLUMN category VARCHAR(64)")
+    if "moderation_status" not in columns:
+        statements.append("ALTER TABLE materials ADD COLUMN moderation_status VARCHAR(20)")
+    if "moderation_detail" not in columns:
+        statements.append("ALTER TABLE materials ADD COLUMN moderation_detail TEXT")
 
     if inspector.has_table("publish_tasks"):
         task_columns = {col["name"] for col in inspector.get_columns("publish_tasks")}
