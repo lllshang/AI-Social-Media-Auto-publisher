@@ -915,7 +915,86 @@ Docker 部署可将路径改为卷内实际挂载点，并结合云监控告警�
 
 ---
 
-## 11. 生产上线检查清单
+## 11. 正式 HTTPS（Let's Encrypt）
+
+自签证书适用于内网/开发；**公网域名**建议改用 Let's Encrypt。
+
+### 11.1 前置条件
+
+- 域名 A 记录已指向服务器公网 IP
+- 安全组/防火墙放行 **80**、**443**
+- Nginx 容器已运行（`docker compose up -d nginx`）
+
+### 11.2 使用 Certbot（宿主机申请，挂载到 Nginx）
+
+```bash
+# Ubuntu 示例
+sudo apt install -y certbot
+
+sudo certbot certonly --standalone -d your.domain.com \
+  --pre-hook "docker compose -f /opt/ai-publish/docker-compose.yml stop nginx" \
+  --post-hook "docker compose -f /opt/ai-publish/docker-compose.yml start nginx"
+
+# 证书路径（默认）
+# /etc/letsencrypt/live/your.domain.com/fullchain.pem
+# /etc/letsencrypt/live/your.domain.com/privkey.pem
+```
+
+将证书挂载到 `ai-publish/docker/nginx/certs/`（或修改 `nginx.conf` 的 `ssl_certificate` 路径指向 `/etc/letsencrypt/...` 只读挂载）。
+
+### 11.3 更新 deploy.env
+
+```bash
+PUBLIC_HOST=your.domain.com
+USE_HTTPS=true
+NGINX_HTTPS_PORT=443
+```
+
+修改 `docker/nginx/nginx.conf` 中 `server_name` 与证书文件名后：
+
+```bash
+docker compose up -d --force-recreate nginx api
+```
+
+### 11.4 自动续期
+
+```bash
+# crontab -e
+0 3 1 * * certbot renew --quiet && docker compose -f /opt/ai-publish/docker-compose.yml restart nginx
+```
+
+---
+
+## 12. Docker 日志轮转与磁盘告警
+
+### 12.1 日志轮转（json-file driver）
+
+在 `docker-compose.yml` 各服务下可增加（示例）：
+
+```yaml
+logging:
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+```
+
+适用于 `api`、`worker`、`nginx`，避免容器日志撑满磁盘。
+
+### 12.2 磁盘与队列监控
+
+| 检查项 | 命令/端点 |
+|--------|-----------|
+| 健康检查 | `GET /health` — 含 `database`、`redis`、`queue_depth` |
+| Prometheus | `GET /metrics`（`METRICS_ENABLED=true` 时） |
+| 素材目录 | `du -sh /opt/ai-publish/data/materials` 或 Docker 卷 |
+| 队列积压 | `/health` 中 `queue_depth` > 10 持续 5 分钟需告警 |
+
+云监控建议：磁盘使用率 > 80% 告警；可选 Grafana + Prometheus 抓取 `/metrics`。
+
+---
+
+## 13. 生产上线检查清单
 
 - [ ] 修改 `SECRET_KEY`、`ADMIN_PASSWORD`、`COOKIE_ENCRYPTION_KEY`
 - [ ] 配置 `scripts/deploy.env` 中 `PUBLIC_HOST`（IP 或域名）
@@ -930,7 +1009,7 @@ Docker 部署可将路径改为卷内实际挂载点，并结合云监控告警�
 
 ---
 
-## 12. 快速命令索引
+## 14. 快速命令索引
 
 | 目标 | Mac | Windows | Linux / 腾讯云 |
 |------|-----|---------|----------------|

@@ -3,7 +3,9 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Response
+from fastapi.responses import PlainTextResponse
+from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
@@ -22,7 +24,7 @@ from app.api.system import router as system_router
 from app.api.system_configs import router as system_configs_router
 from app.api.users import router as users_router
 from app.config import BACKEND_DIR, get_settings
-from app.database import SessionLocal, engine
+from app.database import SessionLocal, engine, get_db
 from app.models import Base
 from app.services.auth_service import ensure_admin_user
 from app.services.system_config_service import ensure_default_system_configs
@@ -121,5 +123,17 @@ elif admin_dir.exists():
 
 
 @app.get("/health")
-def health():
-    return {"status": "ok", "app": settings.app_name}
+def health(db: Session = Depends(get_db)):
+    from app.services.health_service import HealthService
+
+    return HealthService().check(db)
+
+
+@app.get("/metrics")
+def metrics(db: Session = Depends(get_db)):
+    from app.services.metrics_service import MetricsService
+
+    if not settings.metrics_enabled:
+        return Response(status_code=404)
+    body = MetricsService(db).prometheus_text()
+    return PlainTextResponse(body, media_type="text/plain; version=0.0.4; charset=utf-8")

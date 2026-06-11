@@ -18,6 +18,19 @@
       <el-header class="header">
         <span class="muted">当前用户：{{ userDisplayLabel(auth.username, auth.roleName || 'operator') }}</span>
         <div class="header-actions">
+          <el-popover v-if="alerts.length" placement="bottom-end" width="320" trigger="click">
+            <template #reference>
+              <el-badge :value="alerts.length" class="notify-badge">
+                <el-button circle :icon="Bell" />
+              </el-badge>
+            </template>
+            <div class="notify-list">
+              <div v-for="item in alerts" :key="item.id" class="notify-item" @click="goAlert(item)">
+                <el-tag size="small" :type="item.level === 'error' ? 'danger' : 'warning'">提醒</el-tag>
+                <span>{{ item.message }}</span>
+              </div>
+            </div>
+          </el-popover>
           <el-button link type="primary" @click="openChangePassword">修改密码</el-button>
           <el-button link type="primary" @click="logout">退出</el-button>
         </div>
@@ -31,9 +44,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Bell } from '@element-plus/icons-vue'
 import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue'
+import { api } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { can as canPerm, canReview, userDisplayLabel } from '@/utils/permissions'
 
@@ -41,6 +56,23 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const changePasswordRef = ref(null)
+const alerts = ref([])
+
+async function loadAlerts() {
+  if (!canPerm(auth.permissions, 'dashboard:read')) return
+  try {
+    const summary = await api.getDashboardSummary()
+    alerts.value = summary.alerts || []
+  } catch {
+    alerts.value = []
+  }
+}
+
+function goAlert(item) {
+  if (item.link) router.push(item.link)
+}
+
+onMounted(loadAlerts)
 
 function openChangePassword() {
   changePasswordRef.value?.open()
@@ -83,5 +115,21 @@ function logout() {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.notify-badge {
+  margin-right: 4px;
+}
+.notify-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.notify-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
 }
 </style>

@@ -2,6 +2,20 @@
   <div v-loading="loading">
     <h2 class="page-title">工作台</h2>
 
+    <el-alert
+      v-for="alert in summary?.alerts || []"
+      :key="alert.id"
+      :title="alert.message"
+      :type="alert.level === 'error' ? 'error' : 'warning'"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px"
+    >
+      <template #default>
+        <el-button link type="primary" @click="$router.push(alert.link)">去处理</el-button>
+      </template>
+    </el-alert>
+
     <el-row :gutter="16">
       <el-col :span="4" v-for="item in overviewCards" :key="item.label">
         <div class="page-card stat">

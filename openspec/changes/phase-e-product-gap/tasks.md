@@ -106,7 +106,7 @@
 
 - [x] E.5.4 Bilibili Adapter + 前端平台常量 + prompt 模板
 - [x] E.5.5 视频号 Adapter Spike + 最小可用发布（图文或短视频择一）
-- [ ] E.5.6 百家号 / TikTok：仅 Spike 报告，不强制本阶段交付
+- [x] E.5.6 百家号 / TikTok：仅 Spike 报告，不强制本阶段交付
 
 ### 前端专家
 
@@ -115,7 +115,7 @@
 ### 文档与验证
 
 - [x] E.5.8 更新 `multi-platform-roadmap.md` 验收状态表
-- [ ] E.5.9 每平台至少 1 条成功发布记录（测试环境截图或日志）
+- [x] E.5.9 每平台至少 1 条成功发布记录（测试环境截图或日志）
 
 ---
 
@@ -123,19 +123,19 @@
 
 ### 后端专家
 
-- [ ] E.6.1 健康检查增强：`/health` 含 DB、Redis、队列积压长度
-- [ ] E.6.2 可选 Prometheus metrics 端点（任务成功/失败计数、队列深度）
-- [ ] E.6.3 账号 `expired` 状态变更时写入 `operation_logs` 或站内通知表
+- [x] E.6.1 健康检查增强：`/health` 含 DB、Redis、队列积压长度
+- [x] E.6.2 可选 Prometheus metrics 端点（任务成功/失败计数、队列深度）
+- [x] E.6.3 账号 `expired` 状态变更时写入 `operation_logs` 或站内通知表
 
 ### 前端专家
 
-- [ ] E.6.4 工作台「账号已过期」醒目提醒条 + 跳转账号页
-- [ ] E.6.5 可选：简单站内通知铃铛（过期账号、失败任务超 N 条）
+- [x] E.6.4 工作台「账号已过期」醒目提醒条 + 跳转账号页
+- [x] E.6.5 可选：简单站内通知铃铛（过期账号、失败任务超 N 条）
 
 ### 运维 / 文档
 
-- [ ] E.6.6 `deployment.md`：Let's Encrypt / 正式 HTTPS 证书替换自签步骤
-- [ ] E.6.7 Docker Compose 示例：日志轮转、磁盘告警建议（Grafana 可选）
+- [x] E.6.6 `deployment.md`：Let's Encrypt / 正式 HTTPS 证书替换自签步骤
+- [x] E.6.7 Docker Compose 示例：日志轮转、磁盘告警建议（Grafana 可选）
 
 ---
 

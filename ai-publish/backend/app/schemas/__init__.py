@@ -302,7 +302,15 @@ class DashboardAiStats(BaseModel):
     by_provider: list[DashboardAiProviderStat]
 
 
+class DashboardAlert(BaseModel):
+    id: str
+    level: str
+    message: str
+    link: str
+
+
 class DashboardSummaryResponse(BaseModel):
+    alerts: list[DashboardAlert] = []
     overview: DashboardOverview
     task_counts: dict[str, int]
     account_health: DashboardAccountHealth

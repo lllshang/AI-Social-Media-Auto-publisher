@@ -7,6 +7,7 @@ from app.adapters.base import LoginResult
 from app.adapters.factory import get_adapter_factory
 from app.config import get_settings
 from app.models import AccountCookie, PlatformAccount
+from app.services.log_service import LogService
 from app.utils.crypto import decrypt_text, encrypt_text
 
 
@@ -124,23 +125,49 @@ class PlatformAccountService:
             self.save_cookie(account, cookie_plain)
         return result
 
-    async def check_cookie(self, account_id: int) -> dict:
+    async def check_cookie(
+        self,
+        account_id: int,
+        *,
+        user_id: int | None = None,
+        ip: str | None = None,
+    ) -> dict:
         account = self.get_account(account_id)
         if not account:
             raise ValueError("账号不存在")
+        prev_status = account.status
         cookie_file = self.sync_cookie_file(account)
         if not Path(cookie_file).exists():
             account.status = "expired"
+            self._log_account_expired(account, prev_status, user_id, ip)
             self.db.commit()
             return {"valid": False, "status": account.status}
         adapter = self.factory.get_platform_adapter(account.platform)
         valid = await adapter.check_cookie_valid(cookie_file)
         account.status = "active" if valid else "expired"
+        if not valid:
+            self._log_account_expired(account, prev_status, user_id, ip)
         if valid:
             cookie_plain = Path(cookie_file).read_text(encoding="utf-8")
             self.save_cookie(account, cookie_plain)
         self.db.commit()
         return {"valid": valid, "status": account.status}
+
+    def _log_account_expired(
+        self,
+        account: PlatformAccount,
+        prev_status: str,
+        user_id: int | None,
+        ip: str | None,
+    ) -> None:
+        if prev_status != "expired":
+            LogService(self.db).add_operation(
+                "platform_account.expired",
+                user_id,
+                "platform_account",
+                account.id,
+                ip=ip,
+            )
 
     def delete_account(self, account_id: int) -> None:
         from app.models import PublishTask

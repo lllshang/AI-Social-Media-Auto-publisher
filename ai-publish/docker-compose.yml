@@ -32,6 +32,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
     env_file:
       - .env
     environment:
@@ -69,6 +74,11 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
     command: ["python", "-m", "app.workers.redis_consumer"]
     env_file:
       - .env
@@ -100,6 +110,11 @@ services:
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
     ports:
       - "${NGINX_HTTP_PORT:-8080}:80"
       - "${NGINX_HTTPS_PORT:-8443}:443"

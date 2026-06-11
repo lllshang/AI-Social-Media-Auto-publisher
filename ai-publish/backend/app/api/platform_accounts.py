@@ -286,12 +286,17 @@ async def login_account(
 @router.post("/{account_id}/check-cookie", response_model=CookieCheckResponse)
 async def check_cookie(
     account_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
+    current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = PlatformAccountService(db)
     try:
-        result = await service.check_cookie(account_id)
+        result = await service.check_cookie(
+            account_id,
+            user_id=current_user.id,
+            ip=get_client_ip(request),
+        )
         return CookieCheckResponse(**result)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -265,6 +265,14 @@ flowchart LR
 - 登录：平台账号页 **扫码登录**（微信 App 扫视频号创作者二维码）
 - E2E：`python ai-publish/scripts/e2e_publish.py --platform channels --skip-execute`
 
+### 运维监控（阶段 E.6）
+
+- **健康检查**：`GET /health` 返回数据库、Redis、队列 `queue_depth`
+- **指标**：`GET /metrics`（Prometheus 文本格式，任务各状态计数 + 队列深度）
+- **工作台**：过期账号、失败任务过多时顶部告警条；顶栏铃铛同步提醒
+- **账号过期**：校验 Cookie 失效时写入操作日志 `platform_account.expired`
+- 验收记录模板：[platform-publish-verification.md](./platform-publish-verification.md)
+
 ---
 
 ## 7. 简易 HTML 管理页（旧）

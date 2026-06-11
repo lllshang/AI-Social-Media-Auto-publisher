@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     require_content_review: bool = False
     scheduler_enabled: bool = True
     scheduler_poll_interval_seconds: int = 30
+    metrics_enabled: bool = True
+    dashboard_failed_task_alert_threshold: int = 3
 
     dashscope_api_key: str = ""
     openai_api_key: str = ""

@@ -31,6 +31,14 @@ class RedisTaskQueue:
             logger.warning("Redis 不可用: {}", exc)
             return False
 
+    def queue_depth(self) -> int:
+        if not self.settings.task_queue_enabled:
+            return 0
+        try:
+            return int(self._get_client().llen(QUEUE_KEY))
+        except Exception:
+            return -1
+
     def enqueue_execute(self, task_id: int) -> None:
         if not self.settings.task_queue_enabled:
             self._run_inline(task_id)

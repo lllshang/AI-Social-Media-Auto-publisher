@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.models import AiGenerationRecord, Material, PlatformAccount, PublishTask
 
 
@@ -83,7 +84,31 @@ class DashboardService:
             or 0
         )
 
+        settings = get_settings()
+        alerts: list[dict] = []
+        expired_count = account_counts.get("expired", 0)
+        if expired_count:
+            alerts.append(
+                {
+                    "id": "expired_accounts",
+                    "level": "warning",
+                    "message": f"{expired_count} 个平台账号 Cookie 已过期，请尽快重新登录",
+                    "link": "/accounts",
+                }
+            )
+        failed_count = task_counts.get("failed", 0)
+        if failed_count >= settings.dashboard_failed_task_alert_threshold:
+            alerts.append(
+                {
+                    "id": "failed_tasks",
+                    "level": "error",
+                    "message": f"{failed_count} 条发布任务失败，请检查日志或重试",
+                    "link": "/tasks?status=failed",
+                }
+            )
+
         return {
+            "alerts": alerts,
             "overview": {
                 "accounts": self.db.query(func.count(PlatformAccount.id)).scalar() or 0,
                 "materials": self.db.query(func.count(Material.id)).scalar() or 0,

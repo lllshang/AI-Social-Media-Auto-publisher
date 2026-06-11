@@ -141,3 +141,29 @@ python ai-publish/scripts/e2e_publish.py --platform channels --content-type vide
 # 有 Cookie 后去掉 --skip-execute
 sau tencent login --account <name> --headed   # vendor 目录下
 ```
+
+## 11. 百家号 Spike 结论（阶段 E.5.6，不交付 Adapter）
+
+**Vendor 模块**: `uploader/baijiahao_uploader/main.py`（`baijiahao_cookie_gen`、`cookie_auth`、`BaiJiaHaoVideo`）
+
+| 项 | 结论 |
+|----|------|
+| CLI | **未**接入 `sau_cli.py`，仅有 `examples/get_baijiahao_cookie.py` |
+| 登录 | Playwright；`page.pause()` 需人工在调试器继续，**不适合** API 无头扫码 |
+| 发布 | 视频为主；定时选择不准确（代码注释标注随机） |
+| 建议 | P4+ 再评估；需重构登录流、补齐 CLI 与 E2E 后再做 Adapter |
+
+**Gate**: ⚠️ **暂缓** — 登录体验与 CLI 成熟度不足，本阶段不实现 `baijiahao` Adapter。
+
+## 12. TikTok Spike 结论（阶段 E.5.6，不交付 Adapter）
+
+**Vendor 模块**: `uploader/tk_uploader/main.py`（`get_tiktok_cookie`、`cookie_auth`、`Video` 上传类）
+
+| 项 | 结论 |
+|----|------|
+| 浏览器 | **Firefox**（非 Chromium），与现有 Docker API 镜像栈不一致 |
+| 登录/发布 | 面向 tiktok.com 国际站；需稳定代理与账号环境 |
+| CLI | 未接入 `sau_cli.py` |
+| 建议 | 海外部署独立 Worker + Firefox 镜像；国内产品文档优先级低 |
+
+**Gate**: ⚠️ **暂缓** — 环境依赖重，与当前国内多平台主线不匹配。
