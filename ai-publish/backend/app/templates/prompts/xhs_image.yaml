@@ -1,3 +1,10 @@
 template: |
-  小红书生活方式种草封面图，比例{ratio}，主题：{topic}，风格：{style}，
+  小红书生活方式种草封面图，比例{ratio}（{ratio_hint}），主题：{topic}，风格：{style_label}，
+  品牌色：{brand_color}，品牌说明：{brand_hint}，
   高清、明亮、适合移动端封面，留白可用于标题文字，无水印。
+template_en: |
+  Xiaohongshu lifestyle cover image, ratio {ratio} ({ratio_hint}), topic: {topic}, style: {style_en},
+  brand color: {brand_color}, brand note: {brand_hint},
+  high quality, bright, mobile-friendly cover with space for title, no watermark.
+negative_prompt: |
+  blurry, low quality, watermark, logo, text garbled, deformed, ugly, oversaturated

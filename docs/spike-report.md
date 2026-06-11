@@ -105,3 +105,15 @@ sau xiaohongshu upload-note --account test1 --images videos/demo.png --title "�
 ---
 
 **Gate**: 代码分析通过，可进入 Task 2+ 实施。E2E 发布成功需用户在本地完成一次手动 spike 验证（Task 10.1–10.3）。
+
+## 9. 多平台 E2E 脚本结论（阶段 E.5.3）
+
+`scripts/e2e_publish.py` 已扩展 `--platform douyin|kuaishou`、`--content-type note|video`、`--cookie`、`--skip-execute`。
+
+| 平台 | 脚本 | 结论 |
+|------|------|------|
+| xhs | 默认 | API 链路可用；发布依赖有效 Cookie + 本机 Chrome |
+| douyin | `--platform douyin` | Adapter 已注册；需导入抖音 Cookie 后实测 DOM/超时 |
+| kuaishou | `--platform kuaishou` | 同上，Cookie 路径因环境而异，用 `--cookie` 指定 |
+
+未在本环境完成真实发布（无有效多平台 Cookie）。建议部署后按 `daily-usage.md` §5 逐平台跑通并记录日志。

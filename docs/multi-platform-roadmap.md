@@ -12,12 +12,15 @@ MVP 已完成小红书（xhs）图文发布。扩展其他平台遵循同一 Ada
 
 ## 候选平台
 
-| 平台 | 标识 | 参考 | 优先级 |
-|------|------|------|--------|
-| 抖音 | douyin | social-auto-upload | P1 |
-| 视频号 | channels | 待 spike | P2 |
-| B站 | bilibili | social-auto-upload | P2 |
-| 快手 | kuaishou | social-auto-upload | P3 |
+| 平台 | 标识 | Adapter | E2E 脚本 | 验收状态 |
+|------|------|---------|----------|----------|
+| 小红书 | xhs | ✅ | `e2e_publish.py --platform xhs` | 已验收 |
+| 抖音 | douyin | ✅ | `e2e_publish.py --platform douyin` | 脚本就绪，需有效 Cookie 实测 |
+| 快手 | kuaishou | ✅ | `e2e_publish.py --platform kuaishou` | 脚本就绪，需有效 Cookie 实测 |
+| 视频号 | channels | 待 spike | — | 未开始 |
+| B站 | bilibili | 待实现 | — | P3 |
+
+> E2E 脚本支持 `--skip-execute` 仅验证 API 链路；`--cookie` 指定 Cookie JSON 路径。
 
 ## 共用能力（无需重复实现）
 

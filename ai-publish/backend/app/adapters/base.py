@@ -68,6 +68,8 @@ class ImageGenerateInput:
     style: str = "default"
     count: int = 1
     cover_text: str | None = None
+    brand_color: str | None = None
+    brand_hint: str | None = None
 
 
 @dataclass
@@ -76,6 +78,7 @@ class ImageGenerateResult:
     provider: str
     prompt: str
     cost: float = 0.0
+    negative_prompt: str | None = None
 
 
 class PlatformAdapter(Protocol):

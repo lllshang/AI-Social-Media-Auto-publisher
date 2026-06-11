@@ -4,7 +4,7 @@ import httpx
 
 from app.adapters.base import ImageGenerateInput, ImageGenerateResult
 from app.config import get_settings
-from app.utils.prompt_templates import load_prompt_template
+from app.utils.prompt_templates import build_image_generation_prompt
 
 
 class HunyuanImageAdapter:
@@ -16,13 +16,10 @@ class HunyuanImageAdapter:
         self.settings = get_settings()
         self.model = model
 
-    def _build_prompt(self, data: ImageGenerateInput) -> str:
-        if len(data.topic) > 30:
-            return data.topic
-        template = load_prompt_template("image", data.platform)
-        return template.replace("{platform}", data.platform).replace("{topic}", data.topic).replace(
-            "{ratio}", data.ratio
-        ).replace("{style}", data.style)
+    def _build_prompt(self, data: ImageGenerateInput) -> tuple[str, str | None]:
+        if len(data.topic) > 80:
+            return data.topic, None
+        return build_image_generation_prompt(data)
 
     def _auth_headers(self, api_key: str) -> dict[str, str]:
         token = api_key.strip()
@@ -31,7 +28,7 @@ class HunyuanImageAdapter:
         return {"Authorization": token, "Content-Type": "application/json"}
 
     def _resolve_size(self, ratio: str) -> str:
-        size_map = {"3:4": "768:1024", "1:1": "1024:1024", "9:16": "720:1280"}
+        size_map = {"3:4": "768:1024", "1:1": "1024:1024", "4:5": "768:960", "9:16": "720:1280"}
         return size_map.get(ratio, "768:1024")
 
     def _extract_job_id(self, payload: dict) -> str:
@@ -121,7 +118,7 @@ class HunyuanImageAdapter:
         from app.adapters.factory import get_adapter_factory
         from app.services.ai_provider_config_service import AiProviderConfigService
 
-        prompt = self._build_prompt(data)
+        prompt, negative_prompt = self._build_prompt(data)
         storage = get_adapter_factory().get_storage_adapter()
         config = AiProviderConfigService()
         api_key = config.get_field_value("hunyuan_api_key")
@@ -131,6 +128,7 @@ class HunyuanImageAdapter:
             result = await StubImageAdapter().generate(data)
             result.provider = self.provider
             result.prompt = prompt
+            result.negative_prompt = negative_prompt
             return result
 
         base_url = (
@@ -164,4 +162,5 @@ class HunyuanImageAdapter:
             provider=self.provider,
             prompt=prompt,
             cost=float(len(paths)),
+            negative_prompt=negative_prompt,
         )

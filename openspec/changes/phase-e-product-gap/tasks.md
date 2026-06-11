@@ -56,20 +56,20 @@
 
 ### 后端专家
 
-- [ ] E.3.1 `POST /api/ai/prompt/build` 响应扩展：`prompt_zh`、`prompt_en`、`negative_prompt`（模板或 LLM 重构二选一，需可回退）
-- [ ] E.3.2 `POST /api/ai/image/generate` 支持 `style`、`brand_color`、`brand_hint` 等参数并写入 `ai_generation_records`
-- [ ] E.3.3 补充 `douyin`/`kuaishou` 以外常用比例模板（如 `4:5`、`1:1`）于 `templates/prompts/`
+- [x] E.3.1 `POST /api/ai/prompt/build` 响应扩展：`prompt_zh`、`prompt_en`、`negative_prompt`（模板或 LLM 重构二选一，需可回退）
+- [x] E.3.2 `POST /api/ai/image/generate` 支持 `style`、`brand_color`、`brand_hint` 等参数并写入 `ai_generation_records`
+- [x] E.3.3 补充 `douyin`/`kuaishou` 以外常用比例模板（如 `4:5`、`1:1`）于 `templates/prompts/`
 
 ### 前端专家
 
-- [ ] E.3.4 素材页「AI 生成图片」：增加风格下拉、品牌色/品牌说明输入
-- [ ] E.3.5 发布向导文生图步骤：Prompt 预览（复用 `buildPrompt`）、风格与封面文案联动
-- [ ] E.3.6 Prompt 预览展示中/英/负面三栏（只读）
+- [x] E.3.4 素材页「AI 生成图片」：增加风格下拉、品牌色/品牌说明输入
+- [x] E.3.5 发布向导文生图步骤：Prompt 预览（复用 `buildPrompt`）、风格与封面文案联动
+- [x] E.3.6 Prompt 预览展示中/英/负面三栏（只读）
 
 ### 文档与验证
 
-- [ ] E.3.7 产品文档 §6 参数表与界面对照截图写入 `docs/daily-usage.md`
-- [ ] E.3.8 验证：不同 `style` 请求落库且生成记录可追踪
+- [x] E.3.7 产品文档 §6 参数表与界面对照截图写入 `docs/daily-usage.md`
+- [x] E.3.8 验证：不同 `style` 请求落库且生成记录可追踪
 
 ---
 
@@ -98,9 +98,9 @@
 
 ### 后端专家 — 验收（P2）
 
-- [ ] E.5.1 抖音图文+视频 E2E 脚本与文档（`scripts/e2e_publish.py` 扩展 `platform=douyin`）
-- [ ] E.5.2 快手图文+视频 E2E 脚本与文档（`platform=kuaishou`）
-- [ ] E.5.3 根据 E2E 结果修复 Adapter/DOM/超时问题并记录 spike 结论
+- [x] E.5.1 抖音图文+视频 E2E 脚本与文档（`scripts/e2e_publish.py` 扩展 `platform=douyin`）
+- [x] E.5.2 快手图文+视频 E2E 脚本与文档（`platform=kuaishou`）
+- [x] E.5.3 根据 E2E 结果修复 Adapter/DOM/超时问题并记录 spike 结论
 
 ### 后端专家 — 新平台（P3）
 
@@ -114,7 +114,7 @@
 
 ### 文档与验证
 
-- [ ] E.5.8 更新 `multi-platform-roadmap.md` 验收状态表
+- [x] E.5.8 更新 `multi-platform-roadmap.md` 验收状态表
 - [ ] E.5.9 每平台至少 1 条成功发布记录（测试环境截图或日志）
 
 ---

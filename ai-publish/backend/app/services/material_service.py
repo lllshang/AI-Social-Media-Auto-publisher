@@ -168,25 +168,41 @@ class AiContentService:
         count: int = 1,
         cover_text: str | None = None,
         user_id: int | None = None,
+        *,
+        style: str = "default",
+        brand_color: str | None = None,
+        brand_hint: str | None = None,
     ) -> dict:
-        image_topic = topic
-        if cover_text:
-            image_topic = f"{topic}，封面文字：{cover_text}"
         adapter = self.factory.get_ai_image_adapter()
         result = await adapter.generate(
             ImageGenerateInput(
-                topic=image_topic,
+                topic=topic,
                 platform=platform,
                 ratio=ratio,
                 count=count,
                 cover_text=cover_text,
+                style=style,
+                brand_color=brand_color,
+                brand_hint=brand_hint,
             )
         )
+        import json
+
         record = AiGenerationRecord(
             type="image",
             provider=result.provider,
             prompt=result.prompt,
-            result_summary=f"images={len(result.image_paths)}",
+            result_summary=json.dumps(
+                {
+                    "images": len(result.image_paths),
+                    "style": style,
+                    "ratio": ratio,
+                    "brand_color": brand_color,
+                    "brand_hint": brand_hint,
+                    "negative_prompt": result.negative_prompt,
+                },
+                ensure_ascii=False,
+            ),
             cost=result.cost,
             created_by=user_id,
         )
@@ -204,5 +220,8 @@ class AiContentService:
             "provider": result.provider,
             "model": getattr(adapter, "model", None),
             "prompt": result.prompt,
+            "style": style,
+            "brand_color": brand_color,
+            "brand_hint": brand_hint,
             "cost": float(result.cost),
         }

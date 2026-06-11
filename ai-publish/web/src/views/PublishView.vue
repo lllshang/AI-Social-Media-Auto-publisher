@@ -97,9 +97,31 @@
       </template>
       <template v-else>
         <p class="muted">将根据主题与封面文案生成 {{ coverRatio }} {{ platformLabel(form.platform) }}封面图。Key 未配置时可跳过，改用手动上传。</p>
+        <el-form label-width="90px" style="max-width: 520px; margin-bottom: 12px">
+          <el-form-item label="风格">
+            <el-select v-model="form.image_style" style="width: 100%">
+              <el-option v-for="s in IMAGE_STYLES" :key="s.value" :label="s.label" :value="s.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="品牌色">
+            <el-input v-model="form.brand_color" placeholder="可选，如 #2E8B57" />
+          </el-form-item>
+          <el-form-item label="品牌说明">
+            <el-input v-model="form.brand_hint" placeholder="可选" />
+          </el-form-item>
+        </el-form>
+        <el-button size="small" :loading="previewingPrompt" @click="previewCoverPrompt">预览 Prompt</el-button>
         <el-button type="primary" :loading="generatingImage" @click="generateCover">生成封面图</el-button>
         <el-button v-if="coverPreview" @click="generateCover">重新生成</el-button>
         <el-button @click="skipCover">跳过，稍后选手动素材</el-button>
+        <div v-if="promptPreview.prompt_zh" class="prompt-preview">
+          <p><strong>中文：</strong></p>
+          <pre>{{ promptPreview.prompt_zh }}</pre>
+          <p v-if="promptPreview.prompt_en"><strong>英文：</strong></p>
+          <pre v-if="promptPreview.prompt_en">{{ promptPreview.prompt_en }}</pre>
+          <p v-if="promptPreview.negative_prompt"><strong>负面：</strong></p>
+          <pre v-if="promptPreview.negative_prompt">{{ promptPreview.negative_prompt }}</pre>
+        </div>
         <div v-if="coverPreview" class="cover-preview">
           <div class="cover-preview-frame" :style="coverPreviewFrameStyle">
             <img :src="coverPreview" class="cover-preview-img" alt="封面预览" />
@@ -215,6 +237,7 @@ import {
   platformVideoCoverRatio,
   platformVideoHint,
 } from '@/constants/platforms'
+import { IMAGE_STYLES } from '@/constants/imageStyles'
 
 const route = useRoute()
 const router = useRouter()
@@ -225,7 +248,9 @@ const step = ref(0)
 const draftId = ref(null)
 const generating = ref(false)
 const generatingImage = ref(false)
+const previewingPrompt = ref(false)
 const saving = ref(false)
+const promptPreview = reactive({ prompt_zh: '', prompt_en: '', negative_prompt: '' })
 const requireReview = ref(false)
 const coverPreview = ref('')
 const videoPreviewUrl = ref('')
@@ -239,6 +264,9 @@ const form = reactive({
   content: '',
   tagsText: '',
   cover_text: '',
+  image_style: 'default',
+  brand_color: '',
+  brand_hint: '',
   comment_guide: '',
   material_ids: [],
   cover_material_id: null,
@@ -423,16 +451,47 @@ async function generateText() {
   }
 }
 
+function imageGeneratePayload(ratio, count = 1) {
+  return {
+    topic: form.topic,
+    platform: form.platform,
+    ratio,
+    count,
+    style: form.image_style,
+    cover_text: form.cover_text || null,
+    brand_color: form.brand_color || null,
+    brand_hint: form.brand_hint || null,
+  }
+}
+
+async function previewCoverPrompt() {
+  if (!form.topic.trim()) return ElMessage.warning('请先填写主题')
+  previewingPrompt.value = true
+  try {
+    const res = await api.buildPrompt({
+      kind: 'image',
+      platform: form.platform,
+      topic: form.topic,
+      ratio: isXhsVideo.value ? videoCoverRatio.value : coverRatio.value,
+      style: form.image_style,
+      cover_text: form.cover_text || null,
+      brand_color: form.brand_color || null,
+      brand_hint: form.brand_hint || null,
+    })
+    promptPreview.prompt_zh = res.prompt_zh || res.prompt
+    promptPreview.prompt_en = res.prompt_en || ''
+    promptPreview.negative_prompt = res.negative_prompt || ''
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    previewingPrompt.value = false
+  }
+}
+
 async function generateVideoCover() {
   generatingImage.value = true
   try {
-    const res = await api.generateImage(
-      form.topic,
-      form.platform,
-      videoCoverRatio.value,
-      1,
-      form.cover_text || undefined
-    )
+    const res = await api.generateImage(imageGeneratePayload(videoCoverRatio.value))
     const mat = res.materials?.[0]
     if (!mat) throw new Error('未返回封面素材')
     await loadBase()
@@ -466,7 +525,7 @@ async function uploadCoverImage({ file }) {
 async function generateCover() {
   generatingImage.value = true
   try {
-    const res = await api.generateImage(form.topic, form.platform, coverRatio.value, 1, form.cover_text || undefined)
+    const res = await api.generateImage(imageGeneratePayload(coverRatio.value))
     const mat = res.materials?.[0]
     if (!mat) throw new Error('未返回图片素材')
     if (mat.url?.includes('stub') || mat.file_path?.includes('stub')) {
@@ -671,6 +730,17 @@ onMounted(async () => {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+.prompt-preview {
+  margin-top: 12px;
+  background: #f5f7fa;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.prompt-preview pre {
+  white-space: pre-wrap;
+  margin: 4px 0 10px;
 }
 .summary p {
   margin: 4px 0;

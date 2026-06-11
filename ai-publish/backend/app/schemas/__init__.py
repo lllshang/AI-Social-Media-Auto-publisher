@@ -95,6 +95,8 @@ class ImageGenerateRequest(BaseModel):
     style: str = "default"
     count: int = Field(default=1, ge=1, le=4)
     cover_text: str | None = None
+    brand_color: str | None = None
+    brand_hint: str | None = None
 
 
 class MaterialResponse(BaseModel):
@@ -325,6 +327,8 @@ class PromptBuildRequest(BaseModel):
     ratio: str = "3:4"
     style: str = "default"
     cover_text: str | None = None
+    brand_color: str | None = None
+    brand_hint: str | None = None
 
 
 class PromptBuildResponse(BaseModel):
@@ -332,6 +336,9 @@ class PromptBuildResponse(BaseModel):
     platform: str
     template_name: str
     prompt: str
+    prompt_zh: str
+    prompt_en: str | None = None
+    negative_prompt: str | None = None
 
 
 class AiGenerationRecordResponse(BaseModel):

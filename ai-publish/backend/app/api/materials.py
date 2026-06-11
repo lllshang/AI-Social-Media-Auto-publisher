@@ -6,7 +6,7 @@ from app.dependencies import require_any_permission, require_permission
 from app.models import User
 from app.utils.permissions import PERM_MATERIALS_READ, PERM_MATERIALS_WRITE, PERM_PUBLISH_WRITE
 from app.schemas import ImageGenerateRequest, MaterialResponse, PromptBuildRequest, PromptBuildResponse, TextGenerateRequest
-from app.utils.prompt_templates import build_prompt
+from app.utils.prompt_templates import build_prompt_details
 from app.services.material_service import AiContentService, MaterialService
 
 router = APIRouter(tags=["materials", "ai"])
@@ -79,7 +79,7 @@ def build_ai_prompt(
 ):
     if data.kind not in {"text", "image"}:
         raise HTTPException(status_code=400, detail="kind 仅支持 text 或 image")
-    template_name, prompt = build_prompt(
+    details = build_prompt_details(
         data.kind,
         data.platform,
         data.topic,
@@ -87,12 +87,17 @@ def build_ai_prompt(
         ratio=data.ratio,
         style=data.style,
         cover_text=data.cover_text,
+        brand_color=data.brand_color,
+        brand_hint=data.brand_hint,
     )
     return PromptBuildResponse(
         kind=data.kind,
         platform=data.platform,
-        template_name=template_name,
-        prompt=prompt,
+        template_name=str(details["template_name"]),
+        prompt=str(details["prompt_zh"]),
+        prompt_zh=str(details["prompt_zh"]),
+        prompt_en=details.get("prompt_en"),
+        negative_prompt=details.get("negative_prompt"),
     )
 
 
@@ -133,6 +138,9 @@ async def generate_image(
             data.count,
             data.cover_text,
             current_user.id,
+            style=data.style,
+            brand_color=data.brand_color,
+            brand_hint=data.brand_hint,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"文生图失败: {exc}") from exc

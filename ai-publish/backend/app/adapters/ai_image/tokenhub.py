@@ -2,7 +2,7 @@ import httpx
 
 from app.adapters.base import ImageGenerateInput, ImageGenerateResult
 from app.config import get_settings
-from app.utils.prompt_templates import load_prompt_template
+from app.utils.prompt_templates import build_image_generation_prompt
 
 
 class TokenHubImageAdapter:
@@ -14,19 +14,16 @@ class TokenHubImageAdapter:
         self.settings = get_settings()
         self.model = model
 
-    def _build_prompt(self, data: ImageGenerateInput) -> str:
-        if len(data.topic) > 30:
-            return data.topic
-        template = load_prompt_template("image", data.platform)
-        return template.replace("{platform}", data.platform).replace("{topic}", data.topic).replace(
-            "{ratio}", data.ratio
-        ).replace("{style}", data.style)
+    def _build_prompt(self, data: ImageGenerateInput) -> tuple[str, str | None]:
+        if len(data.topic) > 80:
+            return data.topic, None
+        return build_image_generation_prompt(data)
 
     async def generate(self, data: ImageGenerateInput) -> ImageGenerateResult:
         from app.adapters.factory import get_adapter_factory
         from app.services.ai_provider_config_service import AiProviderConfigService
 
-        prompt = self._build_prompt(data)
+        prompt, negative_prompt = self._build_prompt(data)
         storage = get_adapter_factory().get_storage_adapter()
         config = AiProviderConfigService()
         api_key = config.get_field_value("tencent_maas_api_key")
@@ -36,6 +33,7 @@ class TokenHubImageAdapter:
             result = await StubImageAdapter().generate(data)
             result.provider = self.provider
             result.prompt = prompt
+            result.negative_prompt = negative_prompt
             return result
 
         base_url = (
@@ -82,4 +80,5 @@ class TokenHubImageAdapter:
             provider=self.provider,
             prompt=prompt,
             cost=cost,
+            negative_prompt=negative_prompt,
         )

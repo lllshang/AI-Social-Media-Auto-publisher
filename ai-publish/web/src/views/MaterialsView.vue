@@ -84,7 +84,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showAiGenerate" title="AI 生成图片" width="560px">
+    <el-dialog v-model="showAiGenerate" title="AI 生成图片" width="640px">
       <el-form label-width="90px">
         <el-form-item label="平台">
           <el-select v-model="aiForm.platform" style="width: 100%" @change="onPlatformChange">
@@ -94,19 +94,36 @@
         <el-form-item label="主题">
           <el-input v-model="aiForm.topic" placeholder="如：春茶上新封面" />
         </el-form-item>
+        <el-form-item label="风格">
+          <el-select v-model="aiForm.style" style="width: 100%">
+            <el-option v-for="s in IMAGE_STYLES" :key="s.value" :label="s.label" :value="s.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="品牌色">
+          <el-input v-model="aiForm.brand_color" placeholder="可选，如 #2E8B57" />
+        </el-form-item>
+        <el-form-item label="品牌说明">
+          <el-input v-model="aiForm.brand_hint" placeholder="可选，如：高山有机春茶" />
+        </el-form-item>
         <el-form-item label="封面文案">
           <el-input v-model="aiForm.cover_text" placeholder="可选，显示在封面上的文字" />
         </el-form-item>
         <el-form-item label="比例">
           <el-select v-model="aiForm.ratio" style="width: 100%">
-            <el-option v-for="r in ratioOptions" :key="r" :label="r" :value="r" />
+            <el-option v-for="r in IMAGE_RATIOS" :key="r" :label="r" :value="r" />
           </el-select>
         </el-form-item>
         <el-form-item label="数量">
           <el-input-number v-model="aiForm.count" :min="1" :max="4" />
         </el-form-item>
-        <el-form-item label="Prompt 预览">
-          <el-input v-model="builtPrompt" type="textarea" :rows="3" readonly placeholder="点击预览 Prompt" />
+        <el-form-item label="中文 Prompt">
+          <el-input v-model="promptPreview.prompt_zh" type="textarea" :rows="3" readonly placeholder="点击预览 Prompt" />
+        </el-form-item>
+        <el-form-item label="英文 Prompt">
+          <el-input v-model="promptPreview.prompt_en" type="textarea" :rows="3" readonly placeholder="-" />
+        </el-form-item>
+        <el-form-item label="负面 Prompt">
+          <el-input v-model="promptPreview.negative_prompt" type="textarea" :rows="2" readonly placeholder="-" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -123,6 +140,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import { PLATFORMS, platformCoverRatio } from '@/constants/platforms'
+import { IMAGE_RATIOS, IMAGE_STYLES } from '@/constants/imageStyles'
 import { formatDateTime } from '@/utils/datetime'
 import { usePermission } from '@/composables/usePermission'
 
@@ -136,12 +154,20 @@ const showUpload = ref(false)
 const showAiGenerate = ref(false)
 const aiGenerating = ref(false)
 const previewing = ref(false)
-const builtPrompt = ref('')
+const promptPreview = reactive({ prompt_zh: '', prompt_en: '', negative_prompt: '' })
 const uploadFile = ref(null)
-const ratioOptions = ['1:1', '3:4', '4:3', '9:16', '16:9']
 const filters = reactive({ category: '', material_type: '', keyword: '' })
 const uploadForm = reactive({ name: '', category: '默认' })
-const aiForm = reactive({ platform: 'xhs', topic: '春茶上新', cover_text: '', ratio: '3:4', count: 1 })
+const aiForm = reactive({
+  platform: 'xhs',
+  topic: '春茶上新',
+  style: 'default',
+  brand_color: '',
+  brand_hint: '',
+  cover_text: '',
+  ratio: '3:4',
+  count: 1,
+})
 
 function onPlatformChange() {
   aiForm.ratio = platformCoverRatio(aiForm.platform)
@@ -156,9 +182,14 @@ async function previewPrompt() {
       platform: aiForm.platform,
       topic: aiForm.topic,
       ratio: aiForm.ratio,
+      style: aiForm.style,
       cover_text: aiForm.cover_text || null,
+      brand_color: aiForm.brand_color || null,
+      brand_hint: aiForm.brand_hint || null,
     })
-    builtPrompt.value = res.prompt
+    promptPreview.prompt_zh = res.prompt_zh || res.prompt
+    promptPreview.prompt_en = res.prompt_en || ''
+    promptPreview.negative_prompt = res.negative_prompt || ''
   } catch (e) {
     ElMessage.error(e.message)
   } finally {
@@ -235,16 +266,21 @@ async function submitAiGenerate() {
   if (!aiForm.topic.trim()) return ElMessage.warning('请填写主题')
   aiGenerating.value = true
   try {
-    const res = await api.generateImage(
-      aiForm.topic,
-      aiForm.platform,
-      aiForm.ratio,
-      aiForm.count,
-      aiForm.cover_text || undefined,
-    )
-    ElMessage.success(`已生成 ${res.materials?.length || aiForm.count} 张图片`)
+    const res = await api.generateImage({
+      topic: aiForm.topic,
+      platform: aiForm.platform,
+      ratio: aiForm.ratio,
+      count: aiForm.count,
+      style: aiForm.style,
+      cover_text: aiForm.cover_text || null,
+      brand_color: aiForm.brand_color || null,
+      brand_hint: aiForm.brand_hint || null,
+    })
+    ElMessage.success(`已生成 ${res.materials?.length || aiForm.count} 张图片（风格：${aiForm.style}）`)
     showAiGenerate.value = false
-    builtPrompt.value = ''
+    promptPreview.prompt_zh = ''
+    promptPreview.prompt_en = ''
+    promptPreview.negative_prompt = ''
     load()
   } catch (e) {
     ElMessage.error(e.message)

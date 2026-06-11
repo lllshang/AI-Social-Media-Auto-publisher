@@ -147,8 +147,28 @@ python ../scripts/import_sau_cookie.py
 
 ```bash
 cd ai-publish/backend && source .venv/bin/activate
+# 小红书图文（默认）
 python ../scripts/e2e_publish.py
+
+# 抖音 / 快手（需先导入对应 Cookie）
+python ../scripts/e2e_publish.py --platform douyin --content-type note
+python ../scripts/e2e_publish.py --platform kuaishou --content-type video --cookie /path/to/cookie.json
+
+# 仅验证 API 链路，不触发 Playwright 发布
+python ../scripts/e2e_publish.py --platform xhs --skip-execute
 ```
+
+### AI 文生图参数（阶段 E.3）
+
+| 参数 | 说明 | 界面位置 |
+|------|------|----------|
+| `style` | 风格：清新自然 / 极简留白 / 鲜艳醒目 等 | 素材库「AI 生成图片」、发布向导 Step2 |
+| `brand_color` | 品牌色，如 `#2E8B57` | 同上 |
+| `brand_hint` | 品牌说明，如「高山有机春茶」 | 同上 |
+| `ratio` | 比例：`1:1`、`3:4`、`4:5`、`9:16` 等 | 同上 |
+| Prompt 预览 | 中文 / 英文 / 负面三栏 | 「预览 Prompt」按钮 |
+
+生成记录写入 `ai_generation_records.result_summary`（JSON，含 style、品牌参数等），可在 **日志中心 → AI 记录** 查看。
 
 ---
 

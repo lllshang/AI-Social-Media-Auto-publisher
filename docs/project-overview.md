@@ -168,7 +168,7 @@ backend/app/
 | A 平台与发布 P0 | ✅ 完成 | 定时发布、抖音/快手、Docker 扫码、视频向导 |
 | B 后台补全 P1 | ✅ 完成 | 工作台、账号分组、日志中心、提示词 API |
 | C 基础设施 P2 | ✅ 完成 | Redis 队列、RBAC、系统配置、COS/OSS、Nginx |
-| **E 产品缺口补齐** | ⏳ 规划中 | 用户管理、审核模块、文生图增强、平台 E2E、运维监控（**不含 D 风控**） |
+| **E 产品缺口补齐** | 🔄 进行中 | E.1 用户管理 ✅、E.2 审核 ✅、E.3 文生图增强 ✅、E.5.1～5.3 E2E 脚本 ✅；E.4/E.6/E.7 待做（**不含 D 风控**） |
 | D 风控 C 方案 | ⏳ 未开始 | 敏感词、频率限制、本机 Worker、图片审核（**最后做**） |
 
 ---
@@ -244,6 +244,8 @@ bash scripts/upgrade.sh
 | `/api/users` | 用户管理（`users:write`，仅管理员） |
 | `/api/reviews/pending` | 待审核任务列表（分页） |
 | `/api/reviews/history` | 审核历史记录 |
+| `/api/ai/prompt/build` | Prompt 预览（中/英/负面） |
+| `/api/system/features` | 登录可读系统开关（如内容审核） |
 | `/api/auth/change-password` | 当前用户修改密码 |
 | `/health` | 健康检查 |
 | `/docs` | Swagger UI |

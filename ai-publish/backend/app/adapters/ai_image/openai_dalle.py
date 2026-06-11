@@ -2,7 +2,7 @@ import httpx
 
 from app.adapters.base import ImageGenerateInput, ImageGenerateResult
 from app.config import get_settings
-from app.utils.prompt_templates import load_prompt_template
+from app.utils.prompt_templates import build_image_generation_prompt
 
 
 class OpenAiDalleImageAdapter:
@@ -12,18 +12,15 @@ class OpenAiDalleImageAdapter:
         self.settings = get_settings()
         self.model = model
 
-    def _build_prompt(self, data: ImageGenerateInput) -> str:
-        if len(data.topic) > 30:
-            return data.topic
-        template = load_prompt_template("image", data.platform)
-        return template.replace("{platform}", data.platform).replace("{topic}", data.topic).replace(
-            "{ratio}", data.ratio
-        ).replace("{style}", data.style)
+    def _build_prompt(self, data: ImageGenerateInput) -> tuple[str, str | None]:
+        if len(data.topic) > 80:
+            return data.topic, None
+        return build_image_generation_prompt(data)
 
     async def generate(self, data: ImageGenerateInput) -> ImageGenerateResult:
         from app.adapters.factory import get_adapter_factory
 
-        prompt = self._build_prompt(data)
+        prompt, negative_prompt = self._build_prompt(data)
         storage = get_adapter_factory().get_storage_adapter()
         from app.services.ai_provider_config_service import AiProviderConfigService
 
@@ -34,9 +31,10 @@ class OpenAiDalleImageAdapter:
             result = await StubImageAdapter().generate(data)
             result.provider = self.provider
             result.prompt = prompt
+            result.negative_prompt = negative_prompt
             return result
 
-        size_map = {"3:4": "1024x1792", "1:1": "1024x1024", "9:16": "1024x1792"}
+        size_map = {"3:4": "1024x1792", "1:1": "1024x1024", "4:5": "1024x1792", "9:16": "1024x1792"}
         size = size_map.get(data.ratio, "1024x1024")
         base_url = (
             AiProviderConfigService().get_field_value("openai_base_url") or self.settings.openai_base_url
@@ -72,4 +70,5 @@ class OpenAiDalleImageAdapter:
             provider=self.provider,
             prompt=prompt,
             cost=float(len(paths)),
+            negative_prompt=negative_prompt,
         )

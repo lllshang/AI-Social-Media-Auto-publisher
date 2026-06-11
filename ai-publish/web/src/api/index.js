@@ -96,8 +96,19 @@ export const api = {
   },
   generateText: (topic, platform = 'xhs', content_type = 'note') =>
     http.post('/api/ai/text/generate', { topic, platform, content_type }),
-  generateImage: (topic, platform = 'xhs', ratio = '3:4', count = 1, cover_text) =>
-    http.post('/api/ai/image/generate', { topic, platform, ratio, count, cover_text: cover_text || null }),
+  generateImage: (payload) => {
+    if (typeof payload === 'string') {
+      const [topic, platform = 'xhs', ratio = '3:4', count = 1, cover_text] = arguments
+      return http.post('/api/ai/image/generate', {
+        topic,
+        platform,
+        ratio,
+        count,
+        cover_text: cover_text || null,
+      })
+    }
+    return http.post('/api/ai/image/generate', payload)
+  },
   getModels: () => http.get('/api/ai/models'),
   listProviders: () => http.get('/api/ai/models/providers'),
   saveProviderConfig: (payload) => http.put('/api/ai/models/providers/config', payload),
