@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS publish_tasks (
     topic VARCHAR(256) NULL,
     cover_text VARCHAR(128) NULL,
     wizard_step INT NULL,
+    bilibili_tid INT NULL,
     tags JSON NULL,
     platform VARCHAR(32) NOT NULL,
     account_id BIGINT NOT NULL,

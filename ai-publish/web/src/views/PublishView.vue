@@ -17,7 +17,12 @@
       <el-form label-width="100px">
         <el-form-item label="发布平台">
           <el-select v-model="form.platform" style="width: 100%" @change="onPlatformChange">
-            <el-option v-for="p in PLATFORMS" :key="p.value" :label="p.label" :value="p.value" />
+            <el-option
+              v-for="p in PLATFORMS"
+              :key="p.value"
+              :label="p.experimental ? `${p.label}（实验）` : p.label"
+              :value="p.value"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="内容类型">
@@ -34,7 +39,13 @@
         <el-form-item label="内容主题">
           <el-input v-model="form.topic" placeholder="如：春茶上新" />
         </el-form-item>
+        <el-form-item v-if="isBilibili" label="投稿分区">
+          <el-select v-model="form.bilibili_tid" style="width: 100%">
+            <el-option v-for="t in BILIBILI_TIDS" :key="t.value" :label="`${t.label} (${t.value})`" :value="t.value" />
+          </el-select>
+        </el-form-item>
         <p v-if="isVideo" class="muted">{{ platformVideoHint(form.platform) }}</p>
+        <p v-if="isBilibili" class="muted">{{ platformLoginHint(form.platform) }}</p>
       </el-form>
       <el-button type="primary" :disabled="!canGoStep1" @click="step = 1">下一步：生成文案</el-button>
     </div>
@@ -244,10 +255,12 @@ import {
   PLATFORMS,
   platformCoverRatio,
   platformLabel,
+  platformLoginHint,
   platformVideoCoverRatio,
   platformVideoHint,
 } from '@/constants/platforms'
 import { IMAGE_STYLES } from '@/constants/imageStyles'
+import { BILIBILI_TIDS } from '@/constants/bilibili'
 import { usePermission } from '@/composables/usePermission'
 
 const route = useRoute()
@@ -285,8 +298,10 @@ const form = reactive({
   material_ids: [],
   cover_material_id: null,
   publish_time: null,
+  bilibili_tid: 21,
 })
 
+const isBilibili = computed(() => form.platform === 'bilibili')
 const isVideo = computed(() => form.content_type === 'video')
 const isXhsVideo = computed(() => form.platform === 'xhs' && isVideo.value)
 const videoCoverRatio = computed(() => platformVideoCoverRatio(form.platform))
@@ -375,6 +390,7 @@ function buildTaskPayload(submit) {
     content_type: form.content_type,
     material_ids: resolveMaterialIds(),
     publish_time: form.publish_time ? new Date(form.publish_time).toISOString() : null,
+    bilibili_tid: isBilibili.value ? form.bilibili_tid : null,
     submit,
   }
 }
@@ -407,6 +423,13 @@ async function loadBase() {
 
 async function onPlatformChange() {
   form.account_id = null
+  const types = currentContentTypes.value
+  if (types.length && !types.find((t) => t.value === form.content_type)) {
+    form.content_type = types[0].value
+  }
+  if (form.platform === 'bilibili' && !form.bilibili_tid) {
+    form.bilibili_tid = 21
+  }
   await loadAccounts()
 }
 
@@ -433,6 +456,7 @@ async function loadDraft(id) {
   form.content = task.content || ''
   form.comment_guide = task.comment_guide || ''
   form.cover_text = task.cover_text || ''
+  form.bilibili_tid = task.bilibili_tid || 21
   form.tagsText = (task.tags || []).join(',')
   form.cover_material_id = null
   if (task.content_type === 'video') {

@@ -46,6 +46,16 @@ PLATFORM_CONFIG = {
         "default_account": "kuaishou_test",
         "content_types": ("note", "video"),
     },
+    "bilibili": {
+        "label": "B站",
+        "cookie_candidates": [
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/bilibili_test.json",
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/bilibili_uploader/account.json",
+        ],
+        "default_account": "bilibili_test",
+        "content_types": ("video",),
+        "default_tid": 21,
+    },
 }
 
 
@@ -154,6 +164,9 @@ def main() -> None:
     cfg = PLATFORM_CONFIG[platform]
     account_name = args.account or cfg["default_account"]
     content_type = args.content_type
+    if content_type not in cfg["content_types"]:
+        content_type = cfg["content_types"][0]
+        print(f"平台 {cfg['label']} 不支持 {args.content_type}，已切换为 {content_type}")
 
     print(f"=== ai-publish E2E | {cfg['label']} | {content_type} ===\n")
 
@@ -195,21 +208,19 @@ def main() -> None:
         else:
             print("[5b] 未找到 demo.mp4，视频任务将仅使用图片素材（可能发布失败）")
 
-    task = api(
-        "POST",
-        "/api/publish-tasks",
-        token=token,
-        body={
-            "title": text["title"],
-            "content": text["content"],
-            "tags": text["tags"],
-            "platform": platform,
-            "account_id": account_id,
-            "content_type": content_type,
-            "material_ids": material_ids,
-            "submit": True,
-        },
-    )
+    task_body = {
+        "title": text["title"],
+        "content": text["content"],
+        "tags": text["tags"],
+        "platform": platform,
+        "account_id": account_id,
+        "content_type": content_type,
+        "material_ids": material_ids,
+        "submit": True,
+    }
+    if platform == "bilibili":
+        task_body["bilibili_tid"] = cfg.get("default_tid", 21)
+    task = api("POST", "/api/publish-tasks", token=token, body=task_body)
     task_id = task["id"]
     print(f"[6] 发布任务已创建 id={task_id} status={task['status']}")
 

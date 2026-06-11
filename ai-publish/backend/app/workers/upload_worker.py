@@ -5,6 +5,7 @@ from app.adapters.factory import get_adapter_factory
 from app.models import PublishTask
 from app.services.material_service import MaterialService
 from app.services.platform_account_service import PlatformAccountService
+from app.services.system_config_service import SystemConfigService
 
 
 class UploadWorker:
@@ -40,6 +41,11 @@ class UploadWorker:
             self.db.add(log)
             self.db.commit()
 
+        bilibili_tid = None
+        if task.platform == "bilibili":
+            config = SystemConfigService(self.db)
+            bilibili_tid = task.bilibili_tid or config.get_int("bilibili_default_tid", 21)
+
         context = PublishContext(
             task_id=task.id,
             platform=task.platform,
@@ -53,6 +59,7 @@ class UploadWorker:
             material_paths=material_paths,
             thumbnail_path=thumbnail_path,
             publish_time=task.publish_time,
+            bilibili_tid=bilibili_tid,
             log_callback=log_callback,
         )
         adapter = self.factory.get_platform_adapter(task.platform)

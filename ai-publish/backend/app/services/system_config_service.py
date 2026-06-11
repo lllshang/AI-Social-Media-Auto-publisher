@@ -90,6 +90,7 @@ def ensure_default_system_configs(db: Session) -> None:
         ("retry_delay_minutes", "5", "自动重试间隔（分钟）"),
         ("material_cleanup_enabled", "false", "是否启用过期素材自动清理"),
         ("material_retention_days", "90", "未关联任务的素材保留天数"),
+        ("bilibili_default_tid", "21", "B站默认分区 tid（21=日常）"),
     ]
     service = SystemConfigService(db)
     for key, value, remark in defaults:

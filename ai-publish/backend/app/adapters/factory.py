@@ -1,4 +1,5 @@
 from app.adapters.base import AiImageAdapter, AiTextAdapter, PlatformAdapter, StorageAdapter
+from app.adapters.platform.bilibili import BilibiliPlatformAdapter
 from app.adapters.platform.douyin import DouyinPlatformAdapter
 from app.adapters.platform.kuaishou import KuaishouPlatformAdapter
 from app.adapters.platform.xhs import XhsPlatformAdapter
@@ -16,6 +17,7 @@ class AdapterFactory:
             "xhs": XhsPlatformAdapter,
             "douyin": DouyinPlatformAdapter,
             "kuaishou": KuaishouPlatformAdapter,
+            "bilibili": BilibiliPlatformAdapter,
         }
         adapter_cls = registry.get(platform)
         if not adapter_cls:

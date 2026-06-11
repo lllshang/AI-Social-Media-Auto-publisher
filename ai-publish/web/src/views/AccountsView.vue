@@ -150,7 +150,7 @@
 import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
-import { PLATFORMS, platformAppName, platformLabel } from '@/constants/platforms'
+import { PLATFORMS, platformAppName, platformLabel, platformLoginHint } from '@/constants/platforms'
 import { usePermission } from '@/composables/usePermission'
 
 const { can } = usePermission()
@@ -343,6 +343,14 @@ async function check(row) {
 }
 
 async function login(row) {
+  if (row.platform === 'bilibili') {
+    ElMessageBox.alert(
+      platformLoginHint('bilibili') ||
+        '请在本地终端执行：cd vendor/social-auto-upload && sau bilibili login --account <账号名>',
+      'B站登录说明',
+    )
+    return
+  }
   const qrSupported = runtime.value.qr_login_supported ?? runtime.value.xhs_qr_login_supported
   if (runtime.value.docker && !qrSupported) {
     ElMessage.warning(runtime.value.docker_login_hint)

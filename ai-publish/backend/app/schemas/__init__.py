@@ -144,6 +144,7 @@ class PublishTaskCreate(BaseModel):
     content_type: str = "note"
     material_ids: list[int] = Field(default_factory=list)
     publish_time: datetime | None = None
+    bilibili_tid: int | None = None
     submit: bool = False
 
 
@@ -158,6 +159,7 @@ class PublishTaskUpdate(BaseModel):
     account_id: int | None = None
     material_ids: list[int] | None = None
     publish_time: datetime | None = None
+    bilibili_tid: int | None = None
 
 
 class MaterialSummary(BaseModel):
@@ -178,6 +180,7 @@ class PublishTaskResponse(BaseModel):
     topic: str | None = None
     cover_text: str | None = None
     wizard_step: int | None = None
+    bilibili_tid: int | None = None
     tags: list[str] | None
     platform: str
     account_id: int

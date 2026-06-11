@@ -86,6 +86,7 @@ def create_task(
             material_ids=data.material_ids,
             content_type=data.content_type,
             publish_time=data.publish_time,
+            bilibili_tid=data.bilibili_tid,
             status=initial_status,
             user_id=current_user.id,
         )
@@ -128,6 +129,7 @@ def update_task(
             account_id=data.account_id,
             material_ids=data.material_ids,
             publish_time=data.publish_time,
+            bilibili_tid=data.bilibili_tid,
         )
         return _task_response(task, service.get_task_materials(task))
     except ValueError as exc:

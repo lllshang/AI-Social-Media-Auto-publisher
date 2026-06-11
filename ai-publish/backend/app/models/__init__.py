@@ -115,6 +115,7 @@ class PublishTask(Base):
     topic: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     cover_text: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     wizard_step: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    bilibili_tid: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     tags: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)
     platform: Mapped[str] = mapped_column(String(32), nullable=False)
     account_id: Mapped[int] = mapped_column(Integer, nullable=False)

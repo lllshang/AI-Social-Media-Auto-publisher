@@ -29,6 +29,8 @@ def run_migrations() -> None:
             statements.append("ALTER TABLE publish_tasks ADD COLUMN retry_count INTEGER DEFAULT 0")
         if "next_retry_at" not in task_columns:
             statements.append("ALTER TABLE publish_tasks ADD COLUMN next_retry_at DATETIME")
+        if "bilibili_tid" not in task_columns:
+            statements.append("ALTER TABLE publish_tasks ADD COLUMN bilibili_tid INTEGER")
 
     if not inspector.has_table("account_groups"):
         statements.append(

@@ -81,12 +81,18 @@ class PublishService:
         topic: str | None = None,
         cover_text: str | None = None,
         wizard_step: int | None = None,
+        bilibili_tid: int | None = None,
         status: str = "draft",
         user_id: int | None = None,
     ) -> PublishTask:
         account = self.account_service.get_account(account_id)
         if not account:
             raise ValueError("账号不存在")
+        if platform == "bilibili":
+            if content_type != "video":
+                raise ValueError("B站仅支持视频发布")
+            if bilibili_tid is None:
+                bilibili_tid = self.system_config.get_int("bilibili_default_tid", 21)
         if material_ids:
             self.material_service.validate_material_ids(material_ids, content_type)
         task = PublishTask(
@@ -102,6 +108,7 @@ class PublishService:
             content_type=content_type,
             material_ids=material_ids or [],
             publish_time=publish_time,
+            bilibili_tid=bilibili_tid,
             status=status,
             created_by=user_id,
         )
@@ -124,6 +131,7 @@ class PublishService:
         account_id: int | None = None,
         material_ids: list[int] | None = None,
         publish_time: datetime | None = None,
+        bilibili_tid: int | None = None,
     ) -> PublishTask:
         task = self.get_task(task_id)
         if not task:
@@ -158,6 +166,8 @@ class PublishService:
             task.tags = tags
         if publish_time is not None:
             task.publish_time = publish_time
+        if bilibili_tid is not None:
+            task.bilibili_tid = bilibili_tid
 
         self.db.commit()
         self.db.refresh(task)

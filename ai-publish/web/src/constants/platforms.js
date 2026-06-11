@@ -31,10 +31,27 @@ export const PLATFORMS = [
       { value: 'video', label: '视频' },
     ],
   },
+  {
+    value: 'bilibili',
+    label: 'B站',
+    appName: '哔哩哔哩 App',
+    coverRatio: '16:9',
+    experimental: true,
+    loginHint:
+      'B站登录需在本地终端执行：cd vendor/social-auto-upload && sau bilibili login --account <账号名>，完成后点击「校验 Cookie」。',
+    videoHint: '仅支持视频投稿（MP4 等），需选择分区 tid；上传通过 biliup CLI 执行',
+    contentTypes: [{ value: 'video', label: '视频' }],
+  },
 ]
 
 export function platformLabel(value) {
-  return PLATFORMS.find((p) => p.value === value)?.label || value
+  const item = PLATFORMS.find((p) => p.value === value)
+  if (!item) return value
+  return item.experimental ? `${item.label}（实验）` : item.label
+}
+
+export function platformLoginHint(value) {
+  return PLATFORMS.find((p) => p.value === value)?.loginHint || ''
 }
 
 export function platformAppName(value) {

@@ -252,6 +252,12 @@ flowchart LR
 
 **缩略图：** 上传图片或 AI 文生图后自动生成列表缩略图，加快素材库加载。
 
+### B站投稿（阶段 E.5.4，实验）
+
+- 发布向导选择 **B站（实验）**，内容类型固定为**视频**，需选择**投稿分区 tid**
+- 登录：在本地终端执行 `cd vendor/social-auto-upload && sau bilibili login --account <账号名>`，完成后在平台账号页点「校验 Cookie」
+- 发布通过 **biliup CLI** 上传，不支持图文笔记
+
 ---
 
 ## 7. 简易 HTML 管理页（旧）
