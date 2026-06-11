@@ -320,6 +320,8 @@ const BOOL_CONFIG_KEYS = new Set([
   'auto_retry_enabled',
   'material_cleanup_enabled',
   'sensitive_word_enabled',
+  'rate_limit_enabled',
+  'rate_limit_include_retry',
 ])
 const SELECT_CONFIG_OPTIONS = {
   sensitive_word_action: [
@@ -332,6 +334,9 @@ const INT_CONFIG_KEYS = new Set([
   'retry_delay_minutes',
   'material_retention_days',
   'scheduler_poll_interval_seconds',
+  'rate_limit_min_interval_seconds',
+  'rate_limit_daily_per_account',
+  'rate_limit_max_concurrent',
 ])
 const intConfigValues = reactive({})
 
@@ -414,6 +419,9 @@ function intConfigMin(key) {
   if (key === 'max_auto_retries') return 0
   if (key === 'retry_delay_minutes') return 1
   if (key === 'material_retention_days') return 1
+  if (key === 'rate_limit_min_interval_seconds') return 0
+  if (key === 'rate_limit_daily_per_account') return 0
+  if (key === 'rate_limit_max_concurrent') return 1
   return 5
 }
 
@@ -421,6 +429,9 @@ function intConfigMax(key) {
   if (key === 'max_auto_retries') return 10
   if (key === 'retry_delay_minutes') return 120
   if (key === 'material_retention_days') return 3650
+  if (key === 'rate_limit_min_interval_seconds') return 86400
+  if (key === 'rate_limit_daily_per_account') return 500
+  if (key === 'rate_limit_max_concurrent') return 20
   return 3600
 }
 

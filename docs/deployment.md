@@ -876,18 +876,34 @@ sudo usermod -aG docker ubuntu
 
 ---
 
-## 10. 磁盘监控与素材清理
+## 10. 发布限频与风控试运行
+
+生产环境建议在管理页 **系统设置** 开启 `rate_limit_enabled`，试运行期可参考：
+
+| 配置项 | 建议起步值 |
+|--------|------------|
+| `rate_limit_min_interval_seconds` | `300`（5 分钟） |
+| `rate_limit_daily_per_account` | `5`～`10` |
+| `rate_limit_max_concurrent` | `1` |
+| `sensitive_word_enabled` | `true` |
+| `require_content_review` | `true`（有人审时） |
+
+观测指标与是否启用本机 Worker（D.4）的决策流程见 [phase-d-trial-guide.md](./phase-d-trial-guide.md)。
+
+---
+
+## 11. 磁盘监控与素材清理
 
 素材文件默认保存在 API 容器/本机 `storage/materials`（或 `.env` 中 `STORAGE_PATH` 指定目录）。长期运行建议：
 
-### 10.1 磁盘监控
+### 11.1 磁盘监控
 
 | 环境 | 建议 |
 |------|------|
 | Docker | `docker system df`；`df -h` 查看挂载卷；轻量云监控告警磁盘 >80% |
 | 本机开发 | 定期查看 `ai-publish/data/materials` 目录大小 |
 
-### 10.2 自动清理（管理页配置）
+### 11.2 自动清理（管理页配置）
 
 在 **系统设置** 中可配置：
 
@@ -898,7 +914,7 @@ sudo usermod -aG docker ubuntu
 
 > 已被 `publish_tasks.material_ids` 引用的素材不会被清理，避免误删历史任务依赖。
 
-### 10.3 手动巡检 cron（可选）
+### 11.3 手动巡检 cron（可选）
 
 若未开启自动清理，可在服务器增加巡检脚本（示例，每日 3:00）：
 
@@ -909,13 +925,13 @@ sudo usermod -aG docker ubuntu
 
 Docker 部署可将路径改为卷内实际挂载点，并结合云监控告警。
 
-### 10.4 失败任务自动重试
+### 11.4 失败任务自动重试
 
 系统设置中 `auto_retry_enabled`、`max_auto_retries`、`retry_delay_minutes` 控制失败后自动重试；达上限后任务保持 `failed`，可在任务列表手动重试。
 
 ---
 
-## 11. 正式 HTTPS（Let's Encrypt）
+## 12. 正式 HTTPS（Let's Encrypt）
 
 自签证书适用于内网/开发；**公网域名**建议改用 Let's Encrypt。
 
@@ -965,7 +981,7 @@ docker compose up -d --force-recreate nginx api
 
 ---
 
-## 12. Docker 日志轮转与磁盘告警
+## 13. Docker 日志轮转与磁盘告警
 
 ### 12.1 日志轮转（json-file driver）
 
@@ -994,7 +1010,7 @@ logging:
 
 ---
 
-## 13. 生产上线检查清单
+## 14. 生产上线检查清单
 
 - [ ] 修改 `SECRET_KEY`、`ADMIN_PASSWORD`、`COOKIE_ENCRYPTION_KEY`
 - [ ] 配置 `scripts/deploy.env` 中 `PUBLIC_HOST`（IP 或域名）
@@ -1009,7 +1025,7 @@ logging:
 
 ---
 
-## 14. 快速命令索引
+## 15. 快速命令索引
 
 | 目标 | Mac | Windows | Linux / 腾讯云 |
 |------|-----|---------|----------------|

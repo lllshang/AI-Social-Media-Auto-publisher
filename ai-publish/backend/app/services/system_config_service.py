@@ -85,6 +85,21 @@ class SystemConfigService:
         raw = (self.get_value("sensitive_word_action") or "block").strip().lower()
         return raw if raw in {"block", "warn"} else "block"
 
+    def rate_limit_enabled(self) -> bool:
+        return self.get_bool("rate_limit_enabled", True)
+
+    def rate_limit_min_interval_seconds(self) -> int:
+        return max(0, self.get_int("rate_limit_min_interval_seconds", 300))
+
+    def rate_limit_daily_per_account(self) -> int:
+        return max(0, self.get_int("rate_limit_daily_per_account", 10))
+
+    def rate_limit_max_concurrent(self) -> int:
+        return max(1, self.get_int("rate_limit_max_concurrent", 1))
+
+    def rate_limit_include_retry(self) -> bool:
+        return self.get_bool("rate_limit_include_retry", True)
+
 
 def ensure_default_system_configs(db: Session) -> None:
     defaults = [
@@ -100,6 +115,11 @@ def ensure_default_system_configs(db: Session) -> None:
         ("bilibili_default_tid", "21", "B站默认分区 tid（21=日常）"),
         ("sensitive_word_enabled", "true", "是否启用敏感词检测"),
         ("sensitive_word_action", "block", "敏感词策略：block 拦截 / warn 仅记录"),
+        ("rate_limit_enabled", "true", "是否启用发布频率与并发限制"),
+        ("rate_limit_min_interval_seconds", "300", "同账号两次成功发布最小间隔（秒）"),
+        ("rate_limit_daily_per_account", "10", "单账号每日成功发布上限"),
+        ("rate_limit_max_concurrent", "1", "全局同时执行中的发布任务数"),
+        ("rate_limit_include_retry", "true", "自动重试是否受日上限约束"),
     ]
     service = SystemConfigService(db)
     for key, value, remark in defaults:

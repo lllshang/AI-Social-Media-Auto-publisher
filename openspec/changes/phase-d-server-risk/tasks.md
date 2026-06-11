@@ -45,22 +45,22 @@ D.2 敏感词  →  D.3 限频/并发  →  D.O 可观测  →  D.5 图片审核
 
 ### 后端专家
 
-- [ ] D.3.1 `system_configs` 增加限频相关配置（见 design.md）
-- [ ] D.3.2 `RateLimitService`：账号间隔、日上限、全局并发查询
-- [ ] D.3.3 接入 `execute_task`、`publish_tasks.execute` API、`schedule_worker.poll_due_tasks`
-- [ ] D.3.4 自动重试 `poll_auto_retries` 执行前限频检查（尊重 `rate_limit_include_retry`）
-- [ ] D.3.5 限频拒绝写 `publish_task_logs`（step=`rate_limit`），任务保持 `pending`
-- [ ] D.3.6 确认 `publish_tasks` 查询索引满足限频性能（或补充索引 migration）
+- [x] D.3.1 `system_configs` 增加限频相关配置（见 design.md）
+- [x] D.3.2 `RateLimitService`：账号间隔、日上限、全局并发查询
+- [x] D.3.3 接入 `execute_task`、`publish_tasks.execute` API、`schedule_worker.poll_due_tasks`
+- [x] D.3.4 自动重试 `poll_auto_retries` 执行前限频检查（尊重 `rate_limit_include_retry`）
+- [x] D.3.5 限频拒绝写 `publish_task_logs`（step=`rate_limit`），任务保持 `pending`
+- [x] D.3.6 确认 `publish_tasks` 查询索引满足限频性能（或补充索引 migration）
 
 ### 前端专家
 
-- [ ] D.3.7 系统设置 — 发布限频：间隔、日上限、最大并发、重试是否计入
-- [ ] D.3.8 任务执行失败/拒绝时展示限频原因（区分 failed 与 pending 被限）
+- [x] D.3.7 系统设置 — 发布限频：间隔、日上限、最大并发、重试是否计入
+- [x] D.3.8 任务执行失败/拒绝时展示限频原因（区分 failed 与 pending 被限）
 
 ### 文档与验证
 
-- [ ] D.3.9 `deployment.md` 补充「低频次发布」运维建议
-- [ ] D.3.10 验证：短间隔二次 execute 被拒；日上限后次日可发；并发=1 时第二个任务排队
+- [x] D.3.9 `deployment.md` 补充「低频次发布」运维建议
+- [x] D.3.10 验证：短间隔二次 execute 被拒；日上限后次日可发；并发=1 时第二个任务排队
 
 ---
 

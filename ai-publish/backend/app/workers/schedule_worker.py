@@ -1,5 +1,4 @@
 import asyncio
-from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
@@ -7,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import PublishTask
 from app.services.material_cleanup_service import MaterialCleanupService
 from app.services.publish_service import PublishService
 from app.services.system_config_service import SystemConfigService
@@ -95,22 +93,15 @@ class ScheduleWorker:
     async def poll_auto_retries(self) -> None:
         db = SessionLocal()
         try:
-            if self._has_running_task(db):
-                return
             service = PublishService(db)
+            if service.rate_limit.is_globally_saturated():
+                return
             task_id = service.claim_auto_retry_task()
             if task_id is None:
                 return
+            if not service.try_start_execution(task_id):
+                return
             logger.info("自动重试发布任务 #{}，入队执行", task_id)
-            db2 = SessionLocal()
-            try:
-                task = db2.query(PublishTask).filter(PublishTask.id == task_id).first()
-                if task:
-                    task.status = "running"
-                    task.error_message = None
-                    db2.commit()
-            finally:
-                db2.close()
             await asyncio.to_thread(task_queue.enqueue_execute, task_id)
         except Exception as exc:
             logger.exception("自动重试轮询失败: {}", exc)
@@ -130,34 +121,11 @@ class ScheduleWorker:
             db.close()
 
     def _claim_due_task(self, db: Session) -> int | None:
-        if self._has_running_task(db):
-            return None
-
-        now = datetime.utcnow()
-        task = (
-            db.query(PublishTask)
-            .filter(
-                PublishTask.status == "pending",
-                PublishTask.publish_time.isnot(None),
-                PublishTask.publish_time <= now,
-            )
-            .order_by(PublishTask.publish_time.asc(), PublishTask.id.asc())
-            .first()
-        )
-        if not task:
-            return None
-
-        task.status = "running"
-        task.error_message = None
-        db.commit()
-        return task.id
-
-    @staticmethod
-    def _has_running_task(db: Session) -> bool:
-        return (
-            db.query(PublishTask.id).filter(PublishTask.status == "running").first()
-            is not None
-        )
+        service = PublishService(db)
+        for task in service.list_due_pending_tasks():
+            if service.try_start_execution(task.id):
+                return task.id
+        return None
 
 
 schedule_worker = ScheduleWorker()

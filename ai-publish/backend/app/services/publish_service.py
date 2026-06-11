@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.models import Material, PublishTask, PublishTaskLog, ReviewLog
 from app.services.material_service import MaterialService
 from app.services.platform_account_service import PlatformAccountService
+from app.services.rate_limit_service import RateLimitService
 from app.services.sensitive_word_service import SensitiveWordService
 from app.services.system_config_service import SystemConfigService
 from app.workers.upload_worker import UploadWorker
@@ -34,6 +35,7 @@ class PublishService:
         self.worker = UploadWorker(db)
         self.system_config = SystemConfigService(db)
         self.sensitive_words = SensitiveWordService(db)
+        self.rate_limit = RateLimitService(db)
 
     def _log_sensitive_word_hit(self, task_id: int, result) -> None:
         self.add_log(
@@ -219,10 +221,16 @@ class PublishService:
         self.db.refresh(task)
         return task
 
-    def assert_can_execute(self, task: PublishTask) -> None:
+    def _log_rate_limit(self, task_id: int, message: str) -> None:
+        self.add_log(task_id, "rate_limit", "pending", message)
+
+    def check_can_execute(self, task: PublishTask) -> str | None:
         if task.status != "pending":
-            raise ValueError("仅 pending 状态任务可执行")
-        self._enforce_sensitive_words(task)
+            return "仅 pending 状态任务可执行"
+        try:
+            self._enforce_sensitive_words(task)
+        except ValueError as exc:
+            return str(exc)
         if self.system_config.require_content_review():
             approved = (
                 self.db.query(ReviewLog.id)
@@ -230,7 +238,44 @@ class PublishService:
                 .first()
             )
             if not approved:
-                raise ValueError("内容审核已开启，该任务须先通过审核方可执行")
+                return "内容审核已开启，该任务须先通过审核方可执行"
+        limit_result = self.rate_limit.evaluate(task)
+        if not limit_result.allowed:
+            self._log_rate_limit(task.id, limit_result.message)
+            return limit_result.message
+        return None
+
+    def assert_can_execute(self, task: PublishTask) -> None:
+        error = self.check_can_execute(task)
+        if error:
+            raise ValueError(error)
+
+    def try_start_execution(self, task_id: int) -> bool:
+        task = self.get_task(task_id)
+        if not task:
+            return False
+        error = self.check_can_execute(task)
+        if error:
+            return False
+        task.status = "running"
+        task.error_message = None
+        self.db.commit()
+        self.db.refresh(task)
+        return True
+
+    def list_due_pending_tasks(self, *, limit: int = 20) -> list[PublishTask]:
+        now = datetime.utcnow()
+        return (
+            self.db.query(PublishTask)
+            .filter(
+                PublishTask.status == "pending",
+                PublishTask.publish_time.isnot(None),
+                PublishTask.publish_time <= now,
+            )
+            .order_by(PublishTask.publish_time.asc(), PublishTask.id.asc())
+            .limit(limit)
+            .all()
+        )
 
     def approve_task(self, task_id: int, reviewer_id: int | None = None) -> PublishTask:
         task = self.get_task(task_id)

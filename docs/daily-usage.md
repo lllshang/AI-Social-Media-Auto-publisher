@@ -249,6 +249,20 @@ flowchart LR
 
 试运行建议见 [phase-d-trial-guide.md](./phase-d-trial-guide.md)。
 
+### 发布限频（阶段 D.3）
+
+在 **系统设置** 中可配置：
+
+| 配置项 | 默认 | 说明 |
+|--------|------|------|
+| `rate_limit_enabled` | 开启 | 总开关 |
+| `rate_limit_min_interval_seconds` | 300 | 同账号两次**成功**发布最小间隔（秒） |
+| `rate_limit_daily_per_account` | 10 | 单账号每日成功发布上限 |
+| `rate_limit_max_concurrent` | 1 | 全局同时 `running` 的任务数 |
+| `rate_limit_include_retry` | 开启 | 关闭后，带 `retry_count` 的自动重试不受日上限约束 |
+
+手动「执行」、定时调度、自动重试入队前均会检查。被限频时任务保持 **pending**，原因写入任务日志 `step=rate_limit`（不会标为 failed）。
+
 ---
 
 **验收步骤（开启审核）：**
