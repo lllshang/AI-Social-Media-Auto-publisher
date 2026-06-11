@@ -175,7 +175,6 @@ class PlatformAccountService:
                     account.account_name,
                     cookie_file,
                     qrcode_callback=qrcode_callback,
-                    progress_callback=progress_callback,
                     publish_proxy=proxy_url,
                 )
         if result.success and Path(cookie_file).exists():
