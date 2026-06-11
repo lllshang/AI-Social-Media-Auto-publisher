@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import sys
 from pathlib import Path
 
@@ -36,9 +37,29 @@ class BilibiliPlatformAdapter:
         except ImportError as exc:
             raise RuntimeError(format_vendor_import_error(exc, vendor)) from exc
 
-    @staticmethod
-    def _has_interactive_terminal() -> bool:
-        return sys.stdin.isatty() and sys.stdout.isatty()
+    def _import_login(self):
+        self._ensure_vendor_path()
+        vendor = Path(self.settings.sau_vendor_path).resolve()
+        try:
+            from uploader.bilibili_uploader.login import bilibili_cookie_gen  # type: ignore
+
+            return bilibili_cookie_gen
+        except ImportError as exc:
+            raise RuntimeError(format_vendor_import_error(exc, vendor)) from exc
+
+    def _wrap_qrcode_callback(self, qrcode_callback):
+        if not qrcode_callback:
+            return None
+
+        loop = asyncio.get_running_loop()
+
+        def _sync_emit(payload: dict) -> None:
+            result = qrcode_callback(payload)
+            if inspect.isawaitable(result):
+                future = asyncio.run_coroutine_threadsafe(result, loop)
+                future.result(timeout=10)
+
+        return _sync_emit
 
     async def _log_step(self, context: PublishContext, step: str, status: str, message: str) -> None:
         if context.log_callback:
@@ -53,24 +74,25 @@ class BilibiliPlatformAdapter:
     ) -> LoginResult:
         path = Path(cookie_file)
         path.parent.mkdir(parents=True, exist_ok=True)
-        if not self._has_interactive_terminal():
-            message = (
-                "B站登录需要在本地交互终端执行："
-                f"`sau bilibili login --account {account_name}`。"
-                "若终端二维码显示不完整，请打开当前目录下的 qrcode.png 扫码。"
-                "完成后可在管理页点击「校验 Cookie」或导入 Cookie 文件。"
-            )
-            return LoginResult(success=False, status="manual", message=message)
 
-        run_biliup_command = self._import_runtime()
-        result = await asyncio.to_thread(
-            run_biliup_command,
-            ["-u", str(path), "login"],
-            True,
+        bilibili_cookie_gen = self._import_login()
+        from app.utils.login_poll import login_poll_params
+
+        _, max_checks = login_poll_params(self.settings)
+        timeout_seconds = max(self.settings.login_timeout_seconds, max_checks)
+
+        outcome = await bilibili_cookie_gen(
+            str(path),
+            qrcode_callback=self._wrap_qrcode_callback(qrcode_callback),
+            timeout_seconds=timeout_seconds,
         )
-        success = result.returncode == 0 and path.exists()
-        message = "B站登录成功" if success else "B站登录失败，请在本地终端重试"
-        return LoginResult(success=success, status="success" if success else "failed", message=message)
+        return LoginResult(
+            success=outcome.success,
+            status=outcome.status,
+            message=outcome.message,
+            qrcode_path=outcome.qrcode_path or None,
+            qrcode_data_url=outcome.qrcode_data_url or None,
+        )
 
     async def check_cookie_valid(self, cookie_file: str) -> bool:
         if not Path(cookie_file).exists():
@@ -103,7 +125,7 @@ class BilibiliPlatformAdapter:
             await self._log_step(context, "validate", "running", "校验 Cookie 与素材")
             if not await self.check_cookie_valid(context.cookie_file):
                 await self._log_step(context, "validate", "failed", "Cookie 无效")
-                return PublishResult(success=False, message="Cookie 无效，请重新登录")
+                return PublishResult(success=False, message="账号未登录或已失效，请重新扫码登录")
 
             arguments = [
                 "-u",

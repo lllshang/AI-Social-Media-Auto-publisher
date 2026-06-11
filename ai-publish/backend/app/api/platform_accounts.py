@@ -170,7 +170,12 @@ async def _run_login_session(session_id: str, account_id: int) -> None:
                 return
             current.touch(status=status, message=message)
 
-        await on_progress("正在启动浏览器，请稍候...", "starting")
+        starting_message = (
+            "正在准备二维码，请稍候..."
+            if account and account.platform == "bilibili"
+            else "正在启动浏览器，请稍候..."
+        )
+        await on_progress(starting_message, "starting")
         result = await service.login(account_id, qrcode_callback=on_qrcode)
         await login_session_service.finish(session_id, result)
     except Exception as exc:

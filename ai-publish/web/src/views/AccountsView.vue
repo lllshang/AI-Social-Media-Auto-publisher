@@ -25,6 +25,15 @@
       title="扫码功能未就绪"
       :description="runtime.docker_login_hint"
     />
+    <el-alert
+      v-if="filterPlatform === 'bilibili'"
+      type="info"
+      :closable="false"
+      show-icon
+      class="runtime-alert"
+      title="B站登录说明"
+      :description="platformLoginHint('bilibili')"
+    />
     <div class="page-card filter-bar">
       <el-radio-group v-model="filterPlatform" @change="load">
         <el-radio-button label="">全部平台</el-radio-button>
@@ -346,15 +355,11 @@ async function check(row) {
   }
 }
 
+function loginPreparingMessage(platform) {
+  return platform === 'bilibili' ? '正在准备二维码，请稍候…' : '正在启动浏览器，请稍候...'
+}
+
 async function login(row) {
-  if (row.platform === 'bilibili') {
-    ElMessageBox.alert(
-      platformLoginHint('bilibili') ||
-        '请在本地终端执行：cd vendor/social-auto-upload && sau bilibili login --account <账号名>',
-      'B站登录说明',
-    )
-    return
-  }
   const qrSupported = runtime.value.qr_login_supported ?? runtime.value.xhs_qr_login_supported
   if (runtime.value.docker && !qrSupported) {
     ElMessage.warning(runtime.value.docker_login_hint)
@@ -367,7 +372,7 @@ async function login(row) {
   loggingInId.value = row.id
   qrVisible.value = true
   qrDataUrl.value = ''
-  qrMessage.value = '正在启动浏览器，请稍候...'
+  qrMessage.value = loginPreparingMessage(row.platform)
   try {
     const res = await api.startLoginAccount(row.id)
     if (res.qrcode_data_url) {

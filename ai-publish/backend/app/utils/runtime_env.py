@@ -63,8 +63,6 @@ PLATFORM_APP_NAMES = {
 
 
 def platform_scan_hint(platform: str) -> str:
-    if platform == "bilibili":
-        return "B站需在本地终端执行 sau bilibili login，完成后点击校验 Cookie"
     app_name = PLATFORM_APP_NAMES.get(platform, "对应平台 App")
     return f"请使用{app_name}扫码登录"
 

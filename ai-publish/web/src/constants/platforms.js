@@ -47,8 +47,7 @@ export const PLATFORMS = [
     appName: '哔哩哔哩 App',
     coverRatio: '16:9',
     experimental: true,
-    loginHint:
-      'B站登录需在本地终端执行：cd vendor/social-auto-upload && sau bilibili login --account <账号名>，完成后点击「校验 Cookie」。',
+    loginHint: '点击「扫码登录」，使用哔哩哔哩 App 扫码并按手机提示确认即可。',
     videoHint: '仅支持视频投稿（MP4 等），需选择分区 tid；上传通过 biliup CLI 执行',
     contentTypes: [{ value: 'video', label: '视频' }],
   },

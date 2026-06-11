@@ -233,25 +233,21 @@ async def check_xiaohongshu_account(account_name: str) -> bool:
 
 
 async def login_bilibili_account(account_name: str) -> dict:
-    account_file = resolve_account_file("bilibili", account_name)
-    if not has_interactive_terminal():
-        return {
-            "success": False,
-            "message": (
-                "Bilibili login requires a local interactive terminal. "
-                f"Please run `sau bilibili login --account {account_name}` yourself in a local terminal. "
-                "If the terminal QR code does not render completely, open `./qrcode.png` and scan that image."
-            ),
-            "account_file": str(account_file),
-        }
+    from uploader.bilibili_uploader.login import bilibili_cookie_gen
 
-    result = run_biliup_command(["-u", str(account_file), "login"], interactive=True)
-    success = result.returncode == 0
-    return {
-        "success": success,
-        "message": (result.stderr or result.stdout or "").strip() or "Bilibili login completed" if success else (result.stderr or result.stdout or "").strip() or "Bilibili login failed",
+    account_file = resolve_account_file("bilibili", account_name)
+    outcome = await bilibili_cookie_gen(str(account_file))
+    payload = {
+        "success": outcome.success,
+        "message": outcome.message,
         "account_file": str(account_file),
     }
+    if outcome.qrcode_data_url:
+        payload["qrcode"] = {
+            "image_data_url": outcome.qrcode_data_url,
+            "image_path": outcome.qrcode_path,
+        }
+    return payload
 
 
 async def check_bilibili_account(account_name: str) -> bool:
