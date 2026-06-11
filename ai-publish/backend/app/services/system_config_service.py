@@ -66,6 +66,18 @@ class SystemConfigService:
             return self.get_int("scheduler_poll_interval_seconds", self.settings.scheduler_poll_interval_seconds)
         return self.settings.scheduler_poll_interval_seconds
 
+    def auto_retry_enabled(self) -> bool:
+        return self.get_bool("auto_retry_enabled", True)
+
+    def max_auto_retries(self) -> int:
+        return max(0, self.get_int("max_auto_retries", 3))
+
+    def retry_delay_minutes(self) -> int:
+        return max(1, self.get_int("retry_delay_minutes", 5))
+
+    def material_cleanup_enabled(self) -> bool:
+        return self.get_bool("material_cleanup_enabled", False)
+
 
 def ensure_default_system_configs(db: Session) -> None:
     defaults = [
@@ -73,6 +85,11 @@ def ensure_default_system_configs(db: Session) -> None:
         ("scheduler_enabled", "true", "是否启用定时发布调度"),
         ("scheduler_poll_interval_seconds", "30", "定时发布轮询间隔（秒）"),
         ("storage_public_base_url", "", "对象存储公网访问前缀（COS/OSS 时填写）"),
+        ("auto_retry_enabled", "true", "失败任务是否自动重试"),
+        ("max_auto_retries", "3", "失败任务最大自动重试次数"),
+        ("retry_delay_minutes", "5", "自动重试间隔（分钟）"),
+        ("material_cleanup_enabled", "false", "是否启用过期素材自动清理"),
+        ("material_retention_days", "90", "未关联任务的素材保留天数"),
     ]
     service = SystemConfigService(db)
     for key, value, remark in defaults:

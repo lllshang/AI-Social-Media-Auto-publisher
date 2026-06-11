@@ -93,6 +93,8 @@ CREATE TABLE IF NOT EXISTS publish_tasks (
     publish_time DATETIME NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'draft',
     error_message TEXT NULL,
+    retry_count INT NOT NULL DEFAULT 0,
+    next_retry_at DATETIME NULL,
     created_by BIGINT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

@@ -84,6 +84,8 @@ export const api = {
   checkCookie: (id) => http.post(`/api/platform-accounts/${id}/check-cookie`),
   listMaterialCategories: () => http.get('/api/materials/categories'),
   listMaterials: (params) => http.get('/api/materials', { params }),
+  getMaterial: (id) => http.get(`/api/materials/${id}`),
+  saveTextMaterial: (payload) => http.post('/api/materials/text', payload),
   deleteMaterial: (id) => http.delete(`/api/materials/${id}`),
   uploadMaterial: (file, { name, category } = {}) => {
     const form = new FormData()

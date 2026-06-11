@@ -44,7 +44,17 @@
       <el-form label-width="100px">
         <el-form-item label="主题">
           <el-input v-model="form.topic" disabled />
-          <el-button style="margin-top: 8px" :loading="generating" @click="generateText">AI 生成文案</el-button>
+          <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap">
+            <el-button :loading="generating" @click="generateText">AI 生成文案</el-button>
+            <el-button
+              v-if="can('materials:write')"
+              :loading="savingTextMaterial"
+              :disabled="!form.title && !form.content"
+              @click="saveTextToMaterial"
+            >
+              保存到素材库
+            </el-button>
+          </div>
         </el-form-item>
         <el-form-item label="标题">
           <el-input v-model="form.title" />
@@ -238,9 +248,11 @@ import {
   platformVideoHint,
 } from '@/constants/platforms'
 import { IMAGE_STYLES } from '@/constants/imageStyles'
+import { usePermission } from '@/composables/usePermission'
 
 const route = useRoute()
 const router = useRouter()
+const { can } = usePermission()
 
 const accounts = ref([])
 const materials = ref([])
@@ -248,6 +260,8 @@ const step = ref(0)
 const draftId = ref(null)
 const generating = ref(false)
 const generatingImage = ref(false)
+const savingTextMaterial = ref(false)
+const lastTextRecordId = ref(null)
 const previewingPrompt = ref(false)
 const saving = ref(false)
 const promptPreview = reactive({ prompt_zh: '', prompt_en: '', negative_prompt: '' })
@@ -434,6 +448,27 @@ async function loadDraft(id) {
   step.value = inferWizardStep(task)
 }
 
+async function saveTextToMaterial() {
+  if (!form.title && !form.content) return ElMessage.warning('请先生成或填写文案')
+  savingTextMaterial.value = true
+  try {
+    await api.saveTextMaterial({
+      title: form.title || form.topic,
+      content: form.content || '',
+      tags: form.tagsText ? form.tagsText.split(/[,，]/).map((t) => t.trim()).filter(Boolean) : [],
+      platform: form.platform,
+      comment_guide: form.comment_guide || null,
+      topic: form.topic,
+      ai_record_id: lastTextRecordId.value,
+    })
+    ElMessage.success('文案已保存到素材库')
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    savingTextMaterial.value = false
+  }
+}
+
 async function generateText() {
   generating.value = true
   try {
@@ -443,6 +478,7 @@ async function generateText() {
     form.tagsText = (res.tags || []).join(',')
     form.cover_text = res.cover_text || ''
     form.comment_guide = res.comment_guide || ''
+    lastTextRecordId.value = res.record_id || null
     ElMessage.success(`文案已生成 (${res.provider}/${res.model || '-'})`)
   } catch (e) {
     ElMessage.error(e.message)

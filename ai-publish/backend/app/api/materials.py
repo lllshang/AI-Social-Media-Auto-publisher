@@ -5,7 +5,14 @@ from app.database import get_db
 from app.dependencies import require_any_permission, require_permission
 from app.models import User
 from app.utils.permissions import PERM_MATERIALS_READ, PERM_MATERIALS_WRITE, PERM_PUBLISH_WRITE
-from app.schemas import ImageGenerateRequest, MaterialResponse, PromptBuildRequest, PromptBuildResponse, TextGenerateRequest
+from app.schemas import (
+    ImageGenerateRequest,
+    MaterialResponse,
+    PromptBuildRequest,
+    PromptBuildResponse,
+    TextGenerateRequest,
+    TextMaterialCreate,
+)
 from app.utils.prompt_templates import build_prompt_details
 from app.services.material_service import AiContentService, MaterialService
 
@@ -21,7 +28,8 @@ async def upload_material(
     current_user: User = Depends(require_permission(PERM_MATERIALS_WRITE)),
 ):
     service = MaterialService(db)
-    return await service.upload(file, current_user.id, name=name, category=category)
+    material = await service.upload(file, current_user.id, name=name, category=category)
+    return service.to_response(material)
 
 
 @router.get("/api/materials/categories")
@@ -42,7 +50,8 @@ def list_materials(
     _: User = Depends(require_permission(PERM_MATERIALS_READ)),
 ):
     service = MaterialService(db)
-    return service.list_materials(material_type=material_type, category=category, keyword=keyword)
+    items = service.list_materials(material_type=material_type, category=category, keyword=keyword)
+    return [service.to_response(item) for item in items]
 
 
 @router.get("/api/materials/{material_id}", response_model=MaterialResponse)
@@ -55,7 +64,28 @@ def get_material(
     material = service.get(material_id)
     if not material:
         raise HTTPException(status_code=404, detail="素材不存在")
-    return material
+    return service.to_response(material, include_text_body=True)
+
+
+@router.post("/api/materials/text", response_model=MaterialResponse)
+def save_text_material(
+    data: TextMaterialCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(PERM_MATERIALS_WRITE)),
+):
+    service = MaterialService(db)
+    material = service.save_text_draft(
+        title=data.title,
+        content=data.content,
+        tags=data.tags,
+        platform=data.platform,
+        comment_guide=data.comment_guide,
+        topic=data.topic,
+        category=data.category,
+        user_id=current_user.id,
+        ai_record_id=data.ai_record_id,
+    )
+    return service.to_response(material)
 
 
 @router.delete("/api/materials/{material_id}")

@@ -1,4 +1,4 @@
-import shutil
+import json
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -7,12 +7,58 @@ from sqlalchemy.orm import Session
 from app.adapters.base import ImageGenerateInput, TextGenerateInput
 from app.adapters.factory import get_adapter_factory
 from app.models import AiGenerationRecord, Material
+from app.schemas import MaterialResponse
+from app.utils.thumbnail import generate_image_thumbnail
 
 
 class MaterialService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.factory = get_adapter_factory()
+
+    def to_response(self, material: Material, *, include_text_body: bool = False) -> MaterialResponse:
+        storage = self.factory.get_storage_adapter()
+        thumbnail_url = storage.get_url(material.thumbnail) if material.thumbnail else None
+        text_preview = None
+        text_content = None
+        if material.type == "text":
+            body = self._read_text_body(material.file_path)
+            if body:
+                text_preview = body[:200]
+                if include_text_body:
+                    text_content = body
+        return MaterialResponse(
+            id=material.id,
+            type=material.type,
+            source=material.source,
+            name=material.name,
+            category=material.category,
+            file_path=material.file_path,
+            url=material.url,
+            thumbnail_url=thumbnail_url,
+            text_preview=text_preview,
+            text_content=text_content,
+            created_at=material.created_at,
+        )
+
+    @staticmethod
+    def _read_text_body(file_path: str) -> str | None:
+        path = Path(file_path)
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            return str(payload.get("content") or "")
+        except (OSError, json.JSONDecodeError, TypeError):
+            return None
+
+    def _attach_thumbnail(self, material: Material) -> None:
+        if material.type != "image":
+            return
+        storage = self.factory.get_storage_adapter()
+        thumb_path = generate_image_thumbnail(material.file_path, storage)
+        if thumb_path:
+            material.thumbnail = thumb_path
 
     def get(self, material_id: int) -> Material | None:
         return self.db.query(Material).filter(Material.id == material_id, Material.status == "active").first()
@@ -75,6 +121,47 @@ class MaterialService:
             category=category or "默认",
             created_by=user_id,
         )
+        self._attach_thumbnail(material)
+        self.db.add(material)
+        self.db.commit()
+        self.db.refresh(material)
+        return material
+
+    def save_text_draft(
+        self,
+        *,
+        title: str,
+        content: str,
+        tags: list[str] | None = None,
+        platform: str = "xhs",
+        comment_guide: str | None = None,
+        topic: str | None = None,
+        category: str | None = None,
+        user_id: int | None = None,
+        ai_record_id: int | None = None,
+    ) -> Material:
+        payload = {
+            "title": title,
+            "content": content,
+            "tags": tags or [],
+            "platform": platform,
+            "comment_guide": comment_guide,
+            "topic": topic,
+        }
+        storage = self.factory.get_storage_adapter()
+        file_path, _ = storage.save_bytes(
+            json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            suffix=".json",
+        )
+        material = Material(
+            type="text",
+            source="draft",
+            file_path=file_path,
+            name=title,
+            category=category or "文案草稿",
+            ai_record_id=ai_record_id,
+            created_by=user_id,
+        )
         self.db.add(material)
         self.db.commit()
         self.db.refresh(material)
@@ -97,6 +184,7 @@ class MaterialService:
                 ai_record_id=ai_record_id,
                 created_by=user_id,
             )
+            self._attach_thumbnail(material)
             self.db.add(material)
             materials.append(material)
         self.db.commit()

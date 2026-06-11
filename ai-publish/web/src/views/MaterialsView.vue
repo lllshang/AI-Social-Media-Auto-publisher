@@ -19,6 +19,7 @@
           <el-select v-model="filters.material_type" clearable placeholder="全部类型" style="width: 120px">
             <el-option label="图片" value="image" />
             <el-option label="视频" value="video" />
+            <el-option label="文案" value="text" />
           </el-select>
         </el-form-item>
         <el-form-item label="名称">
@@ -36,18 +37,23 @@
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="name" label="名称" min-width="120" show-overflow-tooltip />
         <el-table-column prop="category" label="分类" width="100" />
-        <el-table-column prop="type" label="类型" width="90" />
+        <el-table-column label="类型" width="90">
+          <template #default="{ row }">{{ typeLabel(row.type) }}</template>
+        </el-table-column>
         <el-table-column prop="source" label="来源" width="100" />
-        <el-table-column label="预览" width="100">
+        <el-table-column label="预览" width="120">
           <template #default="{ row }">
             <el-image
-              v-if="row.type === 'image' && row.url"
-              :src="row.url"
-              :preview-src-list="[row.url]"
+              v-if="row.type === 'image' && (row.thumbnail_url || row.url)"
+              :src="row.thumbnail_url || row.url"
+              :preview-src-list="[row.url || row.thumbnail_url]"
               fit="cover"
               class="thumb clickable"
               preview-teleported
             />
+            <el-button v-else-if="row.type === 'text'" link type="primary" @click="previewText(row)">
+              查看文案
+            </el-button>
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -132,6 +138,17 @@
         <el-button type="primary" :loading="aiGenerating" @click="submitAiGenerate">生成</el-button>
       </template>
     </el-dialog>
+
+    <el-drawer v-model="textPreviewVisible" :title="textPreviewTitle" size="480px">
+      <p v-if="textPreviewLoading" class="muted">加载中…</p>
+      <el-input
+        v-else
+        v-model="textPreviewContent"
+        type="textarea"
+        :rows="18"
+        readonly
+      />
+    </el-drawer>
   </div>
 </template>
 
@@ -158,6 +175,30 @@ const promptPreview = reactive({ prompt_zh: '', prompt_en: '', negative_prompt: 
 const uploadFile = ref(null)
 const filters = reactive({ category: '', material_type: '', keyword: '' })
 const uploadForm = reactive({ name: '', category: '默认' })
+const textPreviewVisible = ref(false)
+const textPreviewTitle = ref('文案预览')
+const textPreviewContent = ref('')
+const textPreviewLoading = ref(false)
+
+function typeLabel(type) {
+  return { image: '图片', video: '视频', text: '文案' }[type] || type
+}
+
+async function previewText(row) {
+  textPreviewTitle.value = row.name || `文案 #${row.id}`
+  textPreviewVisible.value = true
+  textPreviewLoading.value = true
+  textPreviewContent.value = row.text_preview || ''
+  try {
+    const detail = await api.getMaterial(row.id)
+    textPreviewContent.value = detail.text_content || detail.text_preview || '（无正文）'
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    textPreviewLoading.value = false
+  }
+}
+
 const aiForm = reactive({
   platform: 'xhs',
   topic: '春茶上新',

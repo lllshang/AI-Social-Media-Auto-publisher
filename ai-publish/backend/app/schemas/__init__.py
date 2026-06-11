@@ -99,6 +99,17 @@ class ImageGenerateRequest(BaseModel):
     brand_hint: str | None = None
 
 
+class TextMaterialCreate(BaseModel):
+    title: str
+    content: str
+    tags: list[str] | None = None
+    platform: str = "xhs"
+    comment_guide: str | None = None
+    topic: str | None = None
+    category: str | None = None
+    ai_record_id: int | None = None
+
+
 class MaterialResponse(BaseModel):
     id: int
     type: str
@@ -107,6 +118,9 @@ class MaterialResponse(BaseModel):
     category: str | None = None
     file_path: str
     url: str | None
+    thumbnail_url: str | None = None
+    text_preview: str | None = None
+    text_content: str | None = None
     created_at: datetime
 
     @field_serializer("created_at")

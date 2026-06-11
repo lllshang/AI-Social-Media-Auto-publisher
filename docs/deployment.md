@@ -876,7 +876,46 @@ sudo usermod -aG docker ubuntu
 
 ---
 
-## 10. 生产上线检查清单
+## 10. 磁盘监控与素材清理
+
+素材文件默认保存在 API 容器/本机 `storage/materials`（或 `.env` 中 `STORAGE_PATH` 指定目录）。长期运行建议：
+
+### 10.1 磁盘监控
+
+| 环境 | 建议 |
+|------|------|
+| Docker | `docker system df`；`df -h` 查看挂载卷；轻量云监控告警磁盘 >80% |
+| 本机开发 | 定期查看 `ai-publish/data/materials` 目录大小 |
+
+### 10.2 自动清理（管理页配置）
+
+在 **系统设置** 中可配置：
+
+| 配置项 | 说明 |
+|--------|------|
+| `material_cleanup_enabled` | 开启后每小时清理一次 |
+| `material_retention_days` | 超过保留天数且**未被任何发布任务引用**的素材将被物理删除 |
+
+> 已被 `publish_tasks.material_ids` 引用的素材不会被清理，避免误删历史任务依赖。
+
+### 10.3 手动巡检 cron（可选）
+
+若未开启自动清理，可在服务器增加巡检脚本（示例，每日 3:00）：
+
+```bash
+# /etc/cron.d/ai-publish-disk
+0 3 * * * ubuntu du -sh /opt/ai-publish/data/materials >> /var/log/ai-publish-disk.log 2>&1
+```
+
+Docker 部署可将路径改为卷内实际挂载点，并结合云监控告警。
+
+### 10.4 失败任务自动重试
+
+系统设置中 `auto_retry_enabled`、`max_auto_retries`、`retry_delay_minutes` 控制失败后自动重试；达上限后任务保持 `failed`，可在任务列表手动重试。
+
+---
+
+## 11. 生产上线检查清单
 
 - [ ] 修改 `SECRET_KEY`、`ADMIN_PASSWORD`、`COOKIE_ENCRYPTION_KEY`
 - [ ] 配置 `scripts/deploy.env` 中 `PUBLIC_HOST`（IP 或域名）
@@ -891,7 +930,7 @@ sudo usermod -aG docker ubuntu
 
 ---
 
-## 11. 快速命令索引
+## 12. 快速命令索引
 
 | 目标 | Mac | Windows | Linux / 腾讯云 |
 |------|-----|---------|----------------|

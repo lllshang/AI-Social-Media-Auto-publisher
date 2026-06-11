@@ -16,6 +16,15 @@
               inactive-text="关闭"
               @change="(v) => setBoolConfig(row, v)"
             />
+            <el-input-number
+              v-else-if="isIntConfig(row.config_key)"
+              v-model="intConfigValues[row.config_key]"
+              :min="intConfigMin(row.config_key)"
+              :max="intConfigMax(row.config_key)"
+              controls-position="right"
+              style="width: 160px"
+              @change="(v) => setIntConfig(row, v)"
+            />
             <el-input v-else v-model="row.config_value" />
           </template>
         </el-table-column>
@@ -150,6 +159,7 @@ async function load() {
     if (canManageUsers.value) tasks.push(api.listUsers())
     const results = await Promise.all(tasks)
     configs.value = results[0]
+    syncIntConfigValues()
     roles.value = results[1]
     users.value = canManageUsers.value ? results[2] : []
   } finally {
@@ -233,10 +243,40 @@ async function toggleUserStatus(row) {
   }
 }
 
-const BOOL_CONFIG_KEYS = new Set(['require_content_review', 'scheduler_enabled'])
+const BOOL_CONFIG_KEYS = new Set([
+  'require_content_review',
+  'scheduler_enabled',
+  'auto_retry_enabled',
+  'material_cleanup_enabled',
+])
+const INT_CONFIG_KEYS = new Set([
+  'max_auto_retries',
+  'retry_delay_minutes',
+  'material_retention_days',
+  'scheduler_poll_interval_seconds',
+])
+const intConfigValues = reactive({})
 
 function isBoolConfig(key) {
   return BOOL_CONFIG_KEYS.has(key)
+}
+
+function isIntConfig(key) {
+  return INT_CONFIG_KEYS.has(key)
+}
+
+function intConfigMin(key) {
+  if (key === 'max_auto_retries') return 0
+  if (key === 'retry_delay_minutes') return 1
+  if (key === 'material_retention_days') return 1
+  return 5
+}
+
+function intConfigMax(key) {
+  if (key === 'max_auto_retries') return 10
+  if (key === 'retry_delay_minutes') return 120
+  if (key === 'material_retention_days') return 3650
+  return 3600
 }
 
 function boolConfigOn(value) {
@@ -245,6 +285,19 @@ function boolConfigOn(value) {
 
 function setBoolConfig(row, on) {
   row.config_value = on ? 'true' : 'false'
+}
+
+function setIntConfig(row, value) {
+  row.config_value = String(value ?? '')
+}
+
+function syncIntConfigValues() {
+  for (const row of configs.value) {
+    if (isIntConfig(row.config_key)) {
+      const parsed = parseInt(row.config_value, 10)
+      intConfigValues[row.config_key] = Number.isFinite(parsed) ? parsed : intConfigMin(row.config_key)
+    }
+  }
 }
 
 async function save(row) {

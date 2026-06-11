@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -172,6 +172,8 @@ class PublishService:
         next_status = "pending_review" if self.system_config.require_content_review() else "pending"
         task.status = next_status
         task.error_message = None
+        task.retry_count = 0
+        task.next_retry_at = None
         self.db.commit()
         self.db.refresh(task)
         return task
@@ -255,16 +257,47 @@ class PublishService:
         self.add_log(task_id, "start", "running", "开始执行发布任务")
         try:
             result = await self.worker.run(task)
-            task.status = "success" if result.success else "failed"
-            task.error_message = None if result.success else result.message
-            self.add_log(task_id, "finish", "success" if result.success else "failed", result.message)
+            if result.success:
+                task.status = "success"
+                task.error_message = None
+                task.retry_count = 0
+                task.next_retry_at = None
+                self.add_log(task_id, "finish", "success", result.message)
+            else:
+                task.status = "failed"
+                task.error_message = result.message
+                self.add_log(task_id, "finish", "failed", result.message)
+                self._schedule_auto_retry_if_needed(task)
         except Exception as exc:
             task.status = "failed"
             task.error_message = str(exc)
             self.add_log(task_id, "finish", "failed", str(exc))
+            self._schedule_auto_retry_if_needed(task)
         self.db.commit()
         self.db.refresh(task)
         return task
+
+    def _schedule_auto_retry_if_needed(self, task: PublishTask) -> None:
+        if not self.system_config.auto_retry_enabled():
+            task.next_retry_at = None
+            return
+        max_retries = self.system_config.max_auto_retries()
+        delay_minutes = self.system_config.retry_delay_minutes()
+        task.retry_count = (task.retry_count or 0) + 1
+        if task.retry_count <= max_retries:
+            task.next_retry_at = datetime.utcnow() + timedelta(minutes=delay_minutes)
+            message = (
+                f"将于 {delay_minutes} 分钟后自动重试"
+                f"（{task.retry_count}/{max_retries}）"
+            )
+            base = task.error_message or "发布失败"
+            task.error_message = f"{base}；{message}"
+            self.add_log(task.id, "auto_retry", "scheduled", message)
+        else:
+            task.next_retry_at = None
+            base = task.error_message or "发布失败"
+            task.error_message = f"{base}；已达自动重试上限（{max_retries}）"
+            self.add_log(task.id, "auto_retry", "exhausted", task.error_message)
 
     def execute_task_background(self, task_id: int) -> None:
         asyncio.create_task(self._execute_background(task_id))
@@ -299,9 +332,37 @@ class PublishService:
             raise ValueError("仅 failed 任务可重试")
         task.status = "pending"
         task.error_message = None
+        task.next_retry_at = None
         self.db.commit()
         self.db.refresh(task)
         return task
+
+    def claim_auto_retry_task(self) -> int | None:
+        if not self.system_config.auto_retry_enabled():
+            return None
+        now = datetime.utcnow()
+        task = (
+            self.db.query(PublishTask)
+            .filter(
+                PublishTask.status == "failed",
+                PublishTask.next_retry_at.isnot(None),
+                PublishTask.next_retry_at <= now,
+            )
+            .order_by(PublishTask.next_retry_at.asc(), PublishTask.id.asc())
+            .first()
+        )
+        if not task:
+            return None
+        if (task.retry_count or 0) > self.system_config.max_auto_retries():
+            task.next_retry_at = None
+            self.db.commit()
+            return None
+        task.status = "pending"
+        task.next_retry_at = None
+        task.error_message = None
+        self.db.commit()
+        self.add_log(task.id, "auto_retry", "pending", "自动重试已入队")
+        return task.id
 
     def delete_task(self, task_id: int) -> None:
         task = self.get_task(task_id)
