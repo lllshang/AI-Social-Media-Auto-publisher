@@ -207,7 +207,7 @@ class DashboardService:
             .all()
         )
 
-        pending_statuses = {"pending", "pending_review", "running", "draft"}
+        pending_statuses = {"pending", "pending_review", "dispatching", "running", "draft"}
         daily_map: dict[str, dict[str, int]] = {}
         for day_value, status, count in daily_rows:
             day_key = str(day_value)

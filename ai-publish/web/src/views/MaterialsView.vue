@@ -114,7 +114,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="品牌色">
-          <el-input v-model="aiForm.brand_color" placeholder="可选，如 #2E8B57" />
+          <BrandColorSelect v-model="aiForm.brand_color" />
         </el-form-item>
         <el-form-item label="品牌说明">
           <el-input v-model="aiForm.brand_hint" placeholder="可选，如：高山有机春茶" />
@@ -165,6 +165,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import { PLATFORMS, platformCoverRatio } from '@/constants/platforms'
+import BrandColorSelect from '@/components/BrandColorSelect.vue'
 import { IMAGE_RATIOS, IMAGE_STYLES } from '@/constants/imageStyles'
 import { formatDateTime } from '@/utils/datetime'
 import { usePermission } from '@/composables/usePermission'

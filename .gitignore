@@ -37,3 +37,5 @@ deploy.env
 !*.env.example
 !*.env.docker.example
 !deploy.env.example
+ai-publish/worker/worker.env
+ai-publish/worker/logs/

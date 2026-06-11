@@ -145,7 +145,7 @@
             </el-select>
           </el-form-item>
           <el-form-item label="品牌色">
-            <el-input v-model="form.brand_color" placeholder="可选，如 #2E8B57" />
+            <BrandColorSelect v-model="form.brand_color" />
           </el-form-item>
           <el-form-item label="品牌说明">
             <el-input v-model="form.brand_hint" placeholder="可选" />
@@ -279,7 +279,8 @@ import {
   platformVideoCoverRatio,
   platformVideoHint,
 } from '@/constants/platforms'
-import { IMAGE_STYLES } from '@/constants/imageStyles'
+import BrandColorSelect from '@/components/BrandColorSelect.vue'
+import { IMAGE_STYLES, normalizeImageStyle } from '@/constants/imageStyles'
 import { BILIBILI_TIDS } from '@/constants/bilibili'
 import { usePermission } from '@/composables/usePermission'
 
@@ -478,7 +479,7 @@ function applyTemplate(templateId) {
   }
   if (template.content_body) form.content = template.content_body
   if (template.tags?.length) form.tagsText = template.tags.join('，')
-  if (template.image_style) form.image_style = template.image_style
+  if (template.image_style) form.image_style = normalizeImageStyle(template.image_style)
   if (template.brand_color) form.brand_color = template.brand_color
   if (template.brand_hint) form.brand_hint = template.brand_hint
   loadAccounts()

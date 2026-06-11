@@ -32,6 +32,7 @@ class PublishContext:
     cover_text: str | None = None
     publish_time: datetime | None = None
     bilibili_tid: int | None = None
+    publish_proxy: str | None = None
     log_callback: Any | None = None
 
 

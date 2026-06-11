@@ -37,6 +37,9 @@ class PlatformAccountCreate(BaseModel):
 class PlatformAccountUpdate(BaseModel):
     account_name: str | None = None
     remark: str | None = None
+    worker_id: int | None = None
+    publish_proxy: str | None = None
+    clear_publish_proxy: bool = False
 
 
 class PlatformAccountResponse(BaseModel):
@@ -46,6 +49,10 @@ class PlatformAccountResponse(BaseModel):
     remark: str | None = None
     group_id: int | None = None
     group_name: str | None = None
+    worker_id: int | None = None
+    worker_name: str | None = None
+    publish_proxy_masked: str | None = None
+    has_publish_proxy: bool = False
     status: str
     created_at: datetime
 
@@ -186,6 +193,8 @@ class PublishTaskResponse(BaseModel):
     tags: list[str] | None
     platform: str
     account_id: int
+    account_name: str | None = None
+    worker_name: str | None = None
     content_type: str
     material_ids: list[int] | None
     publish_time: datetime | None
@@ -568,6 +577,57 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PublishWorkerCreate(BaseModel):
+    name: str
+
+
+class PublishWorkerResponse(BaseModel):
+    id: int
+    name: str
+    worker_key: str
+    hostname: str | None = None
+    online: bool = False
+    status: str
+    last_heartbeat_at: datetime | None = None
+    created_at: datetime
+
+    @field_serializer("last_heartbeat_at", "created_at")
+    def serialize_dt(self, value: datetime | None) -> str | None:
+        return format_utc_datetime(value)
+
+
+class PublishWorkerCreateResponse(PublishWorkerResponse):
+    token: str
+
+
+class PublishWorkerRotateTokenResponse(PublishWorkerResponse):
+    token: str
+
+
+class PublishWorkerHeartbeatRequest(BaseModel):
+    hostname: str | None = None
+
+
+class PublishWorkerClaimRequest(BaseModel):
+    hostname: str | None = None
+    timeout_seconds: int = 30
+
+
+class PublishWorkerClaimResponse(BaseModel):
+    task: dict | None = None
+
+
+class WorkerTaskLogRequest(BaseModel):
+    step: str
+    status: str
+    message: str | None = None
+
+
+class WorkerTaskFinishRequest(BaseModel):
+    success: bool
+    message: str
 
 
 class OperationLogResponse(BaseModel):

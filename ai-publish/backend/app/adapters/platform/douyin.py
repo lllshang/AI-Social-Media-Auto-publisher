@@ -32,7 +32,14 @@ class DouyinPlatformAdapter(XhsPlatformAdapter):
         except ImportError as exc:
             raise RuntimeError(format_vendor_import_error(exc, vendor)) from exc
 
-    async def login(self, account_id: int, account_name: str, cookie_file: str, qrcode_callback=None) -> LoginResult:
+    async def login(
+        self,
+        account_id: int,
+        account_name: str,
+        cookie_file: str,
+        qrcode_callback=None,
+        publish_proxy: str | None = None,
+    ) -> LoginResult:
         _, douyin_cookie_gen, _, _ = self._import_vendor()
         path = Path(cookie_file)
         path.parent.mkdir(parents=True, exist_ok=True)

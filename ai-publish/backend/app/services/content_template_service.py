@@ -150,7 +150,7 @@ def ensure_default_content_templates(db: Session) -> None:
         title_hint="一口喝到春天的鲜爽",
         content_body="围绕春茶采摘、工艺与口感撰写种草笔记，突出产地与有机认证，结尾引导评论互动。",
         tags=["春茶", "有机茶", "喝茶日常"],
-        image_style="fresh",
+        image_style="default",
         image_ratio="3:4",
         brand_color="#2E8B57",
         brand_hint="高山有机春茶，鲜爽回甘",

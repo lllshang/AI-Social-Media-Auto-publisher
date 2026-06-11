@@ -137,10 +137,15 @@ export const api = {
   approveTask: (id) => http.post(`/api/publish-tasks/${id}/approve`),
   rejectTask: (id, reason) => http.post(`/api/publish-tasks/${id}/reject`, { reason }),
   executeTask: (id) => http.post(`/api/publish-tasks/${id}/execute`),
+  recoverTask: (id) => http.post(`/api/publish-tasks/${id}/recover`),
   retryTask: (id) => http.post(`/api/publish-tasks/${id}/retry`),
   reopenTask: (id) => http.post(`/api/publish-tasks/${id}/reopen`),
   deleteTask: (id) => http.delete(`/api/publish-tasks/${id}`),
   getTaskLogs: (id) => http.get(`/api/publish-tasks/${id}/logs`),
+  listPublishWorkers: () => http.get('/api/publish-workers'),
+  createPublishWorker: (name) => http.post('/api/publish-workers', { name }),
+  deletePublishWorker: (id) => http.delete(`/api/publish-workers/${id}`),
+  rotatePublishWorkerToken: (id) => http.post(`/api/publish-workers/${id}/rotate-token`),
 }
 
 export default http

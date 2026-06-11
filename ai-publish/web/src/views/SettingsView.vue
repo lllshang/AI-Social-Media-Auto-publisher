@@ -88,6 +88,37 @@
 
     <div v-if="canManageSettings" class="page-card" style="margin-top: 16px">
       <div class="section-head">
+        <h3>本机发布 Worker</h3>
+        <el-button type="primary" size="small" @click="openCreateWorker">新建 Worker</el-button>
+      </div>
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="用于在本机电脑执行浏览器发布（方案 1 + D.4）"
+        description="创建后复制 Token，在本机运行 worker/local_publish_worker.py；将账号绑定到对应 Worker 后，发布任务会派发到该机器。本机需安装 Chrome 并保持常开。"
+        style="margin-bottom: 12px"
+      />
+      <el-table :data="publishWorkers" size="small" v-loading="workersLoading">
+        <el-table-column prop="name" label="名称" width="140" />
+        <el-table-column prop="worker_key" label="标识" width="160" />
+        <el-table-column prop="hostname" label="主机名" min-width="120" />
+        <el-table-column label="在线" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.online ? 'success' : 'info'">{{ row.online ? '在线' : '离线' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="220">
+          <template #default="{ row }">
+            <el-button size="small" @click="rotateWorkerToken(row)">重置 Token</el-button>
+            <el-button size="small" type="danger" @click="removeWorker(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
+    <div v-if="canManageSettings" class="page-card" style="margin-top: 16px">
+      <div class="section-head">
         <h3>敏感词管理</h3>
         <div>
           <el-button size="small" @click="showWordImport = true">批量导入</el-button>
@@ -201,6 +232,46 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="showWorkerToken" title="本机 Worker 配置（Token 仅显示一次）" width="580px">
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="「服务器地址」不是本机域名"
+        description="请填你当前打开管理后台用的地址（浏览器地址栏里的内容，去掉 /app 路径）。Worker 程序跑在你本机，但要连到这台服务器领取发布任务。"
+        style="margin-bottom: 12px"
+      />
+      <el-form label-width="108px">
+        <el-form-item label="服务器地址">
+          <el-input v-model="workerApiBase" placeholder="http://127.0.0.1:8765" />
+        </el-form-item>
+        <el-form-item label="Worker Token">
+          <el-input v-model="workerTokenValue" readonly type="textarea" :rows="2" />
+        </el-form-item>
+        <el-form-item label="终端启动命令">
+          <el-input
+            ref="workerCommandInputRef"
+            :model-value="workerStartCommand"
+            readonly
+            type="textarea"
+            :rows="6"
+            @focus="selectWorkerCommand"
+            @click="selectWorkerCommand"
+          />
+          <p class="muted field-hint">HTTP 非 localhost 时浏览器可能禁止自动复制，可点击上方文本框后按 ⌘C 手动复制。</p>
+        </el-form-item>
+      </el-form>
+      <p class="muted" style="margin: 0">
+        Mac 也可在 Finder 中双击 <code>ai-publish/worker/一键启动.command</code>（首次会引导填写上述信息）。
+      </p>
+      <template #footer>
+        <el-button @click="copyWorkerToken">复制 Token</el-button>
+        <el-button @click="copyWorkerCommand">复制启动命令</el-button>
+        <el-button type="warning" @click="confirmLocalWorkerStart">在本机启动</el-button>
+        <el-button type="primary" @click="showWorkerToken = false">我已保存</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="resetDialogVisible" title="重置密码" width="400px">
       <el-form label-width="90px">
         <el-form-item label="用户">
@@ -239,6 +310,115 @@ const newWord = ref('')
 const newWordRemark = ref('')
 const importWordsText = ref('')
 const imageModSaving = ref(false)
+const workersLoading = ref(false)
+const publishWorkers = ref([])
+const showWorkerToken = ref(false)
+const workerTokenValue = ref('')
+const workerApiBase = ref('')
+const workerCommandInputRef = ref(null)
+
+const workerStartCommand = computed(() => {
+  const base = (workerApiBase.value || detectWorkerApiBase()).replace(/\/$/, '')
+  const token = workerTokenValue.value || '<Token>'
+  const root = 'cd "$HOME/Desktop/混合开发/AI-Social-Media-Auto-publisher/ai-publish/worker"'
+  return [
+    '# 若路径不对，在 Finder 里把 ai-publish/worker 文件夹拖进终端可得到正确 cd 路径',
+    `${root}`,
+    `cat > worker.env << 'EOF'`,
+    `AI_PUBLISH_API_BASE=${base}`,
+    `AI_PUBLISH_WORKER_TOKEN=${token}`,
+    'EOF',
+    './run-worker.sh',
+  ].join('\n')
+})
+
+function detectWorkerApiBase() {
+  if (typeof window === 'undefined') return 'http://127.0.0.1:8765'
+  return window.location.origin
+}
+
+function openWorkerTokenDialog(token) {
+  workerTokenValue.value = token
+  workerApiBase.value = detectWorkerApiBase()
+  showWorkerToken.value = true
+}
+
+function fallbackCopyText(text) {
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.top = '0'
+  textarea.style.left = '0'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  textarea.setSelectionRange(0, text.length)
+  let ok = false
+  try {
+    ok = document.execCommand('copy')
+  } catch {
+    ok = false
+  }
+  document.body.removeChild(textarea)
+  return ok
+}
+
+async function copyText(text, okMessage) {
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text)
+      ElMessage.success(okMessage)
+      return true
+    } catch {
+      /* 降级到 execCommand */
+    }
+  }
+  if (fallbackCopyText(text)) {
+    ElMessage.success(okMessage)
+    return true
+  }
+  selectWorkerCommand()
+  ElMessage.warning('自动复制不可用，已选中命令文本，请按 ⌘C 复制')
+  return false
+}
+
+function selectWorkerCommand() {
+  const component = workerCommandInputRef.value
+  const textarea = component?.textarea ?? component?.$el?.querySelector('textarea')
+  if (!textarea) return
+  textarea.focus()
+  textarea.select()
+}
+
+function copyWorkerToken() {
+  if (!workerTokenValue.value) return ElMessage.warning('暂无 Token')
+  copyText(workerTokenValue.value, 'Token 已复制')
+}
+
+function copyWorkerCommand() {
+  copyText(workerStartCommand.value, '启动命令已复制，请打开 Mac「终端」粘贴执行')
+}
+
+async function confirmLocalWorkerStart() {
+  if (!workerTokenValue.value) return ElMessage.warning('暂无 Token')
+  const base = (workerApiBase.value || detectWorkerApiBase()).replace(/\/$/, '')
+  try {
+    await ElMessageBox.confirm(
+      `将复制一段脚本到剪贴板。请打开 Mac「终端」，粘贴后回车即可在本机启动 Worker。\n\n服务器地址：${base}\n\n说明：网页出于安全限制，不能直接替你打开终端运行程序。`,
+      '在本机启动 Worker',
+      {
+        confirmButtonText: '复制脚本',
+        cancelButtonText: '取消',
+        type: 'info',
+      },
+    )
+    await copyText(workerStartCommand.value, '脚本已复制！请打开「终端」粘贴执行')
+  } catch {
+    /* cancel */
+  }
+}
 const imageModForm = reactive({
   tencent_secret_id: '',
   tencent_secret_key: '',
@@ -292,10 +472,60 @@ async function load() {
     roles.value = results[1]
     users.value = canManageUsers.value ? results[2] : []
     if (canManageSettings.value) {
-      await loadSensitiveWords()
+      await Promise.all([loadSensitiveWords(), loadPublishWorkers()])
     }
   } finally {
     loading.value = false
+  }
+}
+
+async function loadPublishWorkers() {
+  workersLoading.value = true
+  try {
+    publishWorkers.value = await api.listPublishWorkers()
+  } finally {
+    workersLoading.value = false
+  }
+}
+
+async function openCreateWorker() {
+  try {
+    const { value } = await ElMessageBox.prompt('为本机电脑起个名字，如「办公室 Mac」', '新建 Worker', {
+      confirmButtonText: '创建',
+      cancelButtonText: '取消',
+      inputPattern: /.+/,
+      inputErrorMessage: '名称不能为空',
+    })
+    const created = await api.createPublishWorker(value.trim())
+    openWorkerTokenDialog(created.token)
+    await loadPublishWorkers()
+    ElMessage.success('Worker 已创建')
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message || '创建失败')
+  }
+}
+
+async function rotateWorkerToken(row) {
+  try {
+    await ElMessageBox.confirm(`确定重置「${row.name}」的 Token？旧 Token 将立即失效。`, '重置 Token', {
+      type: 'warning',
+    })
+    const result = await api.rotatePublishWorkerToken(row.id)
+    openWorkerTokenDialog(result.token)
+    await loadPublishWorkers()
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message)
+  }
+}
+
+async function removeWorker(row) {
+  try {
+    await ElMessageBox.confirm(`确定删除 Worker「${row.name}」？`, '删除确认', { type: 'warning' })
+    await api.deletePublishWorker(row.id)
+    await loadPublishWorkers()
+    ElMessage.success('已删除')
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message)
   }
 }
 
@@ -404,6 +634,7 @@ const INT_CONFIG_KEYS = new Set([
   'rate_limit_min_interval_seconds',
   'rate_limit_daily_per_account',
   'rate_limit_max_concurrent',
+  'publish_running_timeout_minutes',
 ])
 const intConfigValues = reactive({})
 
@@ -489,6 +720,7 @@ function intConfigMin(key) {
   if (key === 'rate_limit_min_interval_seconds') return 0
   if (key === 'rate_limit_daily_per_account') return 0
   if (key === 'rate_limit_max_concurrent') return 1
+  if (key === 'publish_running_timeout_minutes') return 0
   return 5
 }
 
@@ -499,6 +731,7 @@ function intConfigMax(key) {
   if (key === 'rate_limit_min_interval_seconds') return 86400
   if (key === 'rate_limit_daily_per_account') return 500
   if (key === 'rate_limit_max_concurrent') return 20
+  if (key === 'publish_running_timeout_minutes') return 1440
   return 3600
 }
 
@@ -637,5 +870,10 @@ onMounted(load)
 }
 .image-mod-form {
   max-width: 640px;
+}
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
 }
 </style>

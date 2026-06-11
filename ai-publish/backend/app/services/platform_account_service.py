@@ -6,9 +6,11 @@ from sqlalchemy.orm import Session
 from app.adapters.base import LoginResult
 from app.adapters.factory import get_adapter_factory
 from app.config import get_settings
-from app.models import AccountCookie, PlatformAccount
+from app.models import AccountCookie, PlatformAccount, PublishWorker
 from app.services.log_service import LogService
 from app.utils.crypto import decrypt_text, encrypt_text
+from app.utils.proxy_utils import mask_proxy_url, validate_proxy_url
+from app.utils.vendor_proxy import use_account_proxy
 
 
 class PlatformAccountService:
@@ -48,12 +50,27 @@ class PlatformAccountService:
         self.db.refresh(account)
         return account
 
+    def resolve_publish_proxy(self, account: PlatformAccount) -> str | None:
+        value = (account.publish_proxy or "").strip()
+        return value or None
+
+    def get_worker_name(self, worker_id: int | None) -> str | None:
+        if not worker_id:
+            return None
+        worker = self.db.query(PublishWorker).filter(PublishWorker.id == worker_id).first()
+        return worker.name if worker else None
+
     def update_account(
         self,
         account_id: int,
         *,
         account_name: str | None = None,
         remark: str | None = None,
+        worker_id: int | None = None,
+        publish_proxy: str | None = None,
+        clear_publish_proxy: bool = False,
+        worker_id_set: bool = False,
+        publish_proxy_set: bool = False,
     ) -> PlatformAccount:
         account = self.get_account(account_id)
         if not account:
@@ -76,6 +93,21 @@ class PlatformAccountService:
             account.account_name = name
         if remark is not None:
             account.remark = remark.strip() or None
+        if worker_id_set:
+            if worker_id is None:
+                account.worker_id = None
+            else:
+                worker = self.db.query(PublishWorker).filter(PublishWorker.id == worker_id).first()
+                if not worker:
+                    raise ValueError("所选本机 Worker 不存在")
+                if worker.status != "active":
+                    raise ValueError("所选本机 Worker 已停用")
+                account.worker_id = worker_id
+        if publish_proxy_set:
+            if clear_publish_proxy or publish_proxy is None or not str(publish_proxy).strip():
+                account.publish_proxy = None
+            else:
+                account.publish_proxy = validate_proxy_url(str(publish_proxy))
         self.db.commit()
         self.db.refresh(account)
         return account
@@ -119,7 +151,15 @@ class PlatformAccountService:
             raise ValueError("账号不存在")
         adapter = self.factory.get_platform_adapter(account.platform)
         cookie_file = self.cookie_file_path(account)
-        result = await adapter.login(account.id, account.account_name, cookie_file, qrcode_callback=qrcode_callback)
+        proxy_url = self.resolve_publish_proxy(account)
+        with use_account_proxy(proxy_url):
+            result = await adapter.login(
+                account.id,
+                account.account_name,
+                cookie_file,
+                qrcode_callback=qrcode_callback,
+                publish_proxy=proxy_url,
+            )
         if result.success and Path(cookie_file).exists():
             cookie_plain = Path(cookie_file).read_text(encoding="utf-8")
             self.save_cookie(account, cookie_plain)
@@ -143,7 +183,9 @@ class PlatformAccountService:
             self.db.commit()
             return {"valid": False, "status": account.status}
         adapter = self.factory.get_platform_adapter(account.platform)
-        valid = await adapter.check_cookie_valid(cookie_file)
+        proxy_url = self.resolve_publish_proxy(account)
+        with use_account_proxy(proxy_url):
+            valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=proxy_url)
         account.status = "active" if valid else "expired"
         if not valid:
             self._log_account_expired(account, prev_status, user_id, ip)

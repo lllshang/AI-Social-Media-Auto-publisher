@@ -32,12 +32,24 @@ class RejectTaskRequest(BaseModel):
     reason: str | None = None
 
 
-def _task_response(task: PublishTask, materials: list[Material] | None = None) -> PublishTaskResponse:
+def _task_response(
+    task: PublishTask,
+    materials: list[Material] | None = None,
+    db: Session | None = None,
+) -> PublishTaskResponse:
     payload = PublishTaskResponse.model_validate(task)
     if materials is not None:
         payload.materials = [
             MaterialSummary(id=m.id, name=m.name, type=m.type, url=m.url) for m in materials
         ]
+    if db is not None:
+        from app.services.platform_account_service import PlatformAccountService
+
+        account_svc = PlatformAccountService(db)
+        account = account_svc.get_account(task.account_id)
+        if account:
+            payload.account_name = account.account_name
+            payload.worker_name = account_svc.get_worker_name(account.worker_id)
     return payload
 
 
@@ -52,7 +64,9 @@ def list_tasks(
     _: User = Depends(require_permission(PERM_TASKS_READ)),
 ):
     service = PublishService(db)
-    return [_task_response(task) for task in service.list_tasks(
+    service.expire_stuck_dispatching_tasks()
+    service.expire_stuck_running_tasks()
+    return [_task_response(task, db=db) for task in service.list_tasks(
         status=status,
         platform=platform,
         keyword=keyword,
@@ -90,7 +104,7 @@ def create_task(
             status=initial_status,
             user_id=current_user.id,
         )
-        return _task_response(task, service.get_task_materials(task))
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -105,7 +119,7 @@ def get_task(
     task = service.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-    return _task_response(task, service.get_task_materials(task))
+    return _task_response(task, service.get_task_materials(task), db=db)
 
 
 @router.put("/{task_id}", response_model=PublishTaskResponse)
@@ -131,7 +145,7 @@ def update_task(
             publish_time=data.publish_time,
             bilibili_tid=data.bilibili_tid,
         )
-        return _task_response(task, service.get_task_materials(task))
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -145,7 +159,7 @@ def submit_task(
     service = PublishService(db)
     try:
         task = service.submit_task(task_id)
-        return _task_response(task, service.get_task_materials(task))
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -167,7 +181,7 @@ def approve_task(
             task_id,
             ip=get_client_ip(request),
         )
-        return _task_response(task, service.get_task_materials(task))
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -190,7 +204,7 @@ def reject_task(
             task_id,
             ip=get_client_ip(request),
         )
-        return _task_response(task, service.get_task_materials(task))
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -205,17 +219,37 @@ def execute_task(
     task = service.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-    if task.status == "running":
+    if task.status in {"running", "dispatching"}:
         raise HTTPException(status_code=409, detail="任务正在执行中")
+    service.expire_stuck_dispatching_tasks()
+    service.expire_stuck_running_tasks()
+    task = service.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
     try:
         service.assert_can_execute(task)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    task.status = "running"
-    db.commit()
-    db.refresh(task)
+    account = service.account_service.get_account(task.account_id)
+    worker_bound = bool(account and account.worker_id)
+    if worker_bound:
+        worker_name = service.account_service.get_worker_name(account.worker_id)
+        task.status = "dispatching"
+        task.error_message = None
+        db.commit()
+        db.refresh(task)
+        service.add_log(
+            task_id,
+            "dispatch",
+            "dispatching",
+            f"任务已派发到本机 Worker「{worker_name or account.worker_id}」，等待认领（未占用并发槽）",
+        )
+    else:
+        task.status = "running"
+        db.commit()
+        db.refresh(task)
     task_queue.enqueue_execute(task_id)
-    return _task_response(task, service.get_task_materials(task))
+    return _task_response(task, service.get_task_materials(task), db=db)
 
 
 @router.post("/{task_id}/reopen", response_model=PublishTaskResponse)
@@ -227,7 +261,21 @@ def reopen_task(
     service = PublishService(db)
     try:
         task = service.reopen_to_draft(task_id)
-        return _task_response(task, service.get_task_materials(task))
+        return _task_response(task, service.get_task_materials(task), db=db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{task_id}/recover", response_model=PublishTaskResponse)
+def recover_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission(PERM_TASKS_EXECUTE)),
+):
+    service = PublishService(db)
+    try:
+        task = service.recover_task(task_id)
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -241,7 +289,7 @@ def retry_task(
     service = PublishService(db)
     try:
         task = service.retry_task(task_id)
-        return _task_response(task, service.get_task_materials(task))
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

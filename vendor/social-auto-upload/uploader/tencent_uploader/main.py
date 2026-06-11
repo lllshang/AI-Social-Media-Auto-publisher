@@ -70,11 +70,15 @@ def _build_login_result(
 
 
 def _build_launch_kwargs(headless: bool) -> dict:
+    from conf import PLAYWRIGHT_PROXY
+
     launch_kwargs = {"headless": headless}
     if LOCAL_CHROME_PATH:
         launch_kwargs["executable_path"] = LOCAL_CHROME_PATH
     else:
         launch_kwargs["channel"] = "chrome"
+    if PLAYWRIGHT_PROXY:
+        launch_kwargs["proxy"] = PLAYWRIGHT_PROXY
     return launch_kwargs
 
 

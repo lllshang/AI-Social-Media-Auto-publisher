@@ -22,24 +22,10 @@ class XhsPlatformAdapter:
             sys.path.insert(0, str(vendor))
 
     def _configure_vendor_conf(self) -> None:
-        vendor = Path(self.settings.sau_vendor_path).resolve()
-        if not vendor.exists():
-            return
         try:
-            import conf  # type: ignore
+            from app.utils.vendor_conf import configure_vendor_runtime
 
-            from app.utils.playwright_browser import find_chromium_executable, is_docker_runtime
-
-            headless = self.settings.playwright_headless
-            if is_docker_runtime():
-                headless = True
-            conf.LOCAL_CHROME_HEADLESS = headless
-
-            chrome_path = find_chromium_executable()
-            if chrome_path:
-                conf.LOCAL_CHROME_PATH = chrome_path
-            elif is_docker_runtime():
-                logger.warning("Docker 环境未找到 Chromium，扫码/发布可能失败")
+            configure_vendor_runtime()
         except Exception as exc:
             logger.warning("Configure vendor conf skipped: {}", exc)
 
@@ -68,7 +54,14 @@ class XhsPlatformAdapter:
         if context.log_callback:
             await context.log_callback(step, status, message)
 
-    async def login(self, account_id: int, account_name: str, cookie_file: str, qrcode_callback=None) -> LoginResult:
+    async def login(
+        self,
+        account_id: int,
+        account_name: str,
+        cookie_file: str,
+        qrcode_callback=None,
+        publish_proxy: str | None = None,
+    ) -> LoginResult:
         cookie_auth, xiaohongshu_cookie_gen, _, _ = self._import_vendor()
         path = Path(cookie_file)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -92,7 +85,7 @@ class XhsPlatformAdapter:
             qrcode_data_url=qrcode.get("image_data_url"),
         )
 
-    async def check_cookie_valid(self, cookie_file: str) -> bool:
+    async def check_cookie_valid(self, cookie_file: str, publish_proxy: str | None = None) -> bool:
         if not Path(cookie_file).exists():
             return False
         cookie_auth, _, _, _ = self._import_vendor()

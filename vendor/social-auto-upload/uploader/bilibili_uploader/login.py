@@ -101,6 +101,7 @@ def _run_biliup_login_pty(
     account_file: str,
     qrcode_callback=None,
     timeout_seconds: int = 300,
+    proxy_url: str | None = None,
 ) -> BilibiliLoginOutcome:
     account_path = Path(account_file).expanduser().resolve()
     account_path.parent.mkdir(parents=True, exist_ok=True)
@@ -112,7 +113,10 @@ def _run_biliup_login_pty(
         return BilibiliLoginOutcome(False, "failed", _user_message(str(exc)))
 
     master_fd, slave_fd = pty.openpty()
-    command = [str(binary_path), "-u", str(account_path), "login"]
+    command = [str(binary_path)]
+    if proxy_url:
+        command.extend(["-p", proxy_url])
+    command.extend(["-u", str(account_path), "login"])
     process = subprocess.Popen(
         command,
         stdin=slave_fd,
@@ -242,6 +246,7 @@ async def bilibili_cookie_gen(
     account_file: str,
     qrcode_callback=None,
     timeout_seconds: int = 300,
+    proxy_url: str | None = None,
 ) -> BilibiliLoginOutcome:
     import asyncio
 
@@ -252,5 +257,6 @@ async def bilibili_cookie_gen(
             account_file,
             qrcode_callback=qrcode_callback,
             timeout_seconds=timeout_seconds,
+            proxy_url=proxy_url,
         ),
     )

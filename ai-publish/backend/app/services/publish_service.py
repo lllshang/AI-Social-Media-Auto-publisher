@@ -20,7 +20,8 @@ class PublishService:
         "draft": {"pending", "pending_review"},
         "pending_review": {"pending", "rejected"},
         "rejected": {"draft"},
-        "pending": {"running"},
+        "pending": {"running", "dispatching"},
+        "dispatching": {"running", "pending", "failed"},
         "running": {"success", "failed"},
         "failed": {"pending"},
         "success": set(),
@@ -328,6 +329,107 @@ class PublishService:
         log = PublishTaskLog(task_id=task_id, step=step, status=status, message=message)
         self.db.add(log)
         self.db.commit()
+
+    def _task_running_since(self, task: PublishTask) -> datetime:
+        marker = (
+            self.db.query(PublishTaskLog)
+            .filter(
+                PublishTaskLog.task_id == task.id,
+                PublishTaskLog.step.in_(("dispatch", "start", "worker_claim")),
+            )
+            .order_by(PublishTaskLog.id.asc())
+            .first()
+        )
+        if marker and marker.created_at:
+            return marker.created_at
+        return task.updated_at or task.created_at or datetime.utcnow()
+
+    def expire_stuck_dispatching_tasks(self) -> list[int]:
+        """本机 Worker 长时间未认领的派发中任务恢复为待发布。"""
+        timeout_minutes = min(self.system_config.publish_running_timeout_minutes(), 10)
+        if timeout_minutes <= 0:
+            timeout_minutes = 10
+        cutoff = datetime.utcnow() - timedelta(minutes=timeout_minutes)
+        expired: list[int] = []
+        dispatching_tasks = self.db.query(PublishTask).filter(PublishTask.status == "dispatching").all()
+        for task in dispatching_tasks:
+            has_claim = (
+                self.db.query(PublishTaskLog.id)
+                .filter(PublishTaskLog.task_id == task.id, PublishTaskLog.step == "worker_claim")
+                .first()
+            )
+            if has_claim:
+                continue
+            ref_time = self._task_running_since(task)
+            if ref_time > cutoff:
+                continue
+            message = (
+                f"派发超过 {timeout_minutes} 分钟本机 Worker 仍未认领，已恢复为待发布；"
+                "请确认 Worker 在线后重新执行"
+            )
+            task.status = "pending"
+            task.error_message = message
+            self.add_log(task.id, "dispatch_timeout", "pending", message)
+            expired.append(task.id)
+        if expired:
+            self.db.commit()
+        return expired
+
+    def expire_stuck_running_tasks(self) -> list[int]:
+        """将超时未完成的执行中任务判为失败，释放并发槽位。"""
+        timeout_minutes = self.system_config.publish_running_timeout_minutes()
+        if timeout_minutes <= 0:
+            return []
+        cutoff = datetime.utcnow() - timedelta(minutes=timeout_minutes)
+        expired: list[int] = []
+        running_tasks = self.db.query(PublishTask).filter(PublishTask.status == "running").all()
+        for task in running_tasks:
+            has_finish = (
+                self.db.query(PublishTaskLog.id)
+                .filter(PublishTaskLog.task_id == task.id, PublishTaskLog.step == "finish")
+                .first()
+            )
+            if has_finish:
+                continue
+            ref_time = self._task_running_since(task)
+            if ref_time > cutoff:
+                continue
+            message = (
+                f"执行超过 {timeout_minutes} 分钟仍无完成结果，已自动判定失败以释放并发资源；"
+                "请确认本机 Worker 在线后点「重试」"
+            )
+            task.status = "failed"
+            task.error_message = message
+            self.add_log(task.id, "timeout", "failed", message)
+            expired.append(task.id)
+        if expired:
+            self.db.commit()
+        return expired
+
+    def recover_stuck_running_tasks(self) -> list[int]:
+        """兼容调度器调用。"""
+        self.expire_stuck_dispatching_tasks()
+        return self.expire_stuck_running_tasks()
+
+    def recover_task(self, task_id: int) -> PublishTask:
+        task = self.get_task(task_id)
+        if not task:
+            raise ValueError("任务不存在")
+        if task.status != "running":
+            raise ValueError("仅执行中任务可解除卡住")
+        has_finish = (
+            self.db.query(PublishTaskLog.id)
+            .filter(PublishTaskLog.task_id == task.id, PublishTaskLog.step == "finish")
+            .first()
+        )
+        if has_finish:
+            raise ValueError("任务已有完成记录，请刷新列表")
+        task.status = "failed"
+        task.error_message = "已手动解除卡住并标记失败，可点「重试」后重新执行"
+        self.add_log(task.id, "recover", "failed", task.error_message)
+        self.db.commit()
+        self.db.refresh(task)
+        return task
 
     def list_logs(self, task_id: int) -> list[PublishTaskLog]:
         return (

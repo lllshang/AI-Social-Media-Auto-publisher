@@ -46,6 +46,9 @@
         <el-table-column label="平台" width="90">
           <template #default="{ row }">{{ platformLabel(row.platform) }}</template>
         </el-table-column>
+        <el-table-column label="发布账号" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.account_name || `#${row.account_id}` }}</template>
+        </el-table-column>
         <el-table-column label="类型" width="70">
           <template #default="{ row }">{{ contentTypeLabel(row.content_type) }}</template>
         </el-table-column>
@@ -111,6 +114,8 @@
       <template v-if="detail">
         <p><strong>标题：</strong>{{ detail.title }}</p>
         <p><strong>平台：</strong>{{ platformLabel(detail.platform) }}</p>
+        <p><strong>发布账号：</strong>{{ detail.account_name || `#${detail.account_id}` }}</p>
+        <p v-if="detail.worker_name"><strong>执行机器：</strong>{{ detail.worker_name }}</p>
         <p><strong>类型：</strong>{{ contentTypeLabel(detail.content_type) }}</p>
         <p v-if="detail.topic"><strong>主题：</strong>{{ detail.topic }}</p>
         <p v-if="detail.cover_text"><strong>封面文案：</strong>{{ detail.cover_text }}</p>

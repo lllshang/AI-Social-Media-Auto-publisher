@@ -7,6 +7,13 @@ _DEFAULT_IMAGE = "为{platform}生成{ratio}比例封面图，主题：{topic}�
 _DEFAULT_IMAGE_EN = "Cover image for {platform}, ratio {ratio}, topic: {topic}, style: {style_en}"
 _DEFAULT_NEGATIVE = "blurry, low quality, watermark, logo, text garbled, deformed, ugly"
 
+IMAGE_STYLE_ALIASES: dict[str, str] = {
+    "fresh": "default",
+    "natural": "default",
+    "clean": "minimal",
+    "bold": "vivid",
+}
+
 IMAGE_STYLES: dict[str, dict[str, str]] = {
     "default": {"zh": "清新自然", "en": "fresh and natural"},
     "minimal": {"zh": "极简留白", "en": "minimal with clean whitespace"},
@@ -69,6 +76,7 @@ def load_prompt_template(
 
 
 def _style_labels(style: str) -> tuple[str, str]:
+    style = IMAGE_STYLE_ALIASES.get(style, style)
     meta = IMAGE_STYLES.get(style, IMAGE_STYLES["default"])
     return meta["zh"], meta["en"]
 

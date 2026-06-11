@@ -106,7 +106,7 @@
           <el-input v-model="form.image_ratio" placeholder="如 3:4、9:16" />
         </el-form-item>
         <el-form-item label="品牌色">
-          <el-input v-model="form.brand_color" placeholder="#2E8B57" />
+          <BrandColorSelect v-model="form.brand_color" />
         </el-form-item>
         <el-form-item label="品牌说明">
           <el-input v-model="form.brand_hint" />
@@ -134,10 +134,10 @@
           {{ (previewRow.tags || []).join('、') || '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="文生图">
-          {{ previewRow.image_style || '-' }} / {{ previewRow.image_ratio || '-' }}
+          {{ imageStyleLabel(previewRow.image_style) }} / {{ previewRow.image_ratio || '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="品牌">
-          {{ previewRow.brand_color || '-' }} — {{ previewRow.brand_hint || '-' }}
+          {{ brandColorLabel(previewRow.brand_color) }} — {{ previewRow.brand_hint || '-' }}
         </el-descriptions-item>
       </el-descriptions>
       <template #footer>
@@ -154,7 +154,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
 import { PLATFORMS, platformLabel } from '@/constants/platforms'
-import { IMAGE_STYLES } from '@/constants/imageStyles'
+import BrandColorSelect from '@/components/BrandColorSelect.vue'
+import { brandColorLabel, IMAGE_STYLES, imageStyleLabel, normalizeImageStyle } from '@/constants/imageStyles'
 import { usePermission } from '@/composables/usePermission'
 
 const router = useRouter()
@@ -246,7 +247,7 @@ function openEdit(row) {
     title_hint: row.title_hint || '',
     content_body: row.content_body || '',
     tagsText: (row.tags || []).join('，'),
-    image_style: row.image_style || '',
+    image_style: normalizeImageStyle(row.image_style || ''),
     image_ratio: row.image_ratio || '',
     brand_color: row.brand_color || '',
     brand_hint: row.brand_hint || '',

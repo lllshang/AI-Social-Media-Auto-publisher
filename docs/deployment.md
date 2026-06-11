@@ -890,6 +890,98 @@ sudo usermod -aG docker ubuntu
 
 观测指标与是否启用本机 Worker（D.4）的决策流程见 [phase-d-trial-guide.md](./phase-d-trial-guide.md)。
 
+### 10.1 本机 Worker + 每账号代理（方案 1 + D.4）
+
+适用：希望用**本机真实 Chrome** 发帖，且每账号走**不同代理 IP**（成本最高：代理费 + 本机常开）。
+
+**服务器侧**
+
+1. 系统设置 → **本机发布 Worker** → 新建，复制 **Token**（仅显示一次）。
+2. 平台账号 → 编辑 → 选择 **本机 Worker**；可选填 **网络线路**（`http://` / `socks5://` URL）。
+3. 执行发布任务后，绑定账号的任务进入该 Worker 专属队列，在「任务日志」可见 `dispatch` / `worker_claim`。
+
+**本机侧**
+
+```bash
+cd ai-publish
+# 需已安装 backend 依赖与本机 Chrome
+export AI_PUBLISH_API_BASE=https://你的域名
+export AI_PUBLISH_WORKER_TOKEN=上一步复制的Token
+python worker/local_publish_worker.py
+```
+
+本机进程用 Token 向服务器证明身份；服务器根据 Token 查 `publish_workers` 表，从 `ai-publish:queue:worker:{worker_key}` 派发任务。**未绑定 Worker 的账号仍在服务器执行。**
+
+**常见错误：`No module named 'conf'`**
+
+social-auto-upload 依赖同目录下的 `conf.py`（默认不入 Git）。首次启动 Worker 时会从 `vendor/social-auto-upload/conf.example.py` 自动生成；也可手动：
+
+```bash
+cp vendor/social-auto-upload/conf.example.py vendor/social-auto-upload/conf.py
+```
+
+然后重启 Worker，在任务日志中应出现 `start` → `finish success`，而非立即 `failed`。
+
+**常见错误：`未找到 social-auto-upload 目录：/vendor/social-auto-upload`**
+
+说明本机 Worker 误用了 **Docker** 里的路径。请用 `run-worker.sh` / `一键启动.command` 启动（会自动设置正确的 `SAU_VENDOR_PATH`），不要直接 `python worker/local_publish_worker.py` 且未 export 环境变量。启动日志应看到：
+
+```text
+[worker] SAU_VENDOR_PATH=/你的项目路径/vendor/social-auto-upload
+```
+
+### 10.2 本机 Worker 开机自启
+
+本机需已执行过 `./start.sh`（存在 `backend/.venv`），且已安装 **Chrome**（扫码/发帖用真实浏览器）。
+
+**1. 配置环境变量**
+
+```bash
+cd ai-publish/worker
+cp worker.env.example worker.env
+# 编辑 worker.env：AI_PUBLISH_API_BASE、AI_PUBLISH_WORKER_TOKEN
+```
+
+`worker.env` 含 Token，**不要提交 Git**。
+
+**2. macOS（推荐 LaunchAgent，用户登录后启动）**
+
+```bash
+cd ai-publish/worker
+chmod +x install-macos.sh run-worker.sh
+./install-macos.sh
+```
+
+- 日志：`worker/logs/worker.stdout.log`、`worker.stderr.log`
+- 查看状态：`launchctl print gui/$(id -u)/com.ai-publish.local-worker`
+- 停止：`launchctl bootout gui/$(id -u)/com.ai-publish.local-worker`
+- 修改 `worker.env` 后：`launchctl kickstart -k gui/$(id -u)/com.ai-publish.local-worker`
+
+> macOS 需**保持用户已登录图形桌面**，Chrome 才能正常驱动；合盖休眠期间 Worker 会暂停，唤醒后自动重连。
+
+**3. Linux 桌面（systemd 用户服务）**
+
+```bash
+cd ai-publish/worker
+chmod +x install-linux.sh run-worker.sh
+./install-linux.sh
+```
+
+- 状态：`systemctl --user status ai-publish-worker`
+- 日志：`journalctl --user -u ai-publish-worker -f`
+- 若希望用户未登录桌面也常驻：`sudo loginctl enable-linger $USER`
+
+**4. 手动运行（调试）**
+
+```bash
+cd ai-publish/worker
+./run-worker.sh
+```
+
+**5. Windows**
+
+暂无安装脚本；可用「任务计划程序」在登录时运行 `run-worker.sh`（Git Bash / WSL），或开终端执行 `./run-worker.sh` 并保持窗口不关。
+
 ---
 
 ## 11. 磁盘监控与素材清理

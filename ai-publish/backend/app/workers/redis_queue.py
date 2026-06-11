@@ -12,6 +12,10 @@ from app.config import get_settings
 QUEUE_KEY = "ai-publish:task:execute"
 
 
+def worker_queue_key(worker_key: str) -> str:
+    return f"ai-publish:queue:worker:{worker_key}"
+
+
 class RedisTaskQueue:
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -39,16 +43,55 @@ class RedisTaskQueue:
         except Exception:
             return -1
 
+    def _resolve_queue_key(self, task_id: int) -> tuple[str, int | None]:
+        from app.database import SessionLocal
+        from app.services.publish_worker_service import PublishWorkerService
+
+        db = SessionLocal()
+        try:
+            worker_id = PublishWorkerService(db).resolve_worker_for_task(task_id)
+            if worker_id:
+                queue_key = PublishWorkerService(db).worker_queue_key(worker_id)
+                return queue_key, worker_id
+            return QUEUE_KEY, None
+        finally:
+            db.close()
+
     def enqueue_execute(self, task_id: int) -> None:
+        queue_key, worker_id = self._resolve_queue_key(task_id)
+        if worker_id:
+            self._mark_task_worker(task_id, worker_id)
         if not self.settings.task_queue_enabled:
+            if worker_id:
+                logger.info("任务 #{} 等待本机 Worker #{} 认领（未启用 Redis 队列）", task_id, worker_id)
+                return
             self._run_inline(task_id)
             return
         try:
-            self._get_client().rpush(QUEUE_KEY, str(task_id))
-            logger.info("任务 #{} 已入队 {}", task_id, QUEUE_KEY)
+            self._get_client().rpush(queue_key, str(task_id))
+            if worker_id:
+                logger.info("任务 #{} 已入队本机 Worker 队列 {}", task_id, queue_key)
+            else:
+                logger.info("任务 #{} 已入队 {}", task_id, queue_key)
         except Exception as exc:
+            if worker_id:
+                logger.warning("本机 Worker 入队失败: {}", exc)
+                return
             logger.warning("Redis 入队失败，改为进程内执行: {}", exc)
             self._run_inline(task_id)
+
+    def _mark_task_worker(self, task_id: int, worker_id: int) -> None:
+        from app.database import SessionLocal
+        from app.models import PublishTask
+
+        db = SessionLocal()
+        try:
+            task = db.query(PublishTask).filter(PublishTask.id == task_id).first()
+            if task:
+                task.worker_id = worker_id
+                db.commit()
+        finally:
+            db.close()
 
     def _run_inline(self, task_id: int) -> None:
         from app.workers.task_runner import run_execute_task
@@ -60,6 +103,18 @@ class RedisTaskQueue:
         if not item:
             return None
         return int(item[1])
+
+    def dequeue_worker_blocking(self, queue_key: str, timeout: int = 30) -> int | None:
+        if not self.settings.task_queue_enabled:
+            return None
+        try:
+            item = self._get_client().blpop(queue_key, timeout=timeout)
+            if not item:
+                return None
+            return int(item[1])
+        except Exception as exc:
+            logger.warning("Worker 队列读取失败: {}", exc)
+            return None
 
     def consume_forever(self) -> None:
         from app.workers.task_runner import run_execute_task

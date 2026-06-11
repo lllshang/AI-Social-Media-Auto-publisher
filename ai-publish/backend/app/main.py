@@ -18,6 +18,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.logs import router as logs_router
 from app.api.materials import router as materials_router
 from app.api.platform_accounts import router as platform_accounts_router
+from app.api.publish_workers import router as publish_workers_router
 from app.api.publish_tasks import router as publish_tasks_router
 from app.api.reviews import router as reviews_router
 from app.api.risk import router as risk_router
@@ -61,6 +62,13 @@ async def lifespan(app: FastAPI):
         from app.services.content_template_service import ensure_default_content_templates
 
         ensure_default_content_templates(db)
+        from app.services.publish_service import PublishService
+
+        service = PublishService(db)
+        dispatch_expired = service.expire_stuck_dispatching_tasks()
+        running_expired = service.expire_stuck_running_tasks()
+        if dispatch_expired or running_expired:
+            logger.warning("启动时已清理超时任务 dispatch={} running={}", dispatch_expired, running_expired)
     finally:
         db.close()
     logger.info("AI Publish API started")
@@ -107,6 +115,7 @@ app.include_router(content_templates_router)
 app.include_router(account_groups_router)
 app.include_router(ai_models_router)
 app.include_router(platform_accounts_router)
+app.include_router(publish_workers_router)
 app.include_router(materials_router)
 app.include_router(publish_tasks_router)
 app.include_router(reviews_router)

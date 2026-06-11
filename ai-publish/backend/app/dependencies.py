@@ -5,7 +5,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import User
+from app.models import PublishWorker, User
+from app.services.publish_worker_service import PublishWorkerService
 from app.services.auth_service import decode_access_token
 from app.services.rbac_service import RbacService
 from app.utils.permissions import get_user_permissions, has_permission
@@ -50,3 +51,15 @@ def require_any_permission(*permissions: str) -> Callable:
         return user
 
     return _checker
+
+
+def get_current_worker(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    db: Session = Depends(get_db),
+) -> PublishWorker:
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="缺少 Worker Token")
+    worker = PublishWorkerService(db).get_worker_by_token(credentials.credentials)
+    if not worker:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Worker Token 无效")
+    return worker

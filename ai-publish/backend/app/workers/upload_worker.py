@@ -6,6 +6,7 @@ from app.models import PublishTask
 from app.services.material_service import MaterialService
 from app.services.platform_account_service import PlatformAccountService
 from app.services.system_config_service import SystemConfigService
+from app.utils.vendor_proxy import use_account_proxy
 
 
 class UploadWorker:
@@ -46,6 +47,7 @@ class UploadWorker:
             config = SystemConfigService(self.db)
             bilibili_tid = task.bilibili_tid or config.get_int("bilibili_default_tid", 21)
 
+        publish_proxy = self.account_service.resolve_publish_proxy(account)
         context = PublishContext(
             task_id=task.id,
             platform=task.platform,
@@ -61,7 +63,9 @@ class UploadWorker:
             cover_text=task.cover_text,
             publish_time=task.publish_time,
             bilibili_tid=bilibili_tid,
+            publish_proxy=publish_proxy,
             log_callback=log_callback,
         )
         adapter = self.factory.get_platform_adapter(task.platform)
-        return await adapter.publish(context)
+        with use_account_proxy(publish_proxy):
+            return await adapter.publish(context)

@@ -34,7 +34,14 @@ class ChannelsPlatformAdapter(XhsPlatformAdapter):
         except ImportError as exc:
             raise RuntimeError(format_vendor_import_error(exc, vendor)) from exc
 
-    async def login(self, account_id: int, account_name: str, cookie_file: str, qrcode_callback=None) -> LoginResult:
+    async def login(
+        self,
+        account_id: int,
+        account_name: str,
+        cookie_file: str,
+        qrcode_callback=None,
+        publish_proxy: str | None = None,
+    ) -> LoginResult:
         _, tencent_cookie_gen, _ = self._import_vendor()
         path = Path(cookie_file)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -58,7 +65,7 @@ class ChannelsPlatformAdapter(XhsPlatformAdapter):
             qrcode_data_url=qrcode.get("image_data_url"),
         )
 
-    async def check_cookie_valid(self, cookie_file: str) -> bool:
+    async def check_cookie_valid(self, cookie_file: str, publish_proxy: str | None = None) -> bool:
         if not Path(cookie_file).exists():
             return False
         cookie_auth, _, _ = self._import_vendor()

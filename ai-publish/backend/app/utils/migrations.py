@@ -35,6 +35,8 @@ def run_migrations() -> None:
             statements.append("ALTER TABLE publish_tasks ADD COLUMN next_retry_at DATETIME")
         if "bilibili_tid" not in task_columns:
             statements.append("ALTER TABLE publish_tasks ADD COLUMN bilibili_tid INTEGER")
+        if "worker_id" not in task_columns:
+            statements.append("ALTER TABLE publish_tasks ADD COLUMN worker_id INTEGER")
 
     if not inspector.has_table("account_groups"):
         statements.append(
@@ -50,10 +52,28 @@ def run_migrations() -> None:
         if "role_id" not in user_columns:
             statements.append("ALTER TABLE users ADD COLUMN role_id INTEGER")
 
+    if not inspector.has_table("publish_workers"):
+        statements.append(
+            "CREATE TABLE publish_workers ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "name VARCHAR(64) NOT NULL UNIQUE, "
+            "worker_key VARCHAR(64) NOT NULL UNIQUE, "
+            "token_hash VARCHAR(128) NOT NULL, "
+            "hostname VARCHAR(128), "
+            "last_heartbeat_at DATETIME, "
+            "status VARCHAR(20) DEFAULT 'active', "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+
     if inspector.has_table("platform_accounts"):
         account_columns = {col["name"] for col in inspector.get_columns("platform_accounts")}
         if "remark" not in account_columns:
             statements.append("ALTER TABLE platform_accounts ADD COLUMN remark VARCHAR(255)")
+        if "worker_id" not in account_columns:
+            statements.append("ALTER TABLE platform_accounts ADD COLUMN worker_id INTEGER")
+        if "publish_proxy" not in account_columns:
+            statements.append("ALTER TABLE platform_accounts ADD COLUMN publish_proxy VARCHAR(512)")
 
     if not inspector.has_table("review_logs"):
         statements.append(

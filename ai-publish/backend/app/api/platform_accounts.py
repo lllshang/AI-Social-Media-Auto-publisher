@@ -8,6 +8,7 @@ from app.dependencies import require_permission
 from app.models import User
 from app.utils.permissions import PERM_ACCOUNTS_READ, PERM_ACCOUNTS_WRITE
 from app.models import PlatformAccount
+from app.utils.proxy_utils import mask_proxy_url
 from app.schemas import (
     AccountGroupAssignRequest,
     CookieCheckResponse,
@@ -27,7 +28,12 @@ from app.utils.runtime_env import docker_login_hint, platform_scan_hint, qr_logi
 router = APIRouter(prefix="/api/platform-accounts", tags=["platform-accounts"])
 
 
-def _account_response(account: PlatformAccount, group_service: AccountGroupService) -> PlatformAccountResponse:
+def _account_response(
+    account: PlatformAccount,
+    group_service: AccountGroupService,
+    account_service: PlatformAccountService,
+) -> PlatformAccountResponse:
+    proxy = account.publish_proxy
     return PlatformAccountResponse(
         id=account.id,
         platform=account.platform,
@@ -35,6 +41,10 @@ def _account_response(account: PlatformAccount, group_service: AccountGroupServi
         remark=account.remark,
         group_id=account.group_id,
         group_name=group_service.get_group_name(account.group_id),
+        worker_id=account.worker_id,
+        worker_name=account_service.get_worker_name(account.worker_id),
+        publish_proxy_masked=mask_proxy_url(proxy),
+        has_publish_proxy=bool(proxy),
         status=account.status,
         created_at=account.created_at,
     )
@@ -50,7 +60,7 @@ def list_accounts(
     service = PlatformAccountService(db)
     group_service = AccountGroupService(db)
     accounts = service.list_accounts(platform, group_id)
-    return [_account_response(account, group_service) for account in accounts]
+    return [_account_response(account, group_service, service) for account in accounts]
 
 
 @router.post("", response_model=PlatformAccountResponse)
@@ -71,7 +81,7 @@ def create_account(
             account.id,
             ip=get_client_ip(request),
         )
-        return _account_response(account, group_service)
+        return _account_response(account, group_service, service)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -87,10 +97,16 @@ def update_account(
     service = PlatformAccountService(db)
     group_service = AccountGroupService(db)
     try:
+        fields_set = data.model_fields_set
         account = service.update_account(
             account_id,
             account_name=data.account_name,
             remark=data.remark,
+            worker_id=data.worker_id,
+            publish_proxy=data.publish_proxy,
+            clear_publish_proxy=data.clear_publish_proxy,
+            worker_id_set="worker_id" in fields_set,
+            publish_proxy_set="publish_proxy" in fields_set or data.clear_publish_proxy,
         )
         LogService(db).add_operation(
             "platform_account.update",
@@ -99,7 +115,7 @@ def update_account(
             account.id,
             ip=get_client_ip(request),
         )
-        return _account_response(account, group_service)
+        return _account_response(account, group_service, service)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -115,7 +131,7 @@ def assign_account_group(
     group_service = AccountGroupService(db)
     try:
         account = group_service.assign_account(account_id, data.group_id)
-        return _account_response(account, group_service)
+        return _account_response(account, group_service, account_service)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

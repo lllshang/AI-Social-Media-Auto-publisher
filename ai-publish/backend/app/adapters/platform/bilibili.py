@@ -8,6 +8,7 @@ from loguru import logger
 from app.adapters.base import LoginResult, PublishContext, PublishResult
 from app.config import get_settings
 from app.utils.runtime_env import format_vendor_import_error
+from app.utils.proxy_utils import build_biliup_arguments
 
 
 class BilibiliPlatformAdapter:
@@ -71,6 +72,7 @@ class BilibiliPlatformAdapter:
         account_name: str,
         cookie_file: str,
         qrcode_callback=None,
+        publish_proxy: str | None = None,
     ) -> LoginResult:
         path = Path(cookie_file)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -85,6 +87,7 @@ class BilibiliPlatformAdapter:
             str(path),
             qrcode_callback=self._wrap_qrcode_callback(qrcode_callback),
             timeout_seconds=timeout_seconds,
+            proxy_url=publish_proxy,
         )
         return LoginResult(
             success=outcome.success,
@@ -94,14 +97,12 @@ class BilibiliPlatformAdapter:
             qrcode_data_url=outcome.qrcode_data_url or None,
         )
 
-    async def check_cookie_valid(self, cookie_file: str) -> bool:
+    async def check_cookie_valid(self, cookie_file: str, publish_proxy: str | None = None) -> bool:
         if not Path(cookie_file).exists():
             return False
         run_biliup_command = self._import_runtime()
-        result = await asyncio.to_thread(
-            run_biliup_command,
-            ["-u", cookie_file, "renew"],
-        )
+        arguments = build_biliup_arguments(["-u", cookie_file, "renew"], publish_proxy)
+        result = await asyncio.to_thread(run_biliup_command, arguments)
         return result.returncode == 0
 
     async def publish(self, context: PublishContext) -> PublishResult:
@@ -123,22 +124,25 @@ class BilibiliPlatformAdapter:
 
         try:
             await self._log_step(context, "validate", "running", "校验 Cookie 与素材")
-            if not await self.check_cookie_valid(context.cookie_file):
+            if not await self.check_cookie_valid(context.cookie_file, publish_proxy=context.publish_proxy):
                 await self._log_step(context, "validate", "failed", "Cookie 无效")
                 return PublishResult(success=False, message="账号未登录或已失效，请重新扫码登录")
 
-            arguments = [
-                "-u",
-                context.cookie_file,
-                "upload",
-                str(video_path),
-                "--title",
-                context.title,
-                "--desc",
-                context.content or "",
-                "--tid",
-                str(tid),
-            ]
+            arguments = build_biliup_arguments(
+                [
+                    "-u",
+                    context.cookie_file,
+                    "upload",
+                    str(video_path),
+                    "--title",
+                    context.title,
+                    "--desc",
+                    context.content or "",
+                    "--tid",
+                    str(tid),
+                ],
+                context.publish_proxy,
+            )
             if context.tags:
                 arguments.extend(["--tag", ",".join(context.tags)])
             if context.publish_time:

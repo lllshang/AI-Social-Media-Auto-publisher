@@ -20,12 +20,24 @@ from app.utils.permissions import PERM_REVIEW_WRITE, PERM_TASKS_READ
 router = APIRouter(prefix="/api/reviews", tags=["reviews"])
 
 
-def _task_response(task: PublishTask, materials: list[Material] | None = None) -> PublishTaskResponse:
+def _task_response(
+    task: PublishTask,
+    materials: list[Material] | None = None,
+    db: Session | None = None,
+) -> PublishTaskResponse:
     payload = PublishTaskResponse.model_validate(task)
     if materials is not None:
         payload.materials = [
             MaterialSummary(id=m.id, name=m.name, type=m.type, url=m.url) for m in materials
         ]
+    if db is not None:
+        from app.services.platform_account_service import PlatformAccountService
+
+        account_svc = PlatformAccountService(db)
+        account = account_svc.get_account(task.account_id)
+        if account:
+            payload.account_name = account.account_name
+            payload.worker_name = account_svc.get_worker_name(account.worker_id)
     return payload
 
 
@@ -51,7 +63,7 @@ def list_pending_reviews(
         page_size=page_size,
     )
     return ReviewPendingListResponse(
-        items=[_task_response(task, publish.get_task_materials(task)) for task in items],
+        items=[_task_response(task, publish.get_task_materials(task), db=db) for task in items],
         total=total,
         page=page,
         page_size=page_size,

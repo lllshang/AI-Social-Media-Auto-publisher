@@ -73,6 +73,12 @@
             <span v-else>{{ row.group_name || '未分组' }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="本机/线路" width="140">
+          <template #default="{ row }">
+            <el-tag v-if="row.worker_name" size="small" type="warning">{{ row.worker_name }}</el-tag>
+            <el-tag v-if="row.has_publish_proxy" size="small" style="margin-left: 4px">已配线路</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)">{{ row.status }}</el-tag>
@@ -91,8 +97,8 @@
       </el-table>
     </div>
 
-    <el-dialog v-model="showEdit" title="编辑平台账号" width="420px">
-      <el-form label-width="80px">
+    <el-dialog v-model="showEdit" title="编辑平台账号" width="480px">
+      <el-form label-width="100px">
         <el-form-item label="平台">
           <span>{{ platformLabel(editForm.platform) }}</span>
         </el-form-item>
@@ -101,6 +107,24 @@
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="editForm.remark" placeholder="可选" />
+        </el-form-item>
+        <el-form-item label="本机 Worker">
+          <el-select v-model="editForm.worker_id" clearable placeholder="默认由服务器执行" style="width: 100%">
+            <el-option v-for="w in publishWorkers" :key="w.id" :label="w.name" :value="w.id" />
+          </el-select>
+          <p class="muted field-hint">绑定后，该账号的发布任务将派发到对应本机电脑执行。</p>
+        </el-form-item>
+        <el-form-item label="网络线路">
+          <el-input
+            v-model="editForm.publish_proxy"
+            placeholder="http://用户名:密码@地址:端口 或 socks5://地址:端口"
+            clearable
+          />
+          <p v-if="editForm.publish_proxy_masked" class="muted field-hint">
+            当前已配置：{{ editForm.publish_proxy_masked }}
+            <el-button link type="primary" @click="clearPublishProxy">清除线路</el-button>
+          </p>
+          <p v-else class="muted field-hint">选填。为此账号单独指定网络，向服务商索取线路地址后粘贴。登录与发布使用同一线路。</p>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -176,7 +200,17 @@ const showEdit = ref(false)
 const showGroupManage = ref(false)
 const groupForm = reactive({ name: '' })
 const form = reactive({ platform: 'xhs', account_name: 'test1' })
-const editForm = reactive({ id: null, platform: '', account_name: '', remark: '' })
+const publishWorkers = ref([])
+const editForm = reactive({
+  id: null,
+  platform: '',
+  account_name: '',
+  remark: '',
+  worker_id: null,
+  publish_proxy: '',
+  publish_proxy_masked: '',
+  clear_publish_proxy: false,
+})
 const qrVisible = ref(false)
 const qrDataUrl = ref('')
 const qrMessage = ref('')
@@ -206,15 +240,32 @@ function openEdit(row) {
   editForm.platform = row.platform
   editForm.account_name = row.account_name
   editForm.remark = row.remark || ''
+  editForm.worker_id = row.worker_id ?? null
+  editForm.publish_proxy = ''
+  editForm.publish_proxy_masked = row.publish_proxy_masked || ''
+  editForm.clear_publish_proxy = false
   showEdit.value = true
+}
+
+function clearPublishProxy() {
+  editForm.publish_proxy = ''
+  editForm.publish_proxy_masked = ''
+  editForm.clear_publish_proxy = true
 }
 
 async function saveEdit() {
   try {
-    await api.updateAccount(editForm.id, {
+    const payload = {
       account_name: editForm.account_name,
       remark: editForm.remark,
-    })
+      worker_id: editForm.worker_id,
+    }
+    if (editForm.publish_proxy) {
+      payload.publish_proxy = editForm.publish_proxy
+    } else if (editForm.clear_publish_proxy) {
+      payload.clear_publish_proxy = true
+    }
+    await api.updateAccount(editForm.id, payload)
     ElMessage.success('已保存')
     showEdit.value = false
     await load()
@@ -415,8 +466,18 @@ async function remove(row) {
   }
 }
 
+async function loadWorkers() {
+  if (!can('settings:write')) return
+  try {
+    publishWorkers.value = await api.listPublishWorkers()
+  } catch {
+    publishWorkers.value = []
+  }
+}
+
 onMounted(async () => {
   await loadGroups()
+  await loadWorkers()
   load()
 })
 onBeforeUnmount(stopPolling)
@@ -463,5 +524,10 @@ onBeforeUnmount(stopPolling)
   text-align: center;
   color: #909399;
   padding: 24px 0;
+}
+.field-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
 }
 </style>

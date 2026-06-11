@@ -100,6 +100,9 @@ class SystemConfigService:
     def rate_limit_include_retry(self) -> bool:
         return self.get_bool("rate_limit_include_retry", True)
 
+    def publish_running_timeout_minutes(self) -> int:
+        return max(0, self.get_int("publish_running_timeout_minutes", 30))
+
     def image_moderation_enabled(self) -> bool:
         return self.get_bool("image_moderation_enabled", False)
 
@@ -127,6 +130,11 @@ def ensure_default_system_configs(db: Session) -> None:
         ("rate_limit_daily_per_account", "10", "单账号每日成功发布上限"),
         ("rate_limit_max_concurrent", "1", "全局同时执行中的发布任务数"),
         ("rate_limit_include_retry", "true", "自动重试是否受日上限约束"),
+        (
+            "publish_running_timeout_minutes",
+            "30",
+            "执行中任务超时（分钟），超时无完成结果则自动判失败并释放并发；0 表示关闭",
+        ),
         ("image_moderation_enabled", "false", "是否启用图片内容审核"),
         ("image_moderation_provider", "stub", "图片审核：stub / tencent / alibaba"),
         ("image_moderation_tencent_secret_id", "", "腾讯云 IMS SecretId（按量计费）"),

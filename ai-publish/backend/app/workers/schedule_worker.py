@@ -80,6 +80,7 @@ class ScheduleWorker:
     async def poll_due_tasks(self) -> None:
         db = SessionLocal()
         try:
+            PublishService(db).recover_stuck_running_tasks()
             task_id = self._claim_due_task(db)
             if task_id is None:
                 return
@@ -94,6 +95,7 @@ class ScheduleWorker:
         db = SessionLocal()
         try:
             service = PublishService(db)
+            service.recover_stuck_running_tasks()
             if service.rate_limit.is_globally_saturated():
                 return
             task_id = service.claim_auto_retry_task()

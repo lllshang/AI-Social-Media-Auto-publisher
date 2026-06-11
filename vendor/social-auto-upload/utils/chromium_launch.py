@@ -1,6 +1,6 @@
 """Chromium launch kwargs for Docker (apt) and local Chrome."""
 
-from conf import LOCAL_CHROME_PATH
+from conf import LOCAL_CHROME_PATH, PLAYWRIGHT_PROXY
 
 _CONTAINER_ARGS = ("--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu")
 
@@ -16,4 +16,6 @@ def build_launch_kwargs(headless: bool) -> dict:
         if flag not in args:
             args.append(flag)
     launch_kwargs["args"] = args
+    if PLAYWRIGHT_PROXY:
+        launch_kwargs["proxy"] = PLAYWRIGHT_PROXY
     return launch_kwargs

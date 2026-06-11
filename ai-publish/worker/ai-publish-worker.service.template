@@ -1,0 +1,15 @@
+[Unit]
+Description=AI Publish Local Worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__AI_PUBLISH_ROOT__
+ExecStart=__RUN_WORKER_SH__
+Restart=always
+RestartSec=10
+# 扫码/浏览器发布需要图形会话；桌面 Linux 请用 --user 安装（见 install-linux.sh）
+
+[Install]
+WantedBy=default.target
