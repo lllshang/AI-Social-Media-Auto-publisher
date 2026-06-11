@@ -13,6 +13,14 @@ import requests
 
 
 GITHUB_RELEASE_API = "https://api.github.com/repos/biliup/biliup/releases/latest"
+GITHUB_RELEASE_API_MIRRORS = (
+    GITHUB_RELEASE_API,
+    "https://mirror.ghproxy.com/https://api.github.com/repos/biliup/biliup/releases/latest",
+)
+GITHUB_DOWNLOAD_MIRRORS = (
+    "https://mirror.ghproxy.com/",
+    "https://ghproxy.com/",
+)
 
 
 def get_biliup_runtime_root() -> Path:
@@ -74,17 +82,32 @@ def _select_release_asset(assets: list[dict]) -> dict:
     raise RuntimeError(f"No matching biliup release asset found for platform: {platform_key}")
 
 
+def _github_request_json(urls: tuple[str, ...]) -> dict:
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "social-auto-upload",
+    }
+    last_error: Exception | None = None
+    for url in urls:
+        try:
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except Exception as exc:
+            last_error = exc
+            continue
+    raise RuntimeError(f"无法获取 biliup 版本信息，请检查服务器访问 GitHub 或镜像网络: {last_error}")
+
+
+def _download_urls(asset_url: str) -> list[str]:
+    urls = [asset_url]
+    for prefix in GITHUB_DOWNLOAD_MIRRORS:
+        urls.append(f"{prefix}{asset_url}")
+    return urls
+
+
 def fetch_latest_release() -> dict:
-    response = requests.get(
-        GITHUB_RELEASE_API,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "User-Agent": "social-auto-upload",
-        },
-        timeout=30,
-    )
-    response.raise_for_status()
-    payload = response.json()
+    payload = _github_request_json(GITHUB_RELEASE_API_MIRRORS)
     selected_asset = _select_release_asset(payload.get("assets", []))
     return {
         "tag_name": payload.get("tag_name", ""),
@@ -125,12 +148,22 @@ def download_biliup_asset(release: dict, destination: Path) -> Path:
     with tempfile.TemporaryDirectory(prefix="biliup-download-") as temp_dir:
         temp_root = Path(temp_dir)
         archive_path = temp_root / release["asset_name"]
-        with requests.get(release["asset_url"], stream=True, timeout=120) as response:
-            response.raise_for_status()
-            with archive_path.open("wb") as file_obj:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        file_obj.write(chunk)
+        download_error: Exception | None = None
+        for asset_url in _download_urls(release["asset_url"]):
+            try:
+                with requests.get(asset_url, stream=True, timeout=180) as response:
+                    response.raise_for_status()
+                    with archive_path.open("wb") as file_obj:
+                        for chunk in response.iter_content(chunk_size=1024 * 1024):
+                            if chunk:
+                                file_obj.write(chunk)
+                download_error = None
+                break
+            except Exception as exc:
+                download_error = exc
+                continue
+        if download_error is not None:
+            raise download_error
 
         extract_root = temp_root / "extract"
         extract_root.mkdir(parents=True, exist_ok=True)

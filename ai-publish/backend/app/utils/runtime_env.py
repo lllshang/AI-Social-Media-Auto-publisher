@@ -92,4 +92,5 @@ def get_runtime_info() -> dict:
         "task_queue_embedded_consumer": settings.task_queue_embedded_consumer,
         "redis_connected": task_queue.ping(),
         "storage": settings.storage,
+        "bilibili_enabled": settings.bilibili_enabled,
     }

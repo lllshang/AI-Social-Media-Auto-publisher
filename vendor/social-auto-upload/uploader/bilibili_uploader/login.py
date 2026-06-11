@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import base64
+import fcntl
 import io
 import json
+import logging
 import os
 import pty
 import re
 import select
+import struct
 import subprocess
+import termios
 import time
+from typing import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,7 +23,12 @@ AUTH_URL_PATTERN = re.compile(
     r"https://passport\.bilibili\.com[^\s\]'\"<>]+auth_code=[^\s\]'\"<>]+",
     re.IGNORECASE,
 )
-MENU_MARKERS = ("请选择", "登录方式", "短信登录", "浏览器登录", "扫码登录")
+MENU_MARKERS = ("请选择", "登录方式", "短信登录", "浏览器登录", "扫码登录", "登录", "哔哩哔哩")
+MENU_KEY_SEQUENCES = ("3\r", "2\r", "\x1b[B\x1b[B\r", "\x1b[B\r", "\r")
+QR_PREPARE_TIMEOUT_SECONDS = 120
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+AUTH_CODE_ONLY_RE = re.compile(r"auth_code=([A-Za-z0-9._-]+)", re.IGNORECASE)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -77,9 +87,32 @@ def _write_pty(master_fd: int, payload: str) -> None:
     os.write(master_fd, payload.encode("utf-8"))
 
 
+def _strip_ansi(text: str) -> str:
+    return ANSI_ESCAPE_RE.sub("", text)
+
+
 def _extract_auth_url(text: str) -> str | None:
-    match = AUTH_URL_PATTERN.search(text)
-    return match.group(0) if match else None
+    clean = _strip_ansi(text)
+    match = AUTH_URL_PATTERN.search(clean)
+    if match:
+        return match.group(0)
+    code_match = AUTH_CODE_ONLY_RE.search(clean)
+    if code_match:
+        return f"https://passport.bilibili.com/h5-app/passport/login/auth?auth_code={code_match.group(1)}"
+    return None
+
+
+def _set_pty_window_size(fd: int, rows: int = 30, cols: int = 100) -> None:
+    try:
+        size = struct.pack("HHHH", rows, cols, 0, 0)
+        fcntl.ioctl(fd, termios.TIOCSWINSZ, size)
+    except OSError:
+        pass
+
+
+def _emit_progress(progress_callback: Callable[[str, str], None] | None, message: str, status: str = "starting") -> None:
+    if progress_callback:
+        progress_callback(message, status)
 
 
 def _cookie_ready(account_file: Path) -> bool:
@@ -100,6 +133,7 @@ def _load_qrcode_png_as_data_url(qrcode_path: Path) -> str:
 def _run_biliup_login_pty(
     account_file: str,
     qrcode_callback=None,
+    progress_callback=None,
     timeout_seconds: int = 300,
     proxy_url: str | None = None,
 ) -> BilibiliLoginOutcome:
@@ -107,16 +141,24 @@ def _run_biliup_login_pty(
     account_path.parent.mkdir(parents=True, exist_ok=True)
     work_dir = account_path.parent
 
+    _emit_progress(progress_callback, "正在检查 B 站登录组件…")
     try:
         binary_path = ensure_biliup_binary(force_check=False)
     except Exception as exc:
         return BilibiliLoginOutcome(False, "failed", _user_message(str(exc)))
 
+    _emit_progress(progress_callback, "正在启动 B 站登录，请稍候…")
+
     master_fd, slave_fd = pty.openpty()
+    _set_pty_window_size(master_fd)
+    _set_pty_window_size(slave_fd)
     command = [str(binary_path)]
     if proxy_url:
         command.extend(["-p", proxy_url])
     command.extend(["-u", str(account_path), "login"])
+    child_env = os.environ.copy()
+    child_env.setdefault("TERM", "xterm-256color")
+    child_env.setdefault("LANG", "C.UTF-8")
     process = subprocess.Popen(
         command,
         stdin=slave_fd,
@@ -124,19 +166,27 @@ def _run_biliup_login_pty(
         stderr=slave_fd,
         cwd=str(work_dir),
         close_fds=True,
+        env=child_env,
     )
     os.close(slave_fd)
 
     output = ""
-    menu_sent = False
+    menu_attempt = 0
+    last_menu_try_at = 0.0
     qrcode_sent = False
+    qrcode_shown_at = 0.0
     last_qrcode_path = ""
     qrcode_path = work_dir / "qrcode.png"
     qrcode_mtime_before = qrcode_path.stat().st_mtime if qrcode_path.exists() else 0.0
-    deadline = time.time() + max(30, timeout_seconds)
+    started_at = time.time()
 
     try:
-        while time.time() < deadline:
+        while True:
+            now = time.time()
+            if not qrcode_sent and now - started_at > QR_PREPARE_TIMEOUT_SECONDS:
+                break
+            if qrcode_sent and now - qrcode_shown_at > max(60, timeout_seconds):
+                break
             if process.poll() is not None:
                 break
 
@@ -144,15 +194,23 @@ def _run_biliup_login_pty(
             if chunk:
                 output += chunk
 
-            if not menu_sent and any(marker in output for marker in MENU_MARKERS):
-                # 默认光标在「短信登录」，两次下键 + 回车通常落到「浏览器登录」
-                time.sleep(0.4)
-                _write_pty(master_fd, "\x1b[B\x1b[B\r")
-                menu_sent = True
-                output = ""
+            clean_output = _strip_ansi(output)
+            if not qrcode_sent and any(marker in clean_output for marker in MENU_MARKERS):
+                if menu_attempt == 0 or now - last_menu_try_at >= 8:
+                    if menu_attempt < len(MENU_KEY_SEQUENCES):
+                        time.sleep(0.4)
+                        _write_pty(master_fd, MENU_KEY_SEQUENCES[menu_attempt])
+                        menu_attempt += 1
+                        last_menu_try_at = now
+                        _emit_progress(
+                            progress_callback,
+                            f"正在选择扫码登录方式（{menu_attempt}/{len(MENU_KEY_SEQUENCES)}）…",
+                        )
+                        output = ""
 
             auth_url = _extract_auth_url(output)
             if auth_url and not qrcode_sent:
+                _emit_progress(progress_callback, "正在生成二维码…")
                 image_path = account_path.with_name(f"{account_path.stem}_login_qrcode.png")
                 data_url = _make_qrcode_data_url(auth_url)
                 _save_qrcode_png(auth_url, image_path)
@@ -161,6 +219,8 @@ def _run_biliup_login_pty(
                 if qrcode_callback:
                     qrcode_callback(payload)
                 qrcode_sent = True
+                qrcode_shown_at = time.time()
+                _emit_progress(progress_callback, "请使用哔哩哔哩 App 扫码", "waiting_scan")
 
             if not qrcode_sent and qrcode_path.exists():
                 current_mtime = qrcode_path.stat().st_mtime
@@ -173,6 +233,8 @@ def _run_biliup_login_pty(
                     if qrcode_callback:
                         qrcode_callback(payload)
                     qrcode_sent = True
+                    qrcode_shown_at = time.time()
+                    _emit_progress(progress_callback, "请使用哔哩哔哩 App 扫码", "waiting_scan")
 
             if not chunk:
                 time.sleep(0.15)
@@ -186,6 +248,7 @@ def _run_biliup_login_pty(
             time.sleep(0.25)
 
         return_code = process.poll()
+        detail = _strip_ansi((output or "").strip())[-600:]
         if return_code is None:
             process.terminate()
             try:
@@ -193,6 +256,15 @@ def _run_biliup_login_pty(
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=3)
+            if not qrcode_sent:
+                logger.warning("biliup login ended without qrcode, tail=%s", detail)
+                return BilibiliLoginOutcome(
+                    False,
+                    "failed",
+                    "未能获取登录二维码，请稍后重试；若持续失败请联系管理员查看 API 日志（docker compose logs api）",
+                    qrcode_data_url="",
+                    qrcode_path="",
+                )
             return BilibiliLoginOutcome(
                 False,
                 "timeout",
@@ -210,11 +282,13 @@ def _run_biliup_login_pty(
                 qrcode_path=last_qrcode_path,
             )
 
-        detail = (output or "").strip()[-400:]
+        message = _user_message(detail or f"exit {return_code}")
+        if not qrcode_sent and "github" not in detail.lower():
+            message = "未能获取登录二维码，请稍后重试；若持续失败请联系管理员检查服务器网络"
         return BilibiliLoginOutcome(
             False,
             "failed",
-            _user_message(detail or f"exit {return_code}"),
+            message,
             qrcode_data_url=_last_qrcode_data_url(work_dir, account_path, last_qrcode_path),
             qrcode_path=last_qrcode_path,
         )
@@ -245,6 +319,7 @@ def _last_qrcode_data_url(work_dir: Path, account_path: Path, preferred_path: st
 async def bilibili_cookie_gen(
     account_file: str,
     qrcode_callback=None,
+    progress_callback=None,
     timeout_seconds: int = 300,
     proxy_url: str | None = None,
 ) -> BilibiliLoginOutcome:
@@ -256,6 +331,7 @@ async def bilibili_cookie_gen(
         lambda: _run_biliup_login_pty(
             account_file,
             qrcode_callback=qrcode_callback,
+            progress_callback=progress_callback,
             timeout_seconds=timeout_seconds,
             proxy_url=proxy_url,
         ),

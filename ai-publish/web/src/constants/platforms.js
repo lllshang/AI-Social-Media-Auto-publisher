@@ -41,42 +41,55 @@ export const PLATFORMS = [
     videoHint: '仅支持短视频（竖屏 MP4 等）；可选 3:4 封面与短标题（6-16字）',
     contentTypes: [{ value: 'video', label: '短视频' }],
   },
-  {
-    value: 'bilibili',
-    label: 'B站',
-    appName: '哔哩哔哩 App',
-    coverRatio: '16:9',
-    experimental: true,
-    loginHint: '点击「扫码登录」，使用哔哩哔哩 App 扫码并按手机提示确认即可。',
-    videoHint: '仅支持视频投稿（MP4 等），需选择分区 tid；上传通过 biliup CLI 执行',
-    contentTypes: [{ value: 'video', label: '视频' }],
-  },
 ]
 
+/** 运行时根据 bilibili_enabled 追加 B 站（默认关闭） */
+export const BILIBILI_PLATFORM = {
+  value: 'bilibili',
+  label: 'B站',
+  appName: '哔哩哔哩 App',
+  coverRatio: '16:9',
+  experimental: true,
+  loginHint: '点击「扫码登录」，使用哔哩哔哩 App 扫码并按手机提示确认即可。',
+  videoHint: '仅支持视频投稿（MP4 等），需选择分区 tid；上传通过 biliup CLI 执行',
+  contentTypes: [{ value: 'video', label: '视频' }],
+}
+
+export function platformsForRuntime(runtime = {}) {
+  if (runtime?.bilibili_enabled) {
+    return [...PLATFORMS, BILIBILI_PLATFORM]
+  }
+  return PLATFORMS
+}
+
+function allPlatforms() {
+  return [...PLATFORMS, BILIBILI_PLATFORM]
+}
+
 export function platformLabel(value) {
-  const item = PLATFORMS.find((p) => p.value === value)
+  const item = allPlatforms().find((p) => p.value === value)
   if (!item) return value
   return item.experimental ? `${item.label}（实验）` : item.label
 }
 
 export function platformLoginHint(value) {
-  return PLATFORMS.find((p) => p.value === value)?.loginHint || ''
+  return allPlatforms().find((p) => p.value === value)?.loginHint || ''
 }
 
 export function platformAppName(value) {
-  return PLATFORMS.find((p) => p.value === value)?.appName || '对应 App'
+  return allPlatforms().find((p) => p.value === value)?.appName || '对应 App'
 }
 
 export function platformCoverRatio(value) {
-  return PLATFORMS.find((p) => p.value === value)?.coverRatio || '3:4'
+  return allPlatforms().find((p) => p.value === value)?.coverRatio || '3:4'
 }
 
 export function platformVideoCoverRatio(value) {
-  return PLATFORMS.find((p) => p.value === value)?.videoCoverRatio || platformCoverRatio(value)
+  return allPlatforms().find((p) => p.value === value)?.videoCoverRatio || platformCoverRatio(value)
 }
 
 export function platformVideoHint(value) {
-  return PLATFORMS.find((p) => p.value === value)?.videoHint || '请上传 MP4 等常见视频格式'
+  return allPlatforms().find((p) => p.value === value)?.videoHint || '请上传 MP4 等常见视频格式'
 }
 
 export const CONTENT_TYPE_LABELS = {

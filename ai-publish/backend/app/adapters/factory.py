@@ -14,6 +14,8 @@ class AdapterFactory:
         self.settings = get_settings()
 
     def get_platform_adapter(self, platform: str) -> PlatformAdapter:
+        if platform == "bilibili" and not self.settings.bilibili_enabled:
+            raise ValueError("B 站功能暂未开放，请使用小红书/抖音/快手等平台")
         registry: dict[str, type[PlatformAdapter]] = {
             "xhs": XhsPlatformAdapter,
             "douyin": DouyinPlatformAdapter,

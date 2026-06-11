@@ -145,21 +145,39 @@ class PlatformAccountService:
             Path(cookie_file).write_text(cookie_plain, encoding="utf-8")
         return cookie_file
 
-    async def login(self, account_id: int, qrcode_callback=None) -> LoginResult:
+    async def login(
+        self,
+        account_id: int,
+        qrcode_callback=None,
+        progress_callback=None,
+    ) -> LoginResult:
         account = self.get_account(account_id)
         if not account:
             raise ValueError("账号不存在")
         adapter = self.factory.get_platform_adapter(account.platform)
         cookie_file = self.cookie_file_path(account)
-        proxy_url = self.resolve_publish_proxy(account)
-        with use_account_proxy(proxy_url):
+        # B 站扫码在服务端通过 biliup 完成，不走 Playwright；账号「网络线路」仅用于本机 Worker 发布，
+        # 若误传给 biliup 可能导致无法连 GitHub/B 站、二维码一直不出现。
+        if account.platform == "bilibili":
             result = await adapter.login(
                 account.id,
                 account.account_name,
                 cookie_file,
                 qrcode_callback=qrcode_callback,
-                publish_proxy=proxy_url,
+                progress_callback=progress_callback,
+                publish_proxy=None,
             )
+        else:
+            proxy_url = self.resolve_publish_proxy(account)
+            with use_account_proxy(proxy_url):
+                result = await adapter.login(
+                    account.id,
+                    account.account_name,
+                    cookie_file,
+                    qrcode_callback=qrcode_callback,
+                    progress_callback=progress_callback,
+                    publish_proxy=proxy_url,
+                )
         if result.success and Path(cookie_file).exists():
             cookie_plain = Path(cookie_file).read_text(encoding="utf-8")
             self.save_cookie(account, cookie_plain)

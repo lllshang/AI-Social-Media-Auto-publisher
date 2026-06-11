@@ -90,6 +90,8 @@ class Settings(BaseSettings):
 
     sau_vendor_path: str = "../../vendor/social-auto-upload"
     web_dist_path: str = ""
+    # B 站实验功能：默认关闭，避免 biliup 预热/登录影响 API 稳定性
+    bilibili_enabled: bool = False
 
     def _resolve_path(self, raw_path: str) -> Path:
         path = Path(raw_path).expanduser()

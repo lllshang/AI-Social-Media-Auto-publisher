@@ -192,7 +192,17 @@ async def _run_login_session(session_id: str, account_id: int) -> None:
             else "正在启动浏览器，请稍候..."
         )
         await on_progress(starting_message, "starting")
-        result = await service.login(account_id, qrcode_callback=on_qrcode)
+        loop = asyncio.get_running_loop()
+
+        def on_progress_sync(message: str, status: str = "starting") -> None:
+            future = asyncio.run_coroutine_threadsafe(on_progress(message, status), loop)
+            future.result(timeout=10)
+
+        result = await service.login(
+            account_id,
+            qrcode_callback=on_qrcode,
+            progress_callback=on_progress_sync,
+        )
         await login_session_service.finish(session_id, result)
     except Exception as exc:
         current = await login_session_service.get(session_id)

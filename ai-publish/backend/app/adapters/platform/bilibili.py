@@ -66,12 +66,27 @@ class BilibiliPlatformAdapter:
         if context.log_callback:
             await context.log_callback(step, status, message)
 
+    def _wrap_progress_callback(self, progress_callback):
+        if not progress_callback:
+            return None
+
+        loop = asyncio.get_running_loop()
+
+        def _sync_emit(message: str, status: str = "starting") -> None:
+            result = progress_callback(message, status)
+            if inspect.isawaitable(result):
+                future = asyncio.run_coroutine_threadsafe(result, loop)
+                future.result(timeout=10)
+
+        return _sync_emit
+
     async def login(
         self,
         account_id: int,
         account_name: str,
         cookie_file: str,
         qrcode_callback=None,
+        progress_callback=None,
         publish_proxy: str | None = None,
     ) -> LoginResult:
         path = Path(cookie_file)
@@ -86,6 +101,7 @@ class BilibiliPlatformAdapter:
         outcome = await bilibili_cookie_gen(
             str(path),
             qrcode_callback=self._wrap_qrcode_callback(qrcode_callback),
+            progress_callback=self._wrap_progress_callback(progress_callback),
             timeout_seconds=timeout_seconds,
             proxy_url=publish_proxy,
         )

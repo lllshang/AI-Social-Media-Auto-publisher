@@ -303,8 +303,10 @@ async function pollLoginSession(sessionId) {
       waited >= 15
         ? `手机已确认？正在同步登录状态（已等待 ${waited} 秒，最长约 5 分钟）…`
         : `请使用${platformAppName(loginPlatform.value)}扫码；手机确认后请稍候，正在同步登录状态…`
+  } else if (res.message) {
+    qrMessage.value = res.message
   } else {
-    qrMessage.value = res.message || `请使用${platformAppName(loginPlatform.value)}扫码`
+    qrMessage.value = `请使用${platformAppName(loginPlatform.value)}扫码`
   }
   if (res.success || res.status === 'success') {
     await finishLoginSuccess()
@@ -327,6 +329,7 @@ async function pollLoginSession(sessionId) {
     loggingIn.value = false
     loggingInId.value = null
     pollCount.value = 0
+    qrMessage.value = res.message || '登录失败'
     ElMessage.error(res.message || '登录失败')
   }
 }
