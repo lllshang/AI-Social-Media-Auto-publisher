@@ -93,16 +93,12 @@ class BilibiliPlatformAdapter:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         bilibili_cookie_gen = self._import_login()
-        from app.utils.login_poll import login_poll_params
-
-        _, max_checks = login_poll_params(self.settings)
-        timeout_seconds = max(self.settings.login_timeout_seconds, max_checks)
 
         outcome = await bilibili_cookie_gen(
             str(path),
             qrcode_callback=self._wrap_qrcode_callback(qrcode_callback),
             progress_callback=self._wrap_progress_callback(progress_callback),
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=self.settings.login_timeout_seconds,
             proxy_url=publish_proxy,
         )
         return LoginResult(

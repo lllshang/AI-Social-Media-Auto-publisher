@@ -173,7 +173,12 @@
 
     <el-dialog v-model="qrVisible" title="扫码登录" width="420px" :close-on-click-modal="false">
       <p class="muted">{{ qrMessage }}</p>
-      <div v-if="!qrDataUrl && loggingIn" class="qr-loading">正在生成二维码...</div>
+      <p v-if="loginPlatform === 'bilibili' && !qrDataUrl && loggingIn" class="muted bilibili-login-hint">
+        首次 B 站登录可能需 1–3 分钟下载组件，请保持窗口打开；二维码出现后请在约 60 秒内扫码。
+      </p>
+      <div v-if="!qrDataUrl && loggingIn" class="qr-loading">
+        {{ loginPlatform === 'bilibili' ? '正在准备 B 站二维码…' : '正在生成二维码...' }}
+      </div>
       <img v-if="qrDataUrl" :src="qrDataUrl" alt="qrcode" class="qr-image" />
     </el-dialog>
   </div>
@@ -303,10 +308,13 @@ async function pollLoginSession(sessionId) {
   }
   if (res.status === 'waiting_scan' && res.qrcode_data_url) {
     const waited = pollCount.value
+    const isBili = loginPlatform.value === 'bilibili'
     qrMessage.value =
       waited >= 15
         ? `手机已确认？正在同步登录状态（已等待 ${waited} 秒，最长约 5 分钟）…`
-        : `请使用${platformAppName(loginPlatform.value)}扫码；手机确认后请稍候，正在同步登录状态…`
+        : isBili
+          ? '请用哔哩哔哩 App 扫码；二维码约 60 秒内有效，确认后请稍候…'
+          : `请使用${platformAppName(loginPlatform.value)}扫码；手机确认后请稍候，正在同步登录状态…`
   } else if (res.message) {
     qrMessage.value = res.message
   } else {
@@ -317,7 +325,8 @@ async function pollLoginSession(sessionId) {
     return
   }
   // 兜底：后端会话未及时结束时，轮询 Cookie 是否已写入
-  if (pollCount.value >= 8 && loggingInId.value) {
+  const cookieCheckAfter = loginPlatform.value === 'bilibili' ? 5 : 8
+  if (pollCount.value >= cookieCheckAfter && loggingInId.value) {
     try {
       const cookieRes = await api.checkCookie(loggingInId.value)
       if (cookieRes.valid) {
@@ -424,7 +433,10 @@ async function check(row) {
 }
 
 function loginPreparingMessage(platform) {
-  return platform === 'bilibili' ? '正在准备二维码，请稍候…' : '正在启动浏览器，请稍候...'
+  if (platform === 'bilibili') {
+    return '正在准备 B 站二维码（首次可能需 1–3 分钟）…'
+  }
+  return '正在启动浏览器，请稍候...'
 }
 
 async function login(row) {

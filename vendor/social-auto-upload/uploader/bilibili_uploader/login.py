@@ -24,8 +24,9 @@ AUTH_URL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 MENU_MARKERS = ("请选择", "登录方式", "短信登录", "浏览器登录", "扫码登录", "登录", "哔哩哔哩")
-MENU_KEY_SEQUENCES = ("3\r", "2\r", "\x1b[B\x1b[B\r", "\x1b[B\r", "\r")
-QR_PREPARE_TIMEOUT_SECONDS = 120
+MENU_KEY_SEQUENCES = ("1\r", "3\r", "2\r", "\x1b[B\x1b[B\r", "\x1b[B\r", "\r")
+QR_PREPARE_TIMEOUT_SECONDS = 240
+SCAN_WAIT_SECONDS_DEFAULT = 300
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 AUTH_CODE_ONLY_RE = re.compile(r"auth_code=([A-Za-z0-9._-]+)", re.IGNORECASE)
 logger = logging.getLogger(__name__)
@@ -40,12 +41,14 @@ class BilibiliLoginOutcome:
     qrcode_path: str = ""
 
 
-def _user_message(raw: str) -> str:
+def _user_message(raw: str, *, qrcode_sent: bool = False) -> str:
     lowered = raw.lower()
     if "not a terminal" in lowered:
         return "服务器登录环境未就绪，请联系管理员检查部署配置"
     if "timeout" in lowered or "超时" in raw:
-        return "登录超时，请关闭窗口后重新扫码"
+        if qrcode_sent:
+            return "扫码后等待登录结果超时，请关闭窗口后重新点击「扫码登录」"
+        return "准备登录超时（首次可能需下载 biliup 组件 1–3 分钟），请重试"
     if "github" in lowered or "release" in lowered:
         return "暂时无法连接登录组件，请稍后重试或联系管理员"
     if "auth_code" in lowered or "qrcode" in lowered or "二维码" in raw:
@@ -147,7 +150,8 @@ def _run_biliup_login_pty(
     except Exception as exc:
         return BilibiliLoginOutcome(False, "failed", _user_message(str(exc)))
 
-    _emit_progress(progress_callback, "正在启动 B 站登录，请稍候…")
+    scan_wait_seconds = max(120, int(timeout_seconds or SCAN_WAIT_SECONDS_DEFAULT))
+    _emit_progress(progress_callback, "正在启动 B 站登录，首次可能需 1–3 分钟准备组件…")
 
     master_fd, slave_fd = pty.openpty()
     _set_pty_window_size(master_fd)
@@ -175,6 +179,7 @@ def _run_biliup_login_pty(
     last_menu_try_at = 0.0
     qrcode_sent = False
     qrcode_shown_at = 0.0
+    last_auth_url = ""
     last_qrcode_path = ""
     qrcode_path = work_dir / "qrcode.png"
     qrcode_mtime_before = qrcode_path.stat().st_mtime if qrcode_path.exists() else 0.0
@@ -184,8 +189,10 @@ def _run_biliup_login_pty(
         while True:
             now = time.time()
             if not qrcode_sent and now - started_at > QR_PREPARE_TIMEOUT_SECONDS:
+                logger.warning("biliup login prepare timeout after %ss", QR_PREPARE_TIMEOUT_SECONDS)
                 break
-            if qrcode_sent and now - qrcode_shown_at > max(60, timeout_seconds):
+            if qrcode_sent and now - qrcode_shown_at > scan_wait_seconds:
+                logger.warning("biliup login scan wait timeout after %ss", scan_wait_seconds)
                 break
             if process.poll() is not None:
                 break
@@ -209,18 +216,19 @@ def _run_biliup_login_pty(
                         output = ""
 
             auth_url = _extract_auth_url(output)
-            if auth_url and not qrcode_sent:
+            if auth_url and (not qrcode_sent or auth_url != last_auth_url):
                 _emit_progress(progress_callback, "正在生成二维码…")
                 image_path = account_path.with_name(f"{account_path.stem}_login_qrcode.png")
                 data_url = _make_qrcode_data_url(auth_url)
                 _save_qrcode_png(auth_url, image_path)
                 payload = {"image_data_url": data_url, "image_path": str(image_path)}
                 last_qrcode_path = str(image_path)
+                last_auth_url = auth_url
                 if qrcode_callback:
                     qrcode_callback(payload)
                 qrcode_sent = True
                 qrcode_shown_at = time.time()
-                _emit_progress(progress_callback, "请使用哔哩哔哩 App 扫码", "waiting_scan")
+                _emit_progress(progress_callback, "请使用哔哩哔哩 App 扫码（二维码约 60 秒内有效）", "waiting_scan")
 
             if not qrcode_sent and qrcode_path.exists():
                 current_mtime = qrcode_path.stat().st_mtime
@@ -261,14 +269,14 @@ def _run_biliup_login_pty(
                 return BilibiliLoginOutcome(
                     False,
                     "failed",
-                    "未能获取登录二维码，请稍后重试；若持续失败请联系管理员查看 API 日志（docker compose logs api）",
+                    "未能获取登录二维码（首次登录需下载 biliup，约 1–3 分钟）；请重试或查看 API 日志",
                     qrcode_data_url="",
                     qrcode_path="",
                 )
             return BilibiliLoginOutcome(
                 False,
                 "timeout",
-                _user_message("timeout"),
+                _user_message("timeout", qrcode_sent=True),
                 qrcode_data_url=_last_qrcode_data_url(work_dir, account_path, last_qrcode_path),
                 qrcode_path=last_qrcode_path,
             )
@@ -282,7 +290,7 @@ def _run_biliup_login_pty(
                 qrcode_path=last_qrcode_path,
             )
 
-        message = _user_message(detail or f"exit {return_code}")
+        message = _user_message(detail or f"exit {return_code}", qrcode_sent=qrcode_sent)
         if not qrcode_sent and "github" not in detail.lower():
             message = "未能获取登录二维码，请稍后重试；若持续失败请联系管理员检查服务器网络"
         return BilibiliLoginOutcome(
