@@ -8,6 +8,7 @@ from app.adapters.factory import get_adapter_factory
 from app.config import get_settings
 from app.models import AccountCookie, PlatformAccount, PublishWorker
 from app.services.log_service import LogService
+from app.utils.bilibili_guard import assert_bilibili_enabled
 from app.utils.crypto import decrypt_text, encrypt_text
 from app.utils.proxy_utils import mask_proxy_url, validate_proxy_url
 from app.utils.vendor_proxy import use_account_proxy
@@ -32,6 +33,8 @@ class PlatformAccountService:
         return query.order_by(PlatformAccount.id.desc()).all()
 
     def create_account(self, platform: str, account_name: str, user_id: int | None = None) -> PlatformAccount:
+        if platform == "bilibili":
+            assert_bilibili_enabled()
         exists = (
             self.db.query(PlatformAccount)
             .filter(PlatformAccount.platform == platform, PlatformAccount.account_name == account_name)
@@ -200,9 +203,12 @@ class PlatformAccountService:
             self.db.commit()
             return {"valid": False, "status": account.status}
         adapter = self.factory.get_platform_adapter(account.platform)
-        proxy_url = self.resolve_publish_proxy(account)
-        with use_account_proxy(proxy_url):
-            valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=proxy_url)
+        if account.platform == "bilibili":
+            valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=None)
+        else:
+            proxy_url = self.resolve_publish_proxy(account)
+            with use_account_proxy(proxy_url):
+                valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=proxy_url)
         account.status = "active" if valid else "expired"
         if not valid:
             self._log_account_expired(account, prev_status, user_id, ip)

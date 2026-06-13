@@ -7,6 +7,7 @@ from app.adapters.platform.xhs import XhsPlatformAdapter
 from app.adapters.storage.local import LocalStorageAdapter
 from app.adapters.storage.stub import StubStorageAdapter
 from app.config import get_settings
+from app.utils.bilibili_guard import BILIBILI_DISABLED_MESSAGE
 
 
 class AdapterFactory:
@@ -15,7 +16,7 @@ class AdapterFactory:
 
     def get_platform_adapter(self, platform: str) -> PlatformAdapter:
         if platform == "bilibili" and not self.settings.bilibili_enabled:
-            raise ValueError("B 站功能暂未开放，请使用小红书/抖音/快手等平台")
+            raise ValueError(BILIBILI_DISABLED_MESSAGE)
         registry: dict[str, type[PlatformAdapter]] = {
             "xhs": XhsPlatformAdapter,
             "douyin": DouyinPlatformAdapter,

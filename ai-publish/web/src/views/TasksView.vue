@@ -90,6 +90,9 @@
         <p><strong>发布账号：</strong>{{ detail.account_name || `#${detail.account_id}` }}</p>
         <p v-if="detail.worker_name"><strong>执行机器：</strong>{{ detail.worker_name }}</p>
         <p><strong>类型：</strong>{{ contentTypeLabel(detail.content_type) }}</p>
+        <p v-if="detail.platform === 'bilibili' && detail.bilibili_tid">
+          <strong>B站分区：</strong>{{ bilibiliTidLabel(detail.bilibili_tid) }}
+        </p>
         <p v-if="detail.error_message"><strong>备注/错误：</strong>{{ detail.error_message }}</p>
         <p><strong>计划时间：</strong>{{ detail.publish_time ? formatDateTime(detail.publish_time) : '未设置' }}</p>
         <p><strong>正文：</strong></p>
@@ -122,6 +125,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import { PLATFORMS, contentTypeLabel, platformLabel } from '@/constants/platforms'
+import { bilibiliTidLabel } from '@/constants/bilibili'
 import { formatDateTime } from '@/utils/datetime'
 import { usePermission } from '@/composables/usePermission'
 

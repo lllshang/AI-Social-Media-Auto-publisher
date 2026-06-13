@@ -20,12 +20,24 @@ from app.schemas import (
 )
 from app.services.account_group_service import AccountGroupService
 from app.services.log_service import LogService
-from app.utils.request_ip import get_client_ip
 from app.services.login_session_service import login_session_service
 from app.services.platform_account_service import PlatformAccountService
+from app.utils.bilibili_guard import assert_bilibili_enabled
+from app.utils.request_ip import get_client_ip
 from app.utils.runtime_env import docker_login_hint, platform_scan_hint, qr_login_supported
 
 router = APIRouter(prefix="/api/platform-accounts", tags=["platform-accounts"])
+
+
+def _ensure_login_allowed(account: PlatformAccount) -> None:
+    if account.platform == "bilibili":
+        try:
+            assert_bilibili_enabled()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return
+    if not qr_login_supported():
+        raise HTTPException(status_code=400, detail=docker_login_hint())
 
 
 def _account_response(
@@ -198,11 +210,17 @@ async def _run_login_session(session_id: str, account_id: int) -> None:
             future = asyncio.run_coroutine_threadsafe(on_progress(message, status), loop)
             future.result(timeout=10)
 
-        result = await service.login(
-            account_id,
-            qrcode_callback=on_qrcode,
-            progress_callback=on_progress_sync,
-        )
+        if account and account.platform == "bilibili":
+            result = await service.login(
+                account_id,
+                qrcode_callback=on_qrcode,
+                progress_callback=on_progress_sync,
+            )
+        else:
+            result = await service.login(
+                account_id,
+                qrcode_callback=on_qrcode,
+            )
         await login_session_service.finish(session_id, result)
     except Exception as exc:
         current = await login_session_service.get(session_id)
@@ -218,13 +236,11 @@ async def start_login_account(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
-    if not qr_login_supported():
-        raise HTTPException(status_code=400, detail=docker_login_hint())
-
     service = PlatformAccountService(db)
     account = service.get_account(account_id)
     if not account:
         raise HTTPException(status_code=404, detail="账号不存在")
+    _ensure_login_allowed(account)
 
     session = await login_session_service.create(account_id)
     task = asyncio.create_task(_run_login_session(session.session_id, account_id))
@@ -261,8 +277,11 @@ async def login_account(
     db: Session = Depends(get_db),
     _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
-    if not qr_login_supported():
-        raise HTTPException(status_code=400, detail=docker_login_hint())
+    service = PlatformAccountService(db)
+    account = service.get_account(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    _ensure_login_allowed(account)
 
     session = await login_session_service.create(account_id)
     task = asyncio.create_task(_run_login_session(session.session_id, account_id))

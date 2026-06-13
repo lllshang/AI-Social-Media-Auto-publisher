@@ -12,6 +12,7 @@ from app.services.platform_account_service import PlatformAccountService
 from app.services.rate_limit_service import RateLimitService
 from app.services.sensitive_word_service import SensitiveWordService
 from app.services.system_config_service import SystemConfigService
+from app.utils.bilibili_guard import BILIBILI_DISABLED_MESSAGE, assert_bilibili_enabled
 from app.workers.upload_worker import UploadWorker
 
 
@@ -110,6 +111,7 @@ class PublishService:
         if not account:
             raise ValueError("账号不存在")
         if platform == "bilibili":
+            assert_bilibili_enabled()
             if content_type != "video":
                 raise ValueError("B站仅支持视频发布")
             if bilibili_tid is None:
@@ -200,6 +202,10 @@ class PublishService:
             task.publish_time = publish_time
         if bilibili_tid is not None:
             task.bilibili_tid = bilibili_tid
+        if task.platform == "bilibili":
+            assert_bilibili_enabled()
+            if task.content_type != "video":
+                raise ValueError("B站仅支持视频发布")
 
         self._enforce_sensitive_words(task)
         self.db.commit()
@@ -251,6 +257,13 @@ class PublishService:
                 self.material_service.validate_material_ids(task.material_ids, task.content_type)
             except ValueError as exc:
                 return str(exc)
+        if task.platform == "bilibili":
+            if not self.settings.bilibili_enabled:
+                return BILIBILI_DISABLED_MESSAGE
+            if task.content_type != "video":
+                return "B站仅支持视频发布"
+            if not task.bilibili_tid:
+                return "请设置 B站分区 tid"
         return None
 
     def assert_can_execute(self, task: PublishTask) -> None:

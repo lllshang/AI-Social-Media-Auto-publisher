@@ -37,7 +37,7 @@
     <div class="page-card filter-bar">
       <el-radio-group v-model="filterPlatform" @change="load">
         <el-radio-button label="">全部平台</el-radio-button>
-        <el-radio-button v-for="p in PLATFORMS" :key="p.value" :label="p.value">{{ p.label }}</el-radio-button>
+        <el-radio-button v-for="p in availablePlatforms" :key="p.value" :label="p.value">{{ p.label }}</el-radio-button>
       </el-radio-group>
       <el-select
         v-model="filterGroupId"
@@ -87,7 +87,7 @@
         <el-table-column v-if="can('accounts:write')" label="操作" width="440">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" @click="check(row)">检测 Cookie</el-button>
+            <el-button size="small" :loading="checkingCookieId === row.id" @click="check(row)">检测 Cookie</el-button>
             <el-button size="small" type="warning" :loading="loggingInId === row.id" @click="login(row)">
               扫码登录
             </el-button>
@@ -137,7 +137,7 @@
       <el-form label-width="80px">
         <el-form-item label="平台">
           <el-select v-model="form.platform" style="width: 100%">
-            <el-option v-for="p in PLATFORMS" :key="p.value" :label="p.label" :value="p.value" />
+            <el-option v-for="p in availablePlatforms" :key="p.value" :label="p.label" :value="p.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="账号名">
@@ -180,10 +180,10 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { ElLoading, ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
-import { PLATFORMS, platformAppName, platformLabel, platformLoginHint } from '@/constants/platforms'
+import { platformsForRuntime, platformAppName, platformLabel, platformLoginHint } from '@/constants/platforms'
 import { usePermission } from '@/composables/usePermission'
 
 const { can } = usePermission()
@@ -191,6 +191,7 @@ const { can } = usePermission()
 const loading = ref(false)
 const loggingIn = ref(false)
 const loggingInId = ref(null)
+const checkingCookieId = ref(null)
 const accounts = ref([])
 const groups = ref([])
 const filterPlatform = ref('')
@@ -220,9 +221,12 @@ const loginPlatform = ref('xhs')
 const runtime = ref({
   docker: false,
   xhs_qr_login_supported: true,
+  qr_login_supported: true,
+  bilibili_enabled: false,
   docker_login_hint: '',
   local_app_url: 'http://127.0.0.1:8765/app/',
 })
+const availablePlatforms = computed(() => platformsForRuntime(runtime.value))
 
 function statusType(status) {
   if (status === 'active') return 'success'
@@ -400,12 +404,22 @@ async function create() {
 }
 
 async function check(row) {
+  if (checkingCookieId.value) return
+  checkingCookieId.value = row.id
+  const loadingInstance = ElLoading.service({
+    lock: true,
+    text: `正在检测「${row.account_name}」Cookie，请稍候…`,
+    background: 'rgba(0, 0, 0, 0.35)',
+  })
   try {
     const res = await api.checkCookie(row.id)
-    ElMessage.success(res.valid ? 'Cookie 有效' : 'Cookie 失效')
-    load()
+    ElMessage.success(res.valid ? 'Cookie 有效' : 'Cookie 已失效')
+    await load()
   } catch (e) {
     ElMessage.error(e.message)
+  } finally {
+    checkingCookieId.value = null
+    loadingInstance.close()
   }
 }
 
@@ -414,8 +428,12 @@ function loginPreparingMessage(platform) {
 }
 
 async function login(row) {
+  if (row.platform === 'bilibili' && !runtime.value.bilibili_enabled) {
+    ElMessage.warning('B站功能未启用，请在服务器设置 BILIBILI_ENABLED=true 后重启')
+    return
+  }
   const qrSupported = runtime.value.qr_login_supported ?? runtime.value.xhs_qr_login_supported
-  if (runtime.value.docker && !qrSupported) {
+  if (row.platform !== 'bilibili' && runtime.value.docker && !qrSupported) {
     ElMessage.warning(runtime.value.docker_login_hint)
     return
   }

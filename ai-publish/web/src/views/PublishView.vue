@@ -35,7 +35,7 @@
         <el-form-item label="发布平台">
           <el-select v-model="form.platform" style="width: 100%" @change="onPlatformChange">
             <el-option
-              v-for="p in PLATFORMS"
+              v-for="p in availablePlatforms"
               :key="p.value"
               :label="p.experimental ? `${p.label}（实验）` : p.label"
               :value="p.value"
@@ -272,7 +272,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import {
-  PLATFORMS,
+  platformsForRuntime,
   platformCoverRatio,
   platformLabel,
   platformLoginHint,
@@ -302,6 +302,8 @@ const previewingPrompt = ref(false)
 const saving = ref(false)
 const promptPreview = reactive({ prompt_zh: '', prompt_en: '', negative_prompt: '' })
 const requireReview = ref(false)
+const runtime = ref({ bilibili_enabled: false })
+const availablePlatforms = computed(() => platformsForRuntime(runtime.value))
 const coverPreview = ref('')
 const videoPreviewUrl = ref('')
 
@@ -334,7 +336,7 @@ const videoCoverStepTitle = computed(() => {
   if (!isVideo.value) return 'AI 封面'
   return needsVideoCover.value ? '视频封面（可选）' : '封面（可跳过）'
 })
-const currentPlatform = computed(() => PLATFORMS.find((p) => p.value === form.platform))
+const currentPlatform = computed(() => availablePlatforms.value.find((p) => p.value === form.platform))
 const currentContentTypes = computed(() => currentPlatform.value?.contentTypes || [])
 const coverRatio = computed(() => platformCoverRatio(form.platform))
 const activeCoverRatio = computed(() => (needsVideoCover.value ? videoCoverRatio.value : coverRatio.value))
@@ -486,6 +488,7 @@ function applyTemplate(templateId) {
 }
 
 async function loadBase() {
+  runtime.value = await api.getRuntimeInfo()
   const mats = await api.listMaterials()
   materials.value = mats
   await Promise.all([loadAccounts(), loadTemplates()])
@@ -493,6 +496,12 @@ async function loadBase() {
 
 async function onPlatformChange() {
   form.account_id = null
+  if (form.platform === 'bilibili') {
+    form.content_type = 'video'
+    if (!form.bilibili_tid) {
+      form.bilibili_tid = 21
+    }
+  }
   const types = currentContentTypes.value
   if (types.length && !types.find((t) => t.value === form.content_type)) {
     form.content_type = types[0].value
