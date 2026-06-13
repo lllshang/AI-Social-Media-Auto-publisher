@@ -8,6 +8,15 @@
       </div>
     </div>
     <el-alert
+      v-if="!runtime.bilibili_enabled"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="runtime-alert"
+      title="B站功能未开启"
+      description="平台列表不显示 B站 是预期行为。请在服务器 ai-publish/.env 设置 BILIBILI_ENABLED=true，执行 bash scripts/upgrade.sh 或 docker compose restart api 后刷新本页。"
+    />
+    <el-alert
       v-if="runtime.docker && runtime.xhs_qr_login_supported"
       type="info"
       :closable="false"
