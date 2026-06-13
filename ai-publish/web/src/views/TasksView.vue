@@ -197,7 +197,7 @@ function canRetry(row) {
 }
 
 function canRecover(row) {
-  return can('tasks:execute') && row.status === 'running'
+  return can('tasks:execute') && ['running', 'dispatching'].includes(row.status)
 }
 
 function canApprove(row) {

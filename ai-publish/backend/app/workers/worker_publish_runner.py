@@ -57,6 +57,7 @@ class WorkerPublishRunner:
             publish_proxy=publish_proxy,
             log_callback=log_callback,
         )
-        adapter = self.factory.get_platform_adapter(platform)
+        # 任务已由服务器校验并派发，本机 Worker 无需重复配置 BILIBILI_ENABLED
+        adapter = self.factory.get_platform_adapter(platform, trust_server=True)
         with use_account_proxy(publish_proxy):
             return await adapter.publish(context)

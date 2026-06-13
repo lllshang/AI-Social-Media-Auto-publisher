@@ -55,12 +55,14 @@ services:
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
+      - ./backend:/app
       - ../vendor/social-auto-upload:/vendor/social-auto-upload
       - ./web/dist:/web/dist:ro
       - materials_data:/data/materials
       - cookies_data:/data/cookies
       - provider_config:/app/data
       - playwright_browsers:/opt/playwright
+      - biliup_data:/root/.social-auto-upload
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -94,11 +96,13 @@ services:
       PLAYWRIGHT_CHROMIUM_EXECUTABLE: /usr/bin/chromium
     shm_size: "256mb"
     volumes:
+      - ./backend:/app
       - ../vendor/social-auto-upload:/vendor/social-auto-upload
       - materials_data:/data/materials
       - cookies_data:/data/cookies
       - provider_config:/app/data
       - playwright_browsers:/opt/playwright
+      - biliup_data:/root/.social-auto-upload
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -130,3 +134,4 @@ volumes:
   cookies_data:
   provider_config:
   playwright_browsers:
+  biliup_data:

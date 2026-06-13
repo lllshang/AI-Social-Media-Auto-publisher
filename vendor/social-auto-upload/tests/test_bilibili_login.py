@@ -1,3 +1,4 @@
+import json
 import unittest
 
 from uploader.bilibili_uploader.login import (
@@ -32,6 +33,37 @@ class BilibiliLoginTests(unittest.TestCase):
     def test_user_message_hides_technical_terms(self):
         self.assertIn("超时", _user_message("timeout"))
         self.assertNotIn("biliup", _user_message("github release failed").lower())
+
+    def test_prepare_biliup_cookie_file_adds_sso_field(self):
+        import tempfile
+        from pathlib import Path
+
+        from uploader.bilibili_uploader.login import prepare_biliup_cookie_file
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cookie_path = Path(tmp_dir) / "account.json"
+            cookie_path.write_text(
+                json.dumps(
+                    {
+                        "cookie_info": {
+                            "cookies": [
+                                {"name": "SESSDATA", "value": "abc", "domain": ".bilibili.com", "path": "/"},
+                                {"name": "bili_jct", "value": "def", "domain": ".bilibili.com", "path": "/"},
+                            ]
+                        },
+                        "token_info": {
+                            "mid": 0,
+                            "access_token": "",
+                            "refresh_token": "",
+                            "expires_in": 0,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            prepare_biliup_cookie_file(str(cookie_path))
+            data = json.loads(cookie_path.read_text(encoding="utf-8"))
+            self.assertIn("sso", data)
 
 
 if __name__ == "__main__":

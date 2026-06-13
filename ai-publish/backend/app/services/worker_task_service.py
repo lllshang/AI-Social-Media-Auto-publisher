@@ -29,9 +29,11 @@ class WorkerTaskService:
             return None
         task = self.publish_service.get_task(task_id)
         if not task:
+            task_queue.re_enqueue_worker(queue_key, task_id)
             return None
         account = self.account_service.get_account(task.account_id)
         if not account or account.worker_id != worker.id:
+            task_queue.re_enqueue_worker(queue_key, task_id)
             return None
         if task.status not in {"pending", "dispatching", "running"}:
             return None
@@ -41,6 +43,7 @@ class WorkerTaskService:
             if task.status in {"running", "dispatching"}:
                 task.status = "pending"
                 self.db.commit()
+            task_queue.enqueue_execute(task.id)
             return None
         if task.status != "running":
             task.status = "running"

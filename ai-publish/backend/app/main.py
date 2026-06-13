@@ -37,12 +37,27 @@ from app.workers.schedule_worker import schedule_worker
 
 
 def setup_logging() -> None:
+    import logging
+
     logger.remove()
     logger.add(
         sys.stderr,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}",
         level="DEBUG" if get_settings().debug else "INFO",
     )
+
+    class _LoguruBridge(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            try:
+                level = logger.level(record.levelname).name
+            except ValueError:
+                level = "INFO"
+            logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
+
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.addHandler(_LoguruBridge())
+    root.setLevel(logging.DEBUG if get_settings().debug else logging.INFO)
 
 
 @asynccontextmanager

@@ -112,6 +112,17 @@ class BilibiliPlatformAdapter:
     async def check_cookie_valid(self, cookie_file: str, publish_proxy: str | None = None) -> bool:
         if not Path(cookie_file).exists():
             return False
+        self._ensure_vendor_path()
+        try:
+            from uploader.bilibili_uploader.login import (  # type: ignore
+                prepare_biliup_cookie_file,
+                validate_bilibili_cookie_file,
+            )
+
+            if await asyncio.to_thread(validate_bilibili_cookie_file, cookie_file):
+                return True
+        except ImportError:
+            pass
         run_biliup_command = self._import_runtime()
         arguments = build_biliup_arguments(["-u", cookie_file, "renew"], publish_proxy)
         result = await asyncio.to_thread(run_biliup_command, arguments)
@@ -140,10 +151,17 @@ class BilibiliPlatformAdapter:
                 await self._log_step(context, "validate", "failed", "Cookie 无效")
                 return PublishResult(success=False, message="账号未登录或已失效，请重新扫码登录")
 
+            from uploader.bilibili_uploader.login import prepare_biliup_cookie_file  # type: ignore
+
+            upload_cookie = await asyncio.to_thread(
+                prepare_biliup_cookie_file,
+                context.cookie_file,
+            )
+
             arguments = build_biliup_arguments(
                 [
                     "-u",
-                    context.cookie_file,
+                    upload_cookie,
                     "upload",
                     str(video_path),
                     "--title",

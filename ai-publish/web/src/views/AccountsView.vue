@@ -315,15 +315,19 @@ async function pollLoginSession(sessionId) {
   if (res.qrcode_data_url) {
     qrDataUrl.value = res.qrcode_data_url
   }
-  if (res.status === 'waiting_scan' && res.qrcode_data_url) {
+    if (res.status === 'waiting_scan' && res.qrcode_data_url) {
     const waited = pollCount.value
     const isBili = loginPlatform.value === 'bilibili'
-    qrMessage.value =
-      waited >= 15
-        ? `手机已确认？正在同步登录状态（已等待 ${waited} 秒，最长约 5 分钟）…`
-        : isBili
-          ? '请用哔哩哔哩 App 扫码；二维码约 60 秒内有效，确认后请稍候…'
-          : `请使用${platformAppName(loginPlatform.value)}扫码；手机确认后请稍候，正在同步登录状态…`
+    if (res.message && res.message.includes('已扫码')) {
+      qrMessage.value = res.message
+    } else {
+      qrMessage.value =
+        waited >= 15
+          ? `手机已确认？正在同步登录状态（已等待 ${waited} 秒，最长约 5 分钟）…`
+          : isBili
+            ? '请用哔哩哔哩 App 扫码；扫码后请在手机上点击确认登录…'
+            : `请使用${platformAppName(loginPlatform.value)}扫码；手机确认后请稍候，正在同步登录状态…`
+    }
   } else if (res.message) {
     qrMessage.value = res.message
   } else {
@@ -332,19 +336,6 @@ async function pollLoginSession(sessionId) {
   if (res.success || res.status === 'success') {
     await finishLoginSuccess()
     return
-  }
-  // 兜底：后端会话未及时结束时，轮询 Cookie 是否已写入
-  const cookieCheckAfter = loginPlatform.value === 'bilibili' ? 5 : 8
-  if (pollCount.value >= cookieCheckAfter && loggingInId.value) {
-    try {
-      const cookieRes = await api.checkCookie(loggingInId.value)
-      if (cookieRes.valid) {
-        await finishLoginSuccess('登录成功（Cookie 已生效）')
-        return
-      }
-    } catch {
-      /* ignore */
-    }
   }
   if (['failed', 'timeout', 'cookie_invalid'].includes(res.status)) {
     stopPolling()
@@ -472,7 +463,7 @@ async function login(row) {
       qrDataUrl.value = res.qrcode_data_url
     }
     qrMessage.value = res.message || `请使用${platformAppName(row.platform)}扫码`
-    if (res.success) {
+    if (res.status === 'success' && res.success) {
       ElMessage.success('登录成功')
       qrVisible.value = false
       loggingIn.value = false

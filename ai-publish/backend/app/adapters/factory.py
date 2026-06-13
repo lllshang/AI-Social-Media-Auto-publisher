@@ -14,8 +14,8 @@ class AdapterFactory:
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    def get_platform_adapter(self, platform: str) -> PlatformAdapter:
-        if platform == "bilibili" and not self.settings.bilibili_enabled:
+    def get_platform_adapter(self, platform: str, *, trust_server: bool = False) -> PlatformAdapter:
+        if platform == "bilibili" and not self.settings.bilibili_enabled and not trust_server:
             raise ValueError(BILIBILI_DISABLED_MESSAGE)
         registry: dict[str, type[PlatformAdapter]] = {
             "xhs": XhsPlatformAdapter,

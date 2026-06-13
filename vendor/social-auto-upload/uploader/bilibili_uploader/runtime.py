@@ -13,14 +13,22 @@ import requests
 
 
 GITHUB_RELEASE_API = "https://api.github.com/repos/biliup/biliup/releases/latest"
+# 直连 GitHub 优先；部分环境镜像不可达，镜像仅作备用
 GITHUB_RELEASE_API_MIRRORS = (
     GITHUB_RELEASE_API,
+    "https://gh-proxy.com/https://api.github.com/repos/biliup/biliup/releases/latest",
+    "https://ghproxy.net/https://api.github.com/repos/biliup/biliup/releases/latest",
     "https://mirror.ghproxy.com/https://api.github.com/repos/biliup/biliup/releases/latest",
 )
 GITHUB_DOWNLOAD_MIRRORS = (
+    "https://gh-proxy.com/",
+    "https://ghproxy.net/",
     "https://mirror.ghproxy.com/",
-    "https://ghproxy.com/",
 )
+# (connect_timeout, read_timeout) — 连接失败快速切换下一源
+GITHUB_API_TIMEOUT = (5, 30)
+# 单源读取超时；多镜像依次尝试，避免直连 assets 域名长时间挂死
+GITHUB_DOWNLOAD_TIMEOUT = (5, 90)
 
 
 def get_biliup_runtime_root() -> Path:
@@ -90,7 +98,7 @@ def _github_request_json(urls: tuple[str, ...]) -> dict:
     last_error: Exception | None = None
     for url in urls:
         try:
-            response = requests.get(url, headers=headers, timeout=30)
+            response = requests.get(url, headers=headers, timeout=GITHUB_API_TIMEOUT)
             response.raise_for_status()
             return response.json()
         except Exception as exc:
@@ -151,7 +159,8 @@ def download_biliup_asset(release: dict, destination: Path) -> Path:
         download_error: Exception | None = None
         for asset_url in _download_urls(release["asset_url"]):
             try:
-                with requests.get(asset_url, stream=True, timeout=180) as response:
+                print(f"尝试下载: {asset_url[:100]}...", flush=True)
+                with requests.get(asset_url, stream=True, timeout=GITHUB_DOWNLOAD_TIMEOUT) as response:
                     response.raise_for_status()
                     with archive_path.open("wb") as file_obj:
                         for chunk in response.iter_content(chunk_size=1024 * 1024):
@@ -160,6 +169,7 @@ def download_biliup_asset(release: dict, destination: Path) -> Path:
                 download_error = None
                 break
             except Exception as exc:
+                print(f"下载失败: {exc}", flush=True)
                 download_error = exc
                 continue
         if download_error is not None:
@@ -183,13 +193,22 @@ def download_biliup_asset(release: dict, destination: Path) -> Path:
     return destination
 
 
-def ensure_biliup_binary(force_check: bool = True) -> Path:
+def ensure_biliup_binary(force_check: bool = True, *, progress_callback=None) -> Path:
+    def _progress(message: str) -> None:
+        if progress_callback:
+            progress_callback(message)
+        else:
+            print(message, flush=True)
+
     binary_path = build_biliup_runtime_path()
     local_version = read_local_biliup_version()
 
     # 默认优先复用本地已存在的 biliup，避免每次执行都去请求 GitHub latest release。
     if binary_path.exists() and not force_check:
         return binary_path
+
+    if not binary_path.exists():
+        _progress("正在从 GitHub 下载 biliup 组件（首次约 30–120 秒）…")
 
     try:
         release = fetch_latest_release()
@@ -203,8 +222,10 @@ def ensure_biliup_binary(force_check: bool = True) -> Path:
     if binary_path.exists() and local_version == latest_version:
         return binary_path
 
+    _progress(f"正在下载 biliup {latest_version} …")
     download_biliup_asset(release, binary_path)
     write_local_biliup_version(latest_version)
+    _progress("biliup 组件已就绪")
     return binary_path
 
 

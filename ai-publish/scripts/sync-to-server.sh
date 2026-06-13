@@ -45,6 +45,7 @@ rsync -avz --progress --delete \
   --exclude 'backend/.venv' \
   --exclude 'backend/data' \
   --exclude 'web/node_modules' \
+  --exclude '.env' \
   --exclude '.env.local.backup' \
   "${PROJECT_ROOT}/ai-publish/" \
   "${SSH_USER}@${PUBLIC_HOST}:${REMOTE_DIR}/ai-publish/"
