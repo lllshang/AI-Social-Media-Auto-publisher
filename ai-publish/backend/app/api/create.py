@@ -1,11 +1,8 @@
 """内容创作 API 路由"""
 
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_permission
 from app.database import get_db
-from app.utils.permissions import (
-    PERM_PUBLISH_WRITE,
-    require_permission,
-)
+from app.utils.permissions import PERM_PUBLISH_WRITE
 from app.schemas import (
     CreativeSessionCreate,
     CreativeSessionListResponse,

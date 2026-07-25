@@ -120,7 +120,6 @@ class CreateService:
                 topic=final_prompt,
                 platform=platform,
                 content_type=session.content_type,
-                style=session.theme_style or "default",
             )
             title = result.get("title", "")
             body = result.get("content", "") or result.get("body", "")
@@ -194,7 +193,6 @@ class CreateService:
                 topic=prompt,
                 platform=platform,
                 content_type=session.content_type,
-                style=session.theme_style or "default",
             )
             title = result.get("title", current.get("title", ""))
             body = result.get("content", "") or result.get("body", "")
