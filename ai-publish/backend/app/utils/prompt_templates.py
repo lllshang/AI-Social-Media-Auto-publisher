@@ -5,6 +5,8 @@ import yaml
 _DEFAULT_TEXT = "请为{platform}平台围绕主题「{topic}」生成标题、正文、标签和封面文案，以JSON返回。"
 _DEFAULT_IMAGE = "为{platform}生成{ratio}比例封面图，主题：{topic}，风格：{style_label}"
 _DEFAULT_IMAGE_EN = "Cover image for {platform}, ratio {ratio}, topic: {topic}, style: {style_en}"
+_DEFAULT_VIDEO = "生成一段{duration}秒的短视频，主题：{topic}。要求：画面流畅、内容吸引人、适合{platform}平台。"
+_DEFAULT_VIDEO_EN = "Generate a {duration}-second short video about: {topic}. Requirements: smooth motion, engaging content, suitable for {platform}."
 _DEFAULT_NEGATIVE = "blurry, low quality, watermark, logo, text garbled, deformed, ugly"
 
 IMAGE_STYLE_ALIASES: dict[str, str] = {
@@ -207,3 +209,19 @@ def build_image_generation_prompt(data) -> tuple[str, str | None]:
         brand_hint=getattr(data, "brand_hint", None),
     )
     return details["prompt_zh"], details["negative_prompt"]
+
+
+def build_video_generation_prompt(data) -> str:
+    """Adapter helper: build final prompt for video generation."""
+    template = load_prompt_template("video", data.platform, default=_DEFAULT_VIDEO)
+
+    # 简化的模板格式化（仅支持基本变量）
+    prompt = (
+        template.replace("{platform}", data.platform)
+        .replace("{topic}", data.topic)
+        .replace("{duration}", str(data.duration))
+        .replace("{style}", getattr(data, "style", "default"))
+    )
+
+    return prompt
+

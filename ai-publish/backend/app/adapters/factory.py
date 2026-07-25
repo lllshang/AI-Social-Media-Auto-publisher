@@ -1,4 +1,4 @@
-from app.adapters.base import AiImageAdapter, AiTextAdapter, PlatformAdapter, StorageAdapter
+from app.adapters.base import AiImageAdapter, AiTextAdapter, AiVideoAdapter, PlatformAdapter, StorageAdapter
 from app.adapters.platform.bilibili import BilibiliPlatformAdapter
 from app.adapters.platform.channels import ChannelsPlatformAdapter
 from app.adapters.platform.douyin import DouyinPlatformAdapter
@@ -38,6 +38,16 @@ class AdapterFactory:
         from app.services.ai_model_service import AiModelService
 
         return AiModelService().get_image_adapter()
+
+    def get_ai_video_adapter(self) -> AiVideoAdapter:
+        from app.services.ai_model_service import AiModelService
+
+        return AiModelService().get_video_adapter()
+
+    def get_digital_human_video_adapter(self) -> AiVideoAdapter:
+        from app.services.ai_model_service import AiModelService
+
+        return AiModelService().get_digital_human_video_adapter()
 
     def get_storage_adapter(self) -> StorageAdapter:
         storage = self.settings.storage.lower()

@@ -118,6 +118,91 @@ def run_migrations() -> None:
             "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
 
+    if not inspector.has_table("trending_fetch_runs"):
+        statements.append(
+            "CREATE TABLE trending_fetch_runs ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "source VARCHAR(32) NOT NULL, "
+            "mode VARCHAR(32) NOT NULL, "
+            "status VARCHAR(20) NOT NULL, "
+            "item_count INTEGER DEFAULT 0, "
+            "error_message TEXT, "
+            "started_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "finished_at DATETIME)"
+        )
+
+    if not inspector.has_table("trending_items"):
+        statements.append(
+            "CREATE TABLE trending_items ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "platform VARCHAR(32) NOT NULL, "
+            "snapshot_date VARCHAR(10) NOT NULL, "
+            "rank INTEGER DEFAULT 0, "
+            "title VARCHAR(512) NOT NULL, "
+            "tags TEXT, "
+            "heat_score NUMERIC(12, 4) DEFAULT 0, "
+            "source_url VARCHAR(1024), "
+            "cover_url VARCHAR(1024), "
+            "video_url VARCHAR(1024), "
+            "duration_seconds INTEGER, "
+            "aspect_ratio VARCHAR(16), "
+            "ref_material_id INTEGER, "
+            "first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+
+    if not inspector.has_table("avatars"):
+        statements.append(
+            "CREATE TABLE avatars ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "name VARCHAR(128) NOT NULL, "
+            "type VARCHAR(32) NOT NULL, "
+            "gender VARCHAR(16), "
+            "config TEXT, "
+            "reference_images TEXT, "
+            "thumbnail VARCHAR(512), "
+            "status VARCHAR(20) DEFAULT 'active', "
+            "created_by INTEGER, "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+
+    if not inspector.has_table("creative_sessions"):
+        statements.append(
+            "CREATE TABLE creative_sessions ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "user_id INTEGER NOT NULL, "
+            "content_type VARCHAR(20) NOT NULL, "
+            "keywords TEXT NOT NULL, "
+            "background TEXT, "
+            "theme_style VARCHAR(100), "
+            "scene_desc TEXT, "
+            "platforms TEXT, "
+            "status VARCHAR(20) DEFAULT 'drafting', "
+            "final_copy TEXT, "
+            "polish_history TEXT, "
+            "output_material_ids TEXT, "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+
+    if not inspector.has_table("generation_tasks"):
+        statements.append(
+            "CREATE TABLE generation_tasks ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "session_id INTEGER NOT NULL, "
+            "gen_type VARCHAR(30) NOT NULL, "
+            "provider VARCHAR(50) NOT NULL, "
+            "input_params TEXT, "
+            "status VARCHAR(20) DEFAULT 'pending', "
+            "progress INTEGER DEFAULT 0, "
+            "result TEXT, "
+            "error_message TEXT, "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "completed_at DATETIME)"
+        )
+
     if not statements:
         return
 

@@ -106,6 +106,56 @@ class ImageGenerateRequest(BaseModel):
     brand_hint: str | None = None
 
 
+class VideoGenerateRequest(BaseModel):
+    topic: str
+    platform: str = "douyin"
+    duration: int = Field(default=5, ge=5, le=10)
+    resolution: str = "720p"
+    fps: int = Field(default=24, ge=24, le=30)
+    style: str = "default"
+    image_url: str | None = None
+    count: int = 1
+    avatar_id: int | None = None
+    avatar_type: str | None = None  # digital_human | simulation_human
+
+
+class AvatarCreate(BaseModel):
+    name: str
+    type: str  # digital_human | simulation_human
+    gender: str | None = None
+    config: dict | None = None
+    reference_images: list[int] | None = None  # material IDs
+
+
+class AvatarUpdate(BaseModel):
+    name: str | None = None
+    gender: str | None = None
+    config: dict | None = None
+    reference_images: list[int] | None = None
+    thumbnail: str | None = None
+    status: str | None = None
+
+
+class AvatarResponse(BaseModel):
+    id: int
+    name: str
+    type: str
+    gender: str | None = None
+    config: dict | None = None
+    reference_images: list | None = None
+    thumbnail_url: str | None = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetime(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+    class Config:
+        from_attributes = True
+
+
 class TextMaterialCreate(BaseModel):
     title: str
     content: str
@@ -645,3 +695,182 @@ class OperationLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TrendingItemResponse(BaseModel):
+    id: int
+    platform: str
+    title: str
+    tags: list[str] = []
+    source_url: str | None = None
+    cover_url: str | None = None
+    video_url: str | None = None
+    heat_score: float = 0
+    rank: int | None = None
+    appear_days: int = 1
+    first_seen_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    snapshot_date: str | None = None
+
+
+class TrendingStatusResponse(BaseModel):
+    enabled: bool
+    fetch_mode: str
+    paid_api_enabled: bool
+    last_item_at: str | None = None
+    last_fetch_at: str | None = None
+    last_fetch_source: str | None = None
+    last_fetch_status: str | None = None
+    stale: bool = False
+
+
+class TrendingFetchResponse(BaseModel):
+    id: int
+    source: str
+    mode: str
+    status: str
+    item_count: int
+    error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+    @field_serializer("started_at", "finished_at")
+    def serialize_dt(self, value: datetime | None) -> str | None:
+        return format_utc_datetime(value) if value else None
+
+
+class TrendingAiRecommendRequest(BaseModel):
+    period: str = "daily"
+    platform: str | None = None
+    category: str | None = None
+    limit: int = 5
+
+
+class TrendingRecommendation(BaseModel):
+    topic: str
+    platform: str
+    content_type: str = "video"
+    reason: str = ""
+    reference_trend_ids: list[int] = []
+
+
+class TrendingAiRecommendResponse(BaseModel):
+    recommendations: list[TrendingRecommendation]
+    provider: str | None = None
+    message: str | None = None
+
+
+class TrendingWorkerIngestItem(BaseModel):
+    platform: str
+    rank: int = 0
+    title: str
+    heat_score: float = 0
+    source_url: str | None = None
+    cover_url: str | None = None
+    video_url: str | None = None
+    tags: list[str] = []
+
+
+class TrendingWorkerIngestRequest(BaseModel):
+    items: list[TrendingWorkerIngestItem]
+
+
+# ── Creative Session (内容创作) ───────────────────────────────
+
+class CreativeSessionCreate(BaseModel):
+    content_type: str  # video | note
+    keywords: str
+    background: str | None = None
+    theme_style: str | None = None
+    scene_desc: str | None = None
+    platforms: list[str] | None = None
+
+
+class PolishRequest(BaseModel):
+    message: str | None = None  # 用户自然语言指令
+    quick_action: str | None = None  # shorten | expand | humorous | add_emoji | formal | bilibili_style | xiaohongshu_style | douyin_style
+
+
+class PolishResponse(BaseModel):
+    title: str
+    body: str
+    tags: list[str] = []
+
+
+class CopyResponse(BaseModel):
+    title: str
+    body: str
+    tags: list[str] = []
+
+
+class CopyUpdateRequest(BaseModel):
+    title: str | None = None
+    body: str | None = None
+    tags: list[str] | None = None
+
+
+class GenerationRequest(BaseModel):
+    gen_type: str  # text_to_video | image_to_video | simulation_human | digital_human | cover | images
+    description: str | None = None  # 覆盖默认的视频描述
+    duration: int = Field(default=5, ge=5, le=10)
+    resolution: str = "720p"
+    fps: int = Field(default=24, ge=24, le=30)
+    image_url: str | None = None  # 图生视频/仿真人参考图
+    avatar_id: int | None = None
+    avatar_type: str | None = None
+    style: str = "default"  # 图文风格
+    cover_text: str | None = None
+    brand_color: str | None = None
+    brand_hint: str | None = None
+    count: int = Field(default=1, ge=1, le=9)  # 图文数量
+
+
+class GenerationTaskResponse(BaseModel):
+    id: int
+    session_id: int
+    gen_type: str
+    provider: str
+    status: str
+    progress: int
+    result: dict | None = None
+    error_message: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+    @field_serializer("created_at", "completed_at")
+    def serialize_dt(self, value: datetime | None) -> str | None:
+        return format_utc_datetime(value)
+
+    class Config:
+        from_attributes = True
+
+
+class CreativeSessionResponse(BaseModel):
+    id: int
+    user_id: int
+    content_type: str
+    keywords: str
+    background: str | None = None
+    theme_style: str | None = None
+    scene_desc: str | None = None
+    platforms: list[str] | None = None
+    status: str
+    final_copy: dict | None = None
+    polish_history: list | None = None
+    output_material_ids: list[int] | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_dt(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+    class Config:
+        from_attributes = True
+
+
+class CreativeSessionListResponse(BaseModel):
+    items: list[CreativeSessionResponse]
+    total: int
+    page: int
+    page_size: int

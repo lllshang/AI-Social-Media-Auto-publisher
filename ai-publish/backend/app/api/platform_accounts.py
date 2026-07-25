@@ -216,6 +216,12 @@ async def _run_login_session(session_id: str, account_id: int) -> None:
                 qrcode_callback=on_qrcode,
                 progress_callback=on_progress_sync,
             )
+        elif account and account.platform == "channels":
+            result = await service.login(
+                account_id,
+                qrcode_callback=on_qrcode,
+                progress_callback=on_progress_sync,
+            )
         else:
             result = await service.login(
                 account_id,

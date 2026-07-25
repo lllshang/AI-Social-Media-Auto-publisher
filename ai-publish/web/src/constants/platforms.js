@@ -38,6 +38,8 @@ export const PLATFORMS = [
     coverRatio: '3:4',
     videoCoverRatio: '3:4',
     experimental: true,
+    loginHint:
+      '请用微信 App（首页右上角「扫一扫」）扫码；扫码后请在手机上选择要登录的视频号并点击确认。若账号配置了发布代理，登录也会走该代理，代理不可用会导致失败。',
     videoHint: '仅支持短视频（竖屏 MP4 等）；可选 3:4 封面与短标题（6-16字）',
     contentTypes: [{ value: 'video', label: '短视频' }],
   },

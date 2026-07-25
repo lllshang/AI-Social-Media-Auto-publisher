@@ -4,7 +4,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Any
 
 
 @dataclass
@@ -84,6 +87,31 @@ class ImageGenerateResult:
     negative_prompt: str | None = None
 
 
+@dataclass
+class VideoGenerateInput:
+    topic: str
+    platform: str = "douyin"
+    duration: int = 5
+    resolution: str = "720p"
+    fps: int = 24
+    style: str = "default"
+    image_url: str | None = None
+    count: int = 1
+    avatar_id: int | None = None
+    avatar_type: str | None = None  # digital_human | simulation_human
+
+
+@dataclass
+class VideoGenerateResult:
+    video_paths: list[str]
+    thumbnail_paths: list[str]
+    provider: str
+    prompt: str
+    cost: float = 0.0
+    duration: float = 0.0
+    metadata: dict = field(default_factory=dict)
+
+
 class PlatformAdapter(Protocol):
     async def login(self, account_id: int, account_name: str, cookie_file: str) -> LoginResult: ...
     async def check_cookie_valid(self, cookie_file: str) -> bool: ...
@@ -96,6 +124,10 @@ class AiTextAdapter(Protocol):
 
 class AiImageAdapter(Protocol):
     async def generate(self, data: ImageGenerateInput) -> ImageGenerateResult: ...
+
+
+class AiVideoAdapter(Protocol):
+    async def generate(self, data: VideoGenerateInput) -> VideoGenerateResult: ...
 
 
 class StorageAdapter(ABC):

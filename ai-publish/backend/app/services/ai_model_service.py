@@ -12,7 +12,7 @@ from app.adapters.ai_image.wanxiang import WanxiangImageAdapter
 from app.adapters.ai_text.openai_compatible import OpenAiCompatibleTextAdapter
 from app.adapters.ai_text.stub import StubTextAdapter
 from app.adapters.ai_text.tongyi import TongyiTextAdapter
-from app.adapters.base import AiImageAdapter, AiTextAdapter
+from app.adapters.base import AiImageAdapter, AiTextAdapter, AiVideoAdapter
 from app.config import BACKEND_DIR, get_settings
 from app.services.ai_provider_config_service import AiProviderConfigService
 
@@ -38,6 +38,8 @@ class RuntimeSelection:
     text_model: str = ""
     image_provider: str = "auto"
     image_model: str = ""
+    video_provider: str = "auto"
+    video_model: str = ""
     updated_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -49,6 +51,7 @@ class DetectionResult:
     detected_at: str
     text: dict[str, Any]
     image: dict[str, Any]
+    video: dict[str, Any]
     runtime: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
@@ -236,6 +239,37 @@ class AiModelService:
         },
     )
 
+    REMOTE_VIDEO_PROVIDERS = (
+        {
+            "provider": "wanxiang_video",
+            "label": "通义万相视频 (DashScope)",
+            "key_field": "dashscope_api_key",
+            "models": [
+                ("video-synthesis-v1", "通义视频 V1"),
+            ],
+        },
+        {
+            "provider": "minimax_video",
+            "label": "MiniMax 海螺视频",
+            "key_field": "minimax_api_key",
+            "models": [
+                ("MiniMax-Hailuo-2.3", "海螺 2.3 (文生+图生)"),
+                ("MiniMax-Hailuo-02", "海螺 02"),
+                ("T2V-01", "T2V-01 (纯文生)"),
+                ("I2V-01", "I2V-01 (纯图生)"),
+                ("S2V-01", "S2V-01 (主体参考)"),
+            ],
+        },
+        {
+            "provider": "hunyuan_video",
+            "label": "腾讯混元视频（占位）",
+            "key_field": "hunyuan_api_key",
+            "models": [
+                ("hunyuan-video-v1", "混元视频 V1（未公开）"),
+            ],
+        },
+    )
+
     def __init__(self) -> None:
         self.settings = get_settings()
         self.runtime_path = BACKEND_DIR / "data" / "ai_runtime.json"
@@ -293,6 +327,8 @@ class AiModelService:
         text_model: str | None = None,
         image_provider: str | None = None,
         image_model: str | None = None,
+        video_provider: str | None = None,
+        video_model: str | None = None,
     ) -> RuntimeSelection:
         runtime = self.load_runtime()
         if mode is not None:
@@ -305,6 +341,10 @@ class AiModelService:
             runtime.image_provider = image_provider
         if image_model is not None:
             runtime.image_model = image_model
+        if video_provider is not None:
+            runtime.video_provider = video_provider
+        if video_model is not None:
+            runtime.video_model = video_model
         return self.save_runtime(runtime)
 
     async def detect_ollama_models(self) -> list[ModelOption]:
@@ -462,6 +502,50 @@ class AiModelService:
         )
         return options
 
+    def _remote_video_options(self) -> list[ModelOption]:
+        options: list[ModelOption] = []
+        for spec in self.REMOTE_VIDEO_PROVIDERS:
+            api_key = self._config_value(spec["key_field"])
+            ready = bool(api_key)
+            reason = None if ready else "未配置 API Key"
+            for model_id, model_name in spec["models"]:
+                options.append(
+                    ModelOption(
+                        provider=spec["provider"],
+                        model=model_id,
+                        label=f"{spec['label']} / {model_name}",
+                        source="remote",
+                        kind="video",
+                        ready=ready,
+                        reason=reason,
+                    )
+                )
+        options.append(
+            ModelOption(
+                provider="stub",
+                model="stub",
+                label="Stub 占位视频",
+                source="local",
+                kind="video",
+                ready=True,
+                reason="无 Key 时生成黑屏占位视频",
+            )
+        )
+        return options
+
+    def _pick_best_video(self, options: list[ModelOption]) -> ModelOption:
+        ready = [o for o in options if o.ready and o.provider != "stub"]
+        minimax = next((o for o in ready if o.provider == "minimax_video"), None)
+        if minimax:
+            return minimax
+        wanxiang = next((o for o in ready if o.provider == "wanxiang_video"), None)
+        if wanxiang:
+            return wanxiang
+        hunyuan = next((o for o in ready if o.provider == "hunyuan_video"), None)
+        if hunyuan:
+            return hunyuan
+        return next(o for o in options if o.provider == "stub")
+
     def _rank_ollama_model(self, model: str) -> tuple[int, str]:
         preferred = (self.settings.ollama_text_model or "").lower()
         name = model.lower()
@@ -518,6 +602,7 @@ class AiModelService:
         ollama = await self.detect_ollama_models()
         text_options = ollama + self._remote_text_options()
         image_options = self._remote_image_options()
+        video_options = self._remote_video_options()
         runtime = self.load_runtime()
 
         if runtime.mode == "auto" or runtime.text_provider in {"", "auto"}:
@@ -528,6 +613,10 @@ class AiModelService:
             recommended_image = self._pick_best_image(image_options)
             runtime.image_provider = recommended_image.provider
             runtime.image_model = recommended_image.model
+        if runtime.mode == "auto" or runtime.video_provider in {"", "auto"}:
+            recommended_video = self._pick_best_video(video_options)
+            runtime.video_provider = recommended_video.provider
+            runtime.video_model = recommended_video.model
         if runtime.mode == "auto":
             self.save_runtime(runtime)
 
@@ -547,6 +636,14 @@ class AiModelService:
             ),
             self._pick_best_image(image_options),
         )
+        current_video = next(
+            (
+                o
+                for o in video_options
+                if o.provider == runtime.video_provider and o.model == runtime.video_model
+            ),
+            self._pick_best_video(video_options),
+        )
 
         return DetectionResult(
             detected_at=datetime.now(timezone.utc).isoformat(),
@@ -559,6 +656,11 @@ class AiModelService:
                 "current": current_image.to_dict(),
                 "recommended": self._pick_best_image(image_options).to_dict(),
                 "available": [o.to_dict() for o in image_options],
+            },
+            video={
+                "current": current_video.to_dict(),
+                "recommended": self._pick_best_video(video_options).to_dict(),
+                "available": [o.to_dict() for o in video_options],
             },
             runtime=runtime.to_dict(),
         )
@@ -668,6 +770,57 @@ class AiModelService:
         from app.adapters.ai_image.stub import StubImageAdapter
 
         return StubImageAdapter()
+
+    def get_video_adapter(self) -> AiVideoAdapter:
+        """获取当前配置的视频生成适配器"""
+        provider, model = self._resolve_video_target()
+
+        if provider == "wanxiang_video":
+            from app.adapters.ai_video.wanxiang import WanxiangVideoAdapter
+
+            return WanxiangVideoAdapter(model=model or "video-synthesis-v1")
+        elif provider == "minimax_video":
+            from app.adapters.ai_video.minimax import MinimaxVideoAdapter
+
+            return MinimaxVideoAdapter(model=model or "MiniMax-Hailuo-2.3")
+        elif provider == "hunyuan_video":
+            from app.adapters.ai_video.hunyuan import HunyuanVideoAdapter
+
+            return HunyuanVideoAdapter(model=model or "hunyuan-video-v1")
+        elif provider == "digital_human_video":
+            from app.adapters.ai_video.digital_human_stub import DigitalHumanStubVideoAdapter
+
+            return DigitalHumanStubVideoAdapter()
+        else:
+            from app.adapters.ai_video.stub import StubVideoAdapter
+
+            return StubVideoAdapter()
+
+    def get_digital_human_video_adapter(self) -> AiVideoAdapter:
+        """获取数字人视频适配器（占位 stub，待接入真实 provider）"""
+        from app.adapters.ai_video.digital_human_stub import DigitalHumanStubVideoAdapter
+
+        return DigitalHumanStubVideoAdapter()
+
+    def _resolve_video_target(self) -> tuple[str, str]:
+        """解析视频生成目标（provider, model）"""
+        runtime = self.load_runtime()
+        provider = runtime.video_provider or "auto"
+        model = runtime.video_model or ""
+
+        if provider not in {"", "auto"}:
+            return provider, model
+
+        # 自动检测可用提供商（优先级：minimax > wanxiang > hunyuan > stub）
+        if self._config_value("minimax_api_key"):
+            return "minimax_video", "MiniMax-Hailuo-2.3"
+        elif self._config_value("dashscope_api_key"):
+            return "wanxiang_video", "video-synthesis-v1"
+        elif self._config_value("hunyuan_api_key"):
+            return "hunyuan_video", "hunyuan-video-v1"
+        else:
+            return "stub", ""
+
 
     def list_provider_configs(self) -> list[dict[str, Any]]:
         return self.provider_config.list_providers()

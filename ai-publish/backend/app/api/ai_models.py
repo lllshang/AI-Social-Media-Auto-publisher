@@ -17,6 +17,8 @@ class AiModelSelectRequest(BaseModel):
     text_model: str | None = None
     image_provider: str | None = None
     image_model: str | None = None
+    video_provider: str | None = None
+    video_model: str | None = None
 
 
 class AiProviderConfigRequest(BaseModel):
@@ -128,6 +130,8 @@ async def select_models(data: AiModelSelectRequest, _: User = Depends(require_pe
         text_model=data.text_model,
         image_provider=data.image_provider,
         image_model=data.image_model,
+        video_provider=data.video_provider,
+        video_model=data.video_model,
     )
     result = await service.detect_all()
     result.runtime = runtime.to_dict()

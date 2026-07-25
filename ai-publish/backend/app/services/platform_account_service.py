@@ -180,6 +180,16 @@ class PlatformAccountService:
                     progress_callback=progress_callback,
                     publish_proxy=None,
                 )
+            elif account.platform == "channels":
+                # 视频号扫码在服务器 Playwright 完成；发布代理仅用于 Worker 发布，登录走直连
+                result = await adapter.login(
+                    account.id,
+                    account.account_name,
+                    cookie_file,
+                    qrcode_callback=qrcode_callback,
+                    progress_callback=progress_callback,
+                    publish_proxy=None,
+                )
             else:
                 proxy_url = self.resolve_publish_proxy(account)
                 with use_account_proxy(proxy_url):
@@ -223,6 +233,8 @@ class PlatformAccountService:
             return {"valid": False, "status": account.status}
         adapter = self.factory.get_platform_adapter(account.platform)
         if account.platform == "bilibili":
+            valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=None)
+        elif account.platform == "channels":
             valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=None)
         else:
             proxy_url = self.resolve_publish_proxy(account)

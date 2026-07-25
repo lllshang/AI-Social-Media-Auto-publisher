@@ -12,6 +12,7 @@ from app.schemas import (
     PromptBuildResponse,
     TextGenerateRequest,
     TextMaterialCreate,
+    VideoGenerateRequest,
 )
 from app.utils.prompt_templates import build_prompt_details
 from app.services.material_service import AiContentService, MaterialService
@@ -174,3 +175,28 @@ async def generate_image(
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"文生图失败: {exc}") from exc
+
+
+@router.post("/api/ai/video/generate")
+async def generate_video(
+    data: VideoGenerateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(PERM_PUBLISH_WRITE)),
+):
+    """AI 生成视频"""
+    service = AiContentService(db)
+    try:
+        return await service.generate_video(
+            topic=data.topic,
+            platform=data.platform,
+            duration=data.duration,
+            resolution=data.resolution,
+            fps=data.fps,
+            image_url=data.image_url,
+            user_id=current_user.id,
+            avatar_id=data.avatar_id,
+            avatar_type=data.avatar_type,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"视频生成失败: {exc}") from exc
+

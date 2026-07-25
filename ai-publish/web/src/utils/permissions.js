@@ -18,6 +18,10 @@ export const PERMISSION_LABELS = {
   'users:write': '用户管理',
   'templates:read': '查看内容模板',
   'templates:write': '管理内容模板',
+  'trending:read': '查看热点灵感',
+  'trending:write': '抓取热点数据',
+  'avatars:read': '查看数字人/仿真人',
+  'avatars:write': '管理数字人/仿真人',
 }
 
 export const ROLE_LABELS = {

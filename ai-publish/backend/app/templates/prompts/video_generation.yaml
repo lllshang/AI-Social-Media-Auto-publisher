@@ -1,0 +1,57 @@
+default:
+  cn: |
+    生成一段{duration}秒的短视频，主题：{topic}。
+    要求：画面流畅、内容吸引人、适合{platform}平台。
+  en: |
+    Generate a {duration}-second short video about: {topic}.
+    Requirements: smooth motion, engaging content, suitable for {platform}.
+
+douyin:
+  cn: |
+    为抖音平台创作{duration}秒竖屏短视频，主题：{topic}。
+    风格：动感、节奏快、视觉冲击力强。
+    要求：适合竖屏 9:16 比例，画面色彩鲜艳，运镜流畅。
+  en: |
+    Create a {duration}-second vertical video for Douyin (TikTok China), topic: {topic}.
+    Style: dynamic, fast-paced, visually impactful.
+    Requirements: 9:16 ratio, vibrant colors, smooth camera movement.
+
+kuaishou:
+  cn: |
+    为快手平台生成{duration}秒短视频，主题：{topic}。
+    风格：真实接地气、贴近生活。
+    要求：竖屏格式，画面清晰，内容有趣。
+  en: |
+    Generate a {duration}-second short video for Kuaishou, topic: {topic}.
+    Style: authentic, down-to-earth, relatable.
+    Requirements: vertical format, clear visuals, entertaining content.
+
+bilibili:
+  cn: |
+    为 B 站创作{duration}秒横版视频片段，主题：{topic}。
+    风格：有创意、有趣味、适合年轻观众。
+    要求：16:9 横屏格式，画面精致。
+  en: |
+    Create a {duration}-second horizontal video clip for Bilibili, topic: {topic}.
+    Style: creative, entertaining, appeals to young audience.
+    Requirements: 16:9 landscape format, polished visuals.
+
+channels:
+  cn: |
+    为视频号生成{duration}秒视频内容，主题：{topic}。
+    风格：温馨、正能量、适合广泛受众。
+    要求：横屏或竖屏均可，画面舒适。
+  en: |
+    Generate a {duration}-second video for WeChat Channels, topic: {topic}.
+    Style: warm, positive, appeals to broad audience.
+    Requirements: landscape or portrait, comfortable visuals.
+
+xhs:
+  cn: |
+    为小红书创作{duration}秒视频笔记，主题：{topic}。
+    风格：美观、精致、有生活气息。
+    要求：竖屏格式，画面美感强，适合分享。
+  en: |
+    Create a {duration}-second video note for Xiaohongshu, topic: {topic}.
+    Style: aesthetic, refined, lifestyle-oriented.
+    Requirements: vertical format, visually appealing, shareable.

@@ -182,6 +182,9 @@
 
     <el-dialog v-model="qrVisible" title="扫码登录" width="420px" :close-on-click-modal="false">
       <p class="muted">{{ qrMessage }}</p>
+      <p v-if="platformLoginHint(loginPlatform)" class="muted login-hint">
+        {{ platformLoginHint(loginPlatform) }}
+      </p>
       <p v-if="loginPlatform === 'bilibili' && !qrDataUrl && loggingIn" class="muted bilibili-login-hint">
         首次 B 站登录可能需 1–3 分钟下载组件，请保持窗口打开；二维码出现后请在约 60 秒内扫码。
       </p>
@@ -326,7 +329,9 @@ async function pollLoginSession(sessionId) {
           ? `手机已确认？正在同步登录状态（已等待 ${waited} 秒，最长约 5 分钟）…`
           : isBili
             ? '请用哔哩哔哩 App 扫码；扫码后请在手机上点击确认登录…'
-            : `请使用${platformAppName(loginPlatform.value)}扫码；手机确认后请稍候，正在同步登录状态…`
+            : loginPlatform.value === 'channels'
+              ? '请用微信 App 扫码；扫码后选择视频号并在手机上确认…'
+              : `请使用${platformAppName(loginPlatform.value)}扫码；手机确认后请稍候，正在同步登录状态…`
     }
   } else if (res.message) {
     qrMessage.value = res.message
@@ -338,12 +343,15 @@ async function pollLoginSession(sessionId) {
     return
   }
   if (['failed', 'timeout', 'cookie_invalid'].includes(res.status)) {
+    if (!loggingIn.value) return
     stopPolling()
     loggingIn.value = false
     loggingInId.value = null
     pollCount.value = 0
     qrMessage.value = res.message || '登录失败'
+    qrVisible.value = false
     ElMessage.error(res.message || '登录失败')
+    return
   }
 }
 
@@ -462,7 +470,7 @@ async function login(row) {
     if (res.qrcode_data_url) {
       qrDataUrl.value = res.qrcode_data_url
     }
-    qrMessage.value = res.message || `请使用${platformAppName(row.platform)}扫码`
+    qrMessage.value = res.message || platformLoginHint(row.platform) || `请使用${platformAppName(row.platform)}扫码`
     if (res.status === 'success' && res.success) {
       ElMessage.success('登录成功')
       qrVisible.value = false

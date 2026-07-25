@@ -64,7 +64,10 @@
         <p v-if="isVideo" class="muted">{{ platformVideoHint(form.platform) }}</p>
         <p v-if="isBilibili" class="muted">{{ platformLoginHint(form.platform) }}</p>
       </el-form>
-      <el-button type="primary" :disabled="!canGoStep1" @click="step = 1">下一步：生成文案</el-button>
+      <div style="display:flex;gap:12px;align-items:center">
+        <el-button type="primary" :disabled="!canGoStep1" @click="step = 1">下一步：生成文案</el-button>
+        <el-button type="primary" plain @click="goToCreate">去内容创作 → 获得更专业的文案和素材</el-button>
+      </div>
     </div>
 
     <!-- Step 1 -->
@@ -103,38 +106,29 @@
           <el-input v-model="form.comment_guide" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
-      <el-button @click="step = 0">上一步</el-button>
-      <el-button :loading="saving" @click="saveDraft">保存草稿</el-button>
-      <el-button type="primary" :disabled="!form.title" @click="goAfterText">下一步</el-button>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <el-button @click="step = 0">上一步</el-button>
+        <el-button :loading="saving" @click="saveDraft">保存草稿</el-button>
+        <el-button type="primary" :disabled="!form.title" @click="goAfterText">下一步</el-button>
+        <el-button type="primary" plain @click="goToCreate">文案不太满意？去内容创作润色</el-button>
+      </div>
     </div>
 
     <!-- Step 2 -->
     <div v-show="step === 2" class="page-card">
-      <template v-if="needsVideoCover">
+      <template v-if="isVideo">
         <p class="muted">
-          {{ platformLabel(form.platform) }}视频可设置 {{ videoCoverRatio }} 封面（可选）。未设置时由平台自动截取；也可跳过，稍后上传。
+          视频素材可以从素材库选择已有视频、上传本地视频，或前往「内容创作」AI生成。
         </p>
-        <el-button type="primary" :loading="generatingImage" @click="generateVideoCover">AI 生成视频封面</el-button>
-        <el-button v-if="coverPreview" @click="generateVideoCover">重新生成</el-button>
-        <el-upload :show-file-list="false" :http-request="uploadCoverImage" accept="image/*" style="display: inline-block; margin-left: 8px">
-          <el-button>上传封面图</el-button>
-        </el-upload>
-        <el-button @click="skipVideoCover">跳过封面</el-button>
-        <div v-if="coverPreview" class="cover-preview">
-          <div class="cover-preview-frame" :style="coverPreviewFrameStyle">
-            <img :src="coverPreview" class="cover-preview-img" alt="封面预览" />
-          </div>
-        </div>
-        <div style="margin-top: 16px">
+        <div style="display:flex;gap:12px;align-items:center">
           <el-button @click="step = 1">上一步</el-button>
           <el-button :loading="saving" @click="saveDraft">保存草稿</el-button>
           <el-button type="primary" @click="step = 3">下一步：选择视频</el-button>
+          <el-button type="primary" plain @click="goToCreate">AI 创作新视频 →</el-button>
         </div>
-      </template>
-      <template v-else-if="isVideo">
-        <p class="muted">当前平台视频发布无需单独封面，可直接选择视频素材。</p>
-        <el-button @click="step = 1">上一步</el-button>
-        <el-button type="primary" @click="step = 3">下一步：选择视频</el-button>
+        <div v-if="videoPreview" class="video-preview" style="margin-top: 16px">
+          <video :src="videoPreview" controls style="max-width: 600px; max-height: 400px"></video>
+        </div>
       </template>
       <template v-else>
         <p class="muted">将根据主题与封面文案生成 {{ coverRatio }} {{ platformLabel(form.platform) }}封面图。Key 未配置时可跳过，改用手动上传。</p>
@@ -202,6 +196,7 @@
           >
             <el-button>上传新图片</el-button>
           </el-upload>
+          <el-button v-if="!isVideo" style="margin-top: 8px" :loading="generatingImageInStep3" @click="showStep3ImageGen = true">AI 生成图片</el-button>
           <el-upload
             v-else
             :show-file-list="false"
@@ -211,6 +206,7 @@
           >
             <el-button>上传新视频</el-button>
           </el-upload>
+          <el-button v-if="isVideo" type="primary" plain style="margin-top: 8px" @click="goToCreate">AI 创作视频 →</el-button>
           <div v-if="videoPreviewUrl" class="cover-preview">
             <video :src="videoPreviewUrl" controls style="max-width: 100%; max-height: 280px" />
           </div>
@@ -263,6 +259,31 @@
         {{ requireReview ? '提交审核' : '提交待发布' }}
       </el-button>
     </div>
+
+    <!-- Step 3: AI 生成图片 Dialog -->
+    <el-dialog v-model="showStep3ImageGen" title="AI 生成图片" width="480px">
+      <el-form label-width="90px">
+        <el-form-item label="风格">
+          <el-select v-model="step3ImageStyle" style="width: 100%">
+            <el-option v-for="s in IMAGE_STYLES" :key="s.value" :label="s.label" :value="s.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="品牌色">
+          <BrandColorSelect v-model="step3ImageBrandColor" />
+        </el-form-item>
+        <el-form-item label="品牌说明">
+          <el-input v-model="step3ImageBrandHint" placeholder="可选" />
+        </el-form-item>
+        <el-form-item label="数量">
+          <el-input-number v-model="step3ImageCount" :min="1" :max="4" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showStep3ImageGen = false">取消</el-button>
+        <el-button type="primary" :loading="generatingImageInStep3" @click="generateImageInStep3">生成</el-button>
+      </template>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -305,7 +326,16 @@ const requireReview = ref(false)
 const runtime = ref({ bilibili_enabled: false })
 const availablePlatforms = computed(() => platformsForRuntime(runtime.value))
 const coverPreview = ref('')
+const videoPreview = ref('')
 const videoPreviewUrl = ref('')
+
+// Step 3 inline AI 生成
+const showStep3ImageGen = ref(false)
+const generatingImageInStep3 = ref(false)
+const step3ImageStyle = ref('default')
+const step3ImageBrandColor = ref('')
+const step3ImageBrandHint = ref('')
+const step3ImageCount = ref(1)
 
 const form = reactive({
   platform: 'xhs',
@@ -686,6 +716,19 @@ function skipCover() {
   step.value = 3
 }
 
+function goToCreate() {
+  router.push({ path: '/create', query: { ref: 'publish', platform: form.platform } })
+}
+
+async function onVideoGenResult(res) {
+  const mat = res.materials?.[0]
+  if (!mat) return
+  await loadBase()
+  form.material_ids = [mat.id]
+  videoPreview.value = mat.url || ''
+  videoPreviewUrl.value = mat.url || ''
+}
+
 async function uploadImage({ file }) {
   const res = await api.uploadMaterial(file, {
     name: file.name.replace(/\.[^.]+$/, ''),
@@ -706,6 +749,31 @@ async function uploadVideo({ file }) {
   form.material_ids = [res.id]
   videoPreviewUrl.value = res.url || ''
   ElMessage.success('视频已上传')
+}
+
+async function generateImageInStep3() {
+  generatingImageInStep3.value = true
+  showStep3ImageGen.value = false
+  try {
+    const res = await api.generateImage({
+      topic: form.topic,
+      platform: form.platform,
+      ratio: coverRatio.value,
+      count: step3ImageCount.value,
+      style: step3ImageStyle.value,
+      brand_color: step3ImageBrandColor.value || null,
+      brand_hint: step3ImageBrandHint.value || null,
+    })
+    const mats = res.materials || []
+    if (!mats.length) throw new Error('未返回图片素材')
+    await loadBase()
+    form.material_ids = mats.map((m) => m.id)
+    ElMessage.success(`已生成 ${mats.length} 张图片`)
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    generatingImageInStep3.value = false
+  }
 }
 
 async function persistTask(submit) {
@@ -803,11 +871,15 @@ watch(
 function applyRouteDefaults() {
   const platform = route.query.platform
   const contentType = route.query.content_type
+  const topic = route.query.topic
   if (platform && PLATFORMS.some((p) => p.value === platform)) {
     form.platform = platform
   }
   if (contentType === 'video' || contentType === 'note') {
     form.content_type = contentType
+  }
+  if (typeof topic === 'string' && topic.trim()) {
+    form.topic = topic.trim()
   }
 }
 
@@ -834,11 +906,29 @@ async function applyTemplateFromRoute() {
   }
 }
 
+async function loadFromSession() {
+  const sessionId = route.query.withSession
+  if (!sessionId) return
+  try {
+    const session = await api.getSession(Number(sessionId))
+    if (session.final_copy) {
+      form.title = session.final_copy.title || ''
+      form.content = session.final_copy.body || ''
+      form.tagsText = (session.final_copy.tags || []).join(' ')
+    }
+    if (session.output_material_ids?.length) {
+      form.material_ids = session.output_material_ids
+    }
+    ElMessage.success('已从创作结果加载文案和素材')
+  } catch { /* ignore */ }
+}
+
 onMounted(async () => {
   await loadFeatures()
   applyRouteDefaults()
   await loadBase()
   await applyTemplateFromRoute()
+  await loadFromSession()
   const id = route.query.id
   if (id) await loadDraft(Number(id))
 })

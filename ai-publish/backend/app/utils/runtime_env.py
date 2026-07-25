@@ -63,6 +63,8 @@ PLATFORM_APP_NAMES = {
 
 
 def platform_scan_hint(platform: str) -> str:
+    if platform == "channels":
+        return "请用微信 App 扫一扫；扫码后在手机上选择视频号并确认登录"
     app_name = PLATFORM_APP_NAMES.get(platform, "对应平台 App")
     return f"请使用{app_name}扫码登录"
 

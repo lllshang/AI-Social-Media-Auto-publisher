@@ -4,9 +4,9 @@ from pathlib import Path
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from app.adapters.base import ImageGenerateInput, TextGenerateInput
+from app.adapters.base import ImageGenerateInput, TextGenerateInput, VideoGenerateInput
 from app.adapters.factory import get_adapter_factory
-from app.models import AiGenerationRecord, Material
+from app.models import AiGenerationRecord, Avatar, Material
 from app.schemas import MaterialResponse
 from app.services.image_moderation_service import ImageModerationService
 from app.utils.thumbnail import generate_image_thumbnail
@@ -222,6 +222,24 @@ class AiContentService:
         self.factory = get_adapter_factory()
         self.material_service = MaterialService(db)
 
+    def _resolve_avatar_reference_image(self, avatar_id: int) -> str | None:
+        """从 Avatar 的 reference_images 解析出第一张参考图的 URL。"""
+        avatar = self.db.query(Avatar).filter(Avatar.id == avatar_id, Avatar.status == "active").first()
+        if not avatar or not avatar.reference_images:
+            return None
+        ref_ids = avatar.reference_images
+        if not isinstance(ref_ids, list) or not ref_ids:
+            return None
+        # reference_images 存的是素材 ID 列表，取第一张
+        first_id = ref_ids[0]
+        mat = self.db.query(Material).filter(Material.id == first_id, Material.status == "active").first()
+        if mat and mat.url:
+            return mat.url
+        if mat and mat.file_path:
+            storage = self.factory.get_storage_adapter()
+            return storage.get_url(mat.file_path)
+        return None
+
     async def generate_text(
         self,
         topic: str,
@@ -327,3 +345,118 @@ class AiContentService:
             "brand_hint": brand_hint,
             "cost": float(result.cost),
         }
+
+    async def generate_video(
+        self,
+        topic: str,
+        platform: str,
+        duration: int,
+        resolution: str,
+        fps: int,
+        image_url: str | None,
+        user_id: int | None = None,
+        avatar_id: int | None = None,
+        avatar_type: str | None = None,
+    ) -> dict:
+        """AI 视频生成核心逻辑"""
+        # 仿真人 → MiniMax S2V-01 (主体参考视频)
+        if avatar_type == "simulation_human":
+            adapter = self.factory.get_ai_video_adapter()
+            # 从 Avatar 读取 reference_images 作为 subject_reference_image
+            if avatar_id and not image_url:
+                image_url = self._resolve_avatar_reference_image(avatar_id)
+        elif avatar_type == "digital_human":
+            adapter = self.factory.get_digital_human_video_adapter()
+        else:
+            adapter = self.factory.get_ai_video_adapter()
+
+        video_input = VideoGenerateInput(
+            topic=topic,
+            platform=platform,
+            duration=duration,
+            resolution=resolution,
+            fps=fps,
+            image_url=image_url,
+            avatar_id=avatar_id,
+            avatar_type=avatar_type,
+        )
+
+        # 调用适配器生成
+        result = await adapter.generate(video_input)
+
+        # 记录 AI 调用日志
+        import json
+
+        record = AiGenerationRecord(
+            type="video",
+            provider=result.provider,
+            model="",  # 可从 adapter 获取
+            prompt=result.prompt,
+            result_summary=json.dumps(
+                {
+                    "videos": len(result.video_paths),
+                    "duration": result.duration,
+                    "resolution": resolution,
+                    "fps": fps,
+                },
+                ensure_ascii=False,
+            ),
+            cost=result.cost,
+            token_count=0,
+            generated_count=len(result.video_paths),
+            created_by=user_id,
+        )
+        self.db.add(record)
+        self.db.flush()
+
+        # 创建视频素材记录
+        materials = []
+        storage = self.factory.get_storage_adapter()
+
+        for idx, (video_path, thumb_path) in enumerate(zip(result.video_paths, result.thumbnail_paths)):
+            video_url = storage.get_url(video_path)
+            thumb_url = storage.get_url(thumb_path)
+
+            material = Material(
+                user_id=user_id,
+                name=f"{topic}_视频_{idx + 1}",
+                type="video",
+                source="ai_generated",
+                file_path=video_path,
+                url=video_url,
+                thumbnail=thumb_path,
+                metadata={
+                    "thumbnail_path": thumb_path,
+                    "thumbnail_url": thumb_url,
+                    "duration": result.duration,
+                    "resolution": resolution,
+                    "fps": fps,
+                    "prompt": result.prompt,
+                },
+                ai_record_id=record.id,
+            )
+            self.db.add(material)
+            materials.append(material)
+
+        self.db.commit()
+
+        for material in materials:
+            self.db.refresh(material)
+
+        return {
+            "record_id": record.id,
+            "materials": [
+                {
+                    "id": m.id,
+                    "url": m.url,
+                    "thumbnail_url": m.metadata.get("thumbnail_url"),
+                    "duration": result.duration,
+                }
+                for m in materials
+            ],
+            "provider": result.provider,
+            "model": getattr(adapter, "model", None),
+            "prompt": result.prompt,
+            "cost": float(result.cost),
+        }
+

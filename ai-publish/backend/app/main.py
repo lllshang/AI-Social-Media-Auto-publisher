@@ -12,8 +12,10 @@ from loguru import logger
 
 from app.api.account_groups import router as account_groups_router
 from app.api.ai_models import router as ai_models_router
+from app.api.avatars import router as avatars_router
 from app.api.auth import router as auth_router
 from app.api.content_templates import router as content_templates_router
+from app.api.create import router as create_router
 from app.api.dashboard import router as dashboard_router
 from app.api.logs import router as logs_router
 from app.api.materials import router as materials_router
@@ -25,6 +27,7 @@ from app.api.risk import router as risk_router
 from app.api.roles import router as roles_router
 from app.api.system import router as system_router
 from app.api.system_configs import router as system_configs_router
+from app.api.trending import router as trending_router
 from app.api.users import router as users_router
 from app.config import BACKEND_DIR, get_settings
 from app.database import SessionLocal, engine, get_db
@@ -127,8 +130,10 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(content_templates_router)
+app.include_router(create_router)
 app.include_router(account_groups_router)
 app.include_router(ai_models_router)
+app.include_router(avatars_router)
 app.include_router(platform_accounts_router)
 app.include_router(publish_workers_router)
 app.include_router(materials_router)
@@ -139,6 +144,7 @@ app.include_router(logs_router)
 app.include_router(system_router)
 app.include_router(system_configs_router)
 app.include_router(roles_router)
+app.include_router(trending_router)
 app.include_router(users_router)
 
 settings = get_settings()

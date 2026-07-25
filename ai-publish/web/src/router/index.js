@@ -16,12 +16,19 @@ const routes = [
       { path: '', name: 'dashboard', meta: { permission: 'dashboard:read' }, component: () => import('@/views/DashboardView.vue') },
       { path: 'accounts', name: 'accounts', meta: { permission: 'accounts:read' }, component: () => import('@/views/AccountsView.vue') },
       { path: 'models', name: 'models', meta: { permission: 'models:read' }, component: () => import('@/views/ModelsView.vue') },
+      { path: 'avatars', name: 'avatars', meta: { permission: 'avatars:read' }, component: () => import('@/views/AvatarsView.vue') },
       { path: 'materials', name: 'materials', meta: { permission: 'materials:read' }, component: () => import('@/views/MaterialsView.vue') },
       {
         path: 'templates',
         name: 'templates',
         meta: { permission: 'templates:read' },
         component: () => import('@/views/ContentTemplatesView.vue'),
+      },
+      {
+        path: 'trending',
+        name: 'trending',
+        meta: { permission: 'trending:read' },
+        component: () => import('@/views/TrendingView.vue'),
       },
       { path: 'tasks', name: 'tasks', meta: { permission: 'tasks:read' }, component: () => import('@/views/TasksView.vue') },
       {
@@ -33,6 +40,7 @@ const routes = [
       { path: 'logs', name: 'logs', meta: { permission: 'logs:read' }, component: () => import('@/views/LogsView.vue') },
       { path: 'settings', name: 'settings', meta: { permission: 'settings:write' }, component: () => import('@/views/SettingsView.vue') },
       { path: 'publish', name: 'publish', meta: { permission: 'publish:write' }, component: () => import('@/views/PublishView.vue') },
+      { path: 'create', name: 'create', meta: { permission: 'publish:write' }, component: () => import('@/views/CreateView.vue') },
     ],
   },
 ]

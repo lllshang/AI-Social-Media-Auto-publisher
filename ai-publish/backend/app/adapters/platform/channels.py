@@ -40,6 +40,7 @@ class ChannelsPlatformAdapter(XhsPlatformAdapter):
         account_name: str,
         cookie_file: str,
         qrcode_callback=None,
+        progress_callback=None,
         publish_proxy: str | None = None,
     ) -> LoginResult:
         _, tencent_cookie_gen, _ = self._import_vendor()
@@ -55,6 +56,7 @@ class ChannelsPlatformAdapter(XhsPlatformAdapter):
             max_checks=max_checks,
             headless=self.settings.playwright_headless,
             qrcode_callback=qrcode_callback,
+            progress_callback=progress_callback,
         )
         qrcode = result.get("qrcode") or {}
         return LoginResult(

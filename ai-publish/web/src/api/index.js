@@ -120,6 +120,19 @@ export const api = {
     }
     return http.post('/api/ai/image/generate', payload)
   },
+  generateVideo: (payload) => http.post('/api/ai/video/generate', payload),
+  listAvatars: (params) => http.get('/api/avatars', { params }),
+  getAvatar: (id) => http.get(`/api/avatars/${id}`),
+  createAvatar: (payload) => http.post('/api/avatars', payload),
+  updateAvatar: (id, payload) => http.put(`/api/avatars/${id}`, payload),
+  deleteAvatar: (id) => http.delete(`/api/avatars/${id}`),
+  uploadAvatarThumbnail: (id, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return http.post(`/api/avatars/${id}/upload-thumbnail`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
   getModels: () => http.get('/api/ai/models'),
   listProviders: () => http.get('/api/ai/models/providers'),
   saveProviderConfig: (payload) => http.put('/api/ai/models/providers/config', payload),
@@ -146,6 +159,25 @@ export const api = {
   createPublishWorker: (name) => http.post('/api/publish-workers', { name }),
   deletePublishWorker: (id) => http.delete(`/api/publish-workers/${id}`),
   rotatePublishWorkerToken: (id) => http.post(`/api/publish-workers/${id}/rotate-token`),
+  getTrendingStatus: () => http.get('/api/trending/status'),
+  listTrendingItems: (params) => http.get('/api/trending/items', { params }),
+  fetchTrending: () => http.post('/api/trending/fetch'),
+  aiRecommendTrending: (payload) => http.post('/api/trending/ai-recommend', payload),
+  saveTrendingTemplate: (id) => http.post(`/api/trending/items/${id}/save-template`),
+
+  // 内容创作
+  createSession: (data) => http.post('/api/create/session', data),
+  getSessions: (params) => http.get('/api/create/sessions', { params }),
+  getSession: (id) => http.get(`/api/create/${id}`),
+  deleteSession: (id) => http.delete(`/api/create/${id}`),
+  generateCopy: (id) => http.post(`/api/create/${id}/generate-copy`),
+  polishCopy: (id, data) => http.post(`/api/create/${id}/polish`, data),
+  getCopy: (id) => http.get(`/api/create/${id}/copy`),
+  updateCopy: (id, data) => http.put(`/api/create/${id}/copy`, data),
+  startGeneration: (id, data) => http.post(`/api/create/${id}/generate`, data),
+  getGenerations: (id) => http.get(`/api/create/${id}/generations`),
+  getGenerationStatus: (genId) => http.get(`/api/create/generations/${genId}`),
+  completeSession: (id) => http.post(`/api/create/${id}/complete`),
 }
 
 export default http

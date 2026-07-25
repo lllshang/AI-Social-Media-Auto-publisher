@@ -6,11 +6,14 @@
         <el-menu-item v-if="can('dashboard:read')" index="/">工作台</el-menu-item>
         <el-menu-item v-if="can('accounts:read')" index="/accounts">平台账号</el-menu-item>
         <el-menu-item v-if="can('models:read')" index="/models">AI 模型</el-menu-item>
+        <el-menu-item v-if="can('avatars:read')" index="/avatars">数字人 / 仿真人</el-menu-item>
         <el-menu-item v-if="can('materials:read')" index="/materials">素材库</el-menu-item>
         <el-menu-item v-if="can('templates:read')" index="/templates">内容模板</el-menu-item>
+        <el-menu-item v-if="can('trending:read') && trendingEnabled" index="/trending">热点灵感</el-menu-item>
         <el-menu-item v-if="can('tasks:read')" index="/tasks">发布任务</el-menu-item>
         <el-menu-item v-if="canReview(auth.permissions)" index="/reviews">内容审核</el-menu-item>
         <el-menu-item v-if="can('publish:write')" index="/publish">发布向导</el-menu-item>
+        <el-menu-item v-if="can('publish:write')" index="/create">内容创作</el-menu-item>
         <el-menu-item v-if="can('logs:read')" index="/logs">日志中心</el-menu-item>
         <el-menu-item v-if="can('settings:write')" index="/settings">系统设置</el-menu-item>
       </el-menu>
@@ -58,6 +61,16 @@ const router = useRouter()
 const auth = useAuthStore()
 const changePasswordRef = ref(null)
 const alerts = ref([])
+const trendingEnabled = ref(false)
+
+async function loadFeatures() {
+  try {
+    const features = await api.getSystemFeatures()
+    trendingEnabled.value = !!features.trending_enabled
+  } catch {
+    trendingEnabled.value = false
+  }
+}
 
 async function loadAlerts() {
   if (!canPerm(auth.permissions, 'dashboard:read')) return
@@ -73,7 +86,10 @@ function goAlert(item) {
   if (item.link) router.push(item.link)
 }
 
-onMounted(loadAlerts)
+onMounted(() => {
+  loadFeatures()
+  loadAlerts()
+})
 
 function openChangePassword() {
   changePasswordRef.value?.open()

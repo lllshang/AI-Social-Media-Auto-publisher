@@ -24,6 +24,7 @@
           <h3>当前配置</h3>
           <p>文案：{{ current.text }}</p>
           <p>文生图：{{ current.image }}</p>
+          <p>文生视频：{{ current.video }}</p>
         </div>
       </el-col>
       <el-col v-if="canWrite" :span="12">
@@ -32,6 +33,42 @@
           <el-input v-model="topic" placeholder="输入主题" />
           <el-button type="primary" style="margin-top: 12px" :loading="generating" @click="testText">生成</el-button>
           <pre v-if="textResult" class="result">{{ textResult }}</pre>
+        </div>
+      </el-col>
+    </el-row>
+
+    <el-row v-if="canWrite" :gutter="16" style="margin-top: 16px">
+      <el-col :span="12">
+        <div class="page-card">
+          <h3>测试图片生成</h3>
+          <el-input v-model="imageTopic" placeholder="输入主题" />
+          <el-select v-model="imageRatio" style="width: 100%; margin-top: 8px">
+            <el-option label="3:4（竖版）" value="3:4" />
+            <el-option label="1:1（方版）" value="1:1" />
+            <el-option label="16:9（横版）" value="16:9" />
+          </el-select>
+          <el-button type="primary" style="margin-top: 12px" :loading="generatingImage" @click="testImage">生成图片</el-button>
+          <div v-if="imageResult" class="test-result">
+            <el-image v-if="imageResult.materials?.length" :src="imageResult.materials[0].url" fit="contain" style="max-height: 160px; border-radius: 6px" />
+            <p class="test-meta">{{ imageResult.provider }} / {{ imageResult.model }} · 耗费 {{ imageResult.cost }}</p>
+            <pre v-if="imageResult.prompt" class="result" style="max-height: 100px">{{ imageResult.prompt }}</pre>
+          </div>
+        </div>
+      </el-col>
+      <el-col :span="12">
+        <div class="page-card">
+          <h3>测试视频生成</h3>
+          <el-input v-model="videoTopic" placeholder="输入主题" />
+          <el-select v-model="videoDuration" style="width: 100%; margin-top: 8px">
+            <el-option label="5 秒" :value="5" />
+            <el-option label="10 秒" :value="10" />
+          </el-select>
+          <el-button type="primary" style="margin-top: 12px" :loading="generatingVideo" @click="testVideo">生成视频</el-button>
+          <div v-if="videoResult" class="test-result">
+            <el-image v-if="videoResult.materials?.length && videoResult.materials[0].thumbnail_url" :src="videoResult.materials[0].thumbnail_url" fit="contain" style="max-height: 160px; border-radius: 6px" />
+            <p class="test-meta">{{ videoResult.provider }} / {{ videoResult.model }} · {{ videoResult.materials?.[0]?.duration || videoResult.cost }}s · 耗费 {{ videoResult.cost }}</p>
+            <pre v-if="videoResult.prompt" class="result" style="max-height: 100px">{{ videoResult.prompt }}</pre>
+          </div>
         </div>
       </el-col>
     </el-row>
@@ -54,6 +91,20 @@
       <el-select v-model="selectedImage" placeholder="选择文生图模型" style="width: 100%">
         <el-option
           v-for="item in imageOptions"
+          :key="item.provider + item.model"
+          :label="item.label"
+          :value="`${item.provider}::${item.model}`"
+          :disabled="!item.ready"
+        />
+      </el-select>
+    </div>
+
+    <div v-if="canWrite" class="page-card" style="margin-top: 16px">
+      <h3>切换文生视频模型</h3>
+      <p class="muted" style="margin: 0 0 10px">视频生成需配置相应厂商的 API Key</p>
+      <el-select v-model="selectedVideo" placeholder="选择文生视频模型" style="width: 100%">
+        <el-option
+          v-for="item in videoOptions"
           :key="item.provider + item.model"
           :label="item.label"
           :value="`${item.provider}::${item.model}`"
@@ -160,9 +211,18 @@ const modelData = ref(null)
 const providers = ref([])
 const selectedText = ref('')
 const selectedImage = ref('')
+const selectedVideo = ref('')
 const topic = ref('春茶上新')
 const textResult = ref('')
 const generating = ref(false)
+const imageTopic = ref('春茶上新')
+const imageRatio = ref('3:4')
+const imageResult = ref(null)
+const generatingImage = ref(false)
+const videoTopic = ref('春茶上新')
+const videoDuration = ref(5)
+const videoResult = ref(null)
+const generatingVideo = ref(false)
 const loading = ref(false)
 const providerVisible = ref(false)
 const addVisible = ref(false)
@@ -192,9 +252,13 @@ const current = computed(() => ({
   image: modelData.value?.image?.current
     ? `${modelData.value.image.current.provider} / ${modelData.value.image.current.model}`
     : '-',
+  video: modelData.value?.video?.current
+    ? `${modelData.value.video.current.provider} / ${modelData.value.video.current.model}`
+    : '-',
 }))
 const textOptions = computed(() => modelData.value?.text?.available || [])
 const imageOptions = computed(() => modelData.value?.image?.available || [])
+const videoOptions = computed(() => modelData.value?.video?.available || [])
 
 function splitModels(raw) {
   return raw
@@ -213,11 +277,15 @@ async function loadModels() {
   modelData.value = models
   const textCur = models.text?.current
   const imageCur = models.image?.current
+  const videoCur = models.video?.current
   if (textCur?.provider && textCur?.model) {
     selectedText.value = `${textCur.provider}::${textCur.model}`
   }
   if (imageCur?.provider && imageCur?.model) {
     selectedImage.value = `${imageCur.provider}::${imageCur.model}`
+  }
+  if (videoCur?.provider && videoCur?.model) {
+    selectedVideo.value = `${videoCur.provider}::${videoCur.model}`
   }
 }
 
@@ -253,12 +321,15 @@ async function apply() {
   try {
     const [textProvider, textModel] = selectedText.value.split('::')
     const [imageProvider, imageModel] = selectedImage.value.split('::')
+    const [videoProvider, videoModel] = selectedVideo.value ? selectedVideo.value.split('::') : ['', '']
     await api.selectModel({
       mode: 'manual',
       text_provider: textProvider,
       text_model: textModel,
       image_provider: imageProvider,
       image_model: imageModel,
+      video_provider: videoProvider || undefined,
+      video_model: videoModel || undefined,
     })
     ElMessage.success('已切换模型')
     await load()
@@ -276,6 +347,32 @@ async function testText() {
     ElMessage.error(e.message)
   } finally {
     generating.value = false
+  }
+}
+
+async function testImage() {
+  generatingImage.value = true
+  imageResult.value = null
+  try {
+    const res = await api.generateImage({ topic: imageTopic.value, platform: 'xhs', ratio: imageRatio.value, count: 1 })
+    imageResult.value = res
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    generatingImage.value = false
+  }
+}
+
+async function testVideo() {
+  generatingVideo.value = true
+  videoResult.value = null
+  try {
+    const res = await api.generateVideo({ topic: videoTopic.value, platform: 'douyin', duration: videoDuration.value })
+    videoResult.value = res
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    generatingVideo.value = false
   }
 }
 
@@ -386,5 +483,13 @@ onMounted(load)
   overflow: auto;
   max-height: 240px;
   font-size: 12px;
+}
+.test-result {
+  margin-top: 12px;
+}
+.test-meta {
+  margin: 8px 0 0;
+  color: #666;
+  font-size: 13px;
 }
 </style>

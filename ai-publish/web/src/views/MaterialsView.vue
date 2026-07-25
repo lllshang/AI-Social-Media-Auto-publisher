@@ -4,6 +4,7 @@
       <h2 class="page-title">素材库</h2>
       <div v-if="can('materials:write')">
         <el-button @click="showAiGenerate = true">AI 生成图片</el-button>
+        <el-button @click="showAiVideoGenerate = true">AI 生成视频</el-button>
         <el-button type="primary" @click="showUpload = true">上传素材</el-button>
       </div>
     </div>
@@ -62,6 +63,12 @@
             <el-button v-else-if="row.type === 'text'" link type="primary" @click="previewText(row)">
               查看文案
             </el-button>
+            <el-image
+              v-else-if="row.type === 'video' && row.thumbnail_url"
+              :src="row.thumbnail_url"
+              fit="cover"
+              class="thumb"
+            />
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -147,6 +154,45 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="showAiVideoGenerate" title="AI 生成视频" width="560px">
+      <el-form label-width="90px">
+        <el-form-item label="平台">
+          <el-select v-model="aiVideoForm.platform" style="width: 100%">
+            <el-option v-for="p in PLATFORMS" :key="p.value" :label="p.label" :value="p.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="主题">
+          <el-input v-model="aiVideoForm.topic" placeholder="如：春茶上新短视频" />
+        </el-form-item>
+        <el-form-item label="生成方式">
+          <el-radio-group v-model="aiVideoForm.mode">
+            <el-radio value="t2v">文生视频</el-radio>
+            <el-radio value="i2v">照片生视频</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="aiVideoForm.mode === 'i2v'" label="驱动照片">
+          <el-upload :auto-upload="false" :show-file-list="false" accept="image/*" @change="onVideoDriverPhotoChange">
+            <el-button>选择照片</el-button>
+          </el-upload>
+          <div v-if="videoDriverPhotoPreview" style="margin-top: 8px">
+            <img :src="videoDriverPhotoPreview" style="max-width: 160px; max-height: 160px; border-radius: 8px" />
+            <el-button size="small" type="danger" plain style="margin-left: 8px" @click="clearVideoDriverPhoto">清除</el-button>
+          </div>
+          <p class="upload-hint">上传人物照片，AI 将生成仿真人说话/动作视频（需 MiniMax Key）</p>
+        </el-form-item>
+        <el-form-item label="时长">
+          <el-select v-model="aiVideoForm.duration" style="width: 100%">
+            <el-option label="5 秒" :value="5" />
+            <el-option label="10 秒" :value="10" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showAiVideoGenerate = false">取消</el-button>
+        <el-button type="primary" :loading="aiVideoGenerating" @click="submitAiVideoGenerate">生成</el-button>
+      </template>
+    </el-dialog>
+
     <el-drawer v-model="textPreviewVisible" :title="textPreviewTitle" size="480px">
       <p v-if="textPreviewLoading" class="muted">加载中…</p>
       <el-input
@@ -188,6 +234,13 @@ const textPreviewVisible = ref(false)
 const textPreviewTitle = ref('文案预览')
 const textPreviewContent = ref('')
 const textPreviewLoading = ref(false)
+
+// AI 生成视频
+const showAiVideoGenerate = ref(false)
+const aiVideoGenerating = ref(false)
+const aiVideoForm = reactive({ platform: 'douyin', topic: '', mode: 't2v', duration: 5 })
+const videoDriverPhotoFile = ref(null)
+const videoDriverPhotoPreview = ref('')
 
 function typeLabel(type) {
   return { image: '图片', video: '视频', text: '文案' }[type] || type
@@ -357,6 +410,54 @@ async function submitAiGenerate() {
   }
 }
 
+function onVideoDriverPhotoChange(file) {
+  videoDriverPhotoFile.value = file.raw
+  videoDriverPhotoPreview.value = URL.createObjectURL(file.raw)
+}
+
+function clearVideoDriverPhoto() {
+  videoDriverPhotoFile.value = null
+  videoDriverPhotoPreview.value = ''
+}
+
+function platformVideoResolution(platform) {
+  if (['douyin', 'kuaishou'].includes(platform)) return 'portrait'
+  return '720p'
+}
+
+async function submitAiVideoGenerate() {
+  if (!aiVideoForm.topic.trim()) return ElMessage.warning('请填写主题')
+  if (aiVideoForm.mode === 'i2v' && !videoDriverPhotoFile.value) return ElMessage.warning('请先上传驱动照片')
+  aiVideoGenerating.value = true
+  try {
+    let imageUrl = null
+    if (aiVideoForm.mode === 'i2v' && videoDriverPhotoFile.value) {
+      const uploadRes = await api.uploadMaterial(videoDriverPhotoFile.value, { name: '驱动照片', category: '视频驱动' })
+      imageUrl = uploadRes.url
+    }
+    const res = await api.generateVideo({
+      topic: aiVideoForm.topic,
+      platform: aiVideoForm.platform,
+      duration: aiVideoForm.duration,
+      resolution: platformVideoResolution(aiVideoForm.platform),
+      fps: 24,
+      image_url: imageUrl,
+    })
+    const count = res.materials?.length || 1
+    ElMessage.success(`已生成 ${count} 个视频（${res.provider}）`)
+    showAiVideoGenerate.value = false
+    aiVideoForm.topic = ''
+    aiVideoForm.mode = 't2v'
+    videoDriverPhotoFile.value = null
+    videoDriverPhotoPreview.value = ''
+    load()
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    aiVideoGenerating.value = false
+  }
+}
+
 onMounted(async () => {
   await loadCategories()
   load()
@@ -379,5 +480,10 @@ onMounted(async () => {
 }
 .clickable {
   cursor: zoom-in;
+}
+.upload-hint {
+  margin: 4px 0 0;
+  color: #999;
+  font-size: 12px;
 }
 </style>

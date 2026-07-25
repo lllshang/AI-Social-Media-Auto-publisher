@@ -214,3 +214,92 @@ class PublishTaskLog(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TrendingFetchRun(Base):
+    __tablename__ = "trending_fetch_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class Avatar(Base):
+    __tablename__ = "avatars"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    type: Mapped[str] = mapped_column(String(32), nullable=False)  # digital_human | simulation_human
+    gender: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # appearance, voice, etc.
+    reference_images: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # material IDs or URLs
+    thumbnail: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    created_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrendingItem(Base):
+    __tablename__ = "trending_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    platform: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    snapshot_date: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    rank: Mapped[int] = mapped_column(Integer, default=0)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    tags: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)
+    heat_score: Mapped[float] = mapped_column(Numeric(12, 4), default=0)
+    source_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    cover_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    video_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    aspect_ratio: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    ref_material_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class CreativeSession(Base):
+    """内容创作会话"""
+
+    __tablename__ = "creative_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    content_type: Mapped[str] = mapped_column(String(20), nullable=False)  # video | note
+    keywords: Mapped[str] = mapped_column(Text, nullable=False)
+    background: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    theme_style: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    scene_desc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    platforms: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)  # ["douyin","bilibili"]
+    status: Mapped[str] = mapped_column(String(20), default="drafting")  # drafting | generating | completed
+    final_copy: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # {title, body, tags}
+    polish_history: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)  # [{role, content}]
+    output_material_ids: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class GenerationTask(Base):
+    """内容生成任务"""
+
+    __tablename__ = "generation_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    session_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    gen_type: Mapped[str] = mapped_column(String(30), nullable=False)  # text_to_video | image_to_video | simulation_human | digital_human | cover | images
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    input_params: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | running | completed | failed
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    result: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # {material_id, video_url, ...}
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

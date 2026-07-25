@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     ai_text_model: str = ""
     ai_image_provider: str = "auto"
     ai_image_model: str = ""
+    ai_video_provider: str = "auto"
+    ai_video_model: str = ""
     default_platform: str = "xhs"
     require_content_review: bool = False
     scheduler_enabled: bool = True
@@ -78,7 +80,7 @@ class Settings(BaseSettings):
     siliconflow_api_key: str = ""
     siliconflow_base_url: str = "https://api.siliconflow.cn/v1"
     minimax_api_key: str = ""
-    minimax_base_url: str = "https://api.minimax.chat/v1"
+    minimax_base_url: str = "https://api.minimax.io/v1"
 
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_text_model: str = ""
