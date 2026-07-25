@@ -261,6 +261,38 @@ class AiModelService:
             ],
         },
         {
+            "provider": "kling_video",
+            "label": "可灵 AI 视频",
+            "key_field": "kling_api_key",
+            "base_url_field": "kling_base_url",
+            "default_base_url": "https://api.klingai.com",
+            "models": [
+                ("kling-v1", "可灵 V1"),
+                ("kling-v1-5", "可灵 V1.5"),
+            ],
+        },
+        {
+            "provider": "dreamina_video",
+            "label": "即梦 Dreamina 视频",
+            "key_field": "dreamina_api_key",
+            "base_url_field": "dreamina_base_url",
+            "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+            "models": [
+                ("seedance-2.0", "Seedance 2.0"),
+                ("seedance-2.5", "Seedance 2.5"),
+            ],
+        },
+        {
+            "provider": "baidu_video",
+            "label": "百度文心一格/千帆视频",
+            "key_field": "baidu_api_key",
+            "base_url_field": "baidu_video_base_url",
+            "default_base_url": "https://qianfan.baidubce.com/v2",
+            "models": [
+                ("bilibili-index", "文心视频"),
+            ],
+        },
+        {
             "provider": "hunyuan_video",
             "label": "腾讯混元视频（占位）",
             "key_field": "hunyuan_api_key",
@@ -535,15 +567,13 @@ class AiModelService:
 
     def _pick_best_video(self, options: list[ModelOption]) -> ModelOption:
         ready = [o for o in options if o.ready and o.provider != "stub"]
-        minimax = next((o for o in ready if o.provider == "minimax_video"), None)
-        if minimax:
-            return minimax
-        wanxiang = next((o for o in ready if o.provider == "wanxiang_video"), None)
-        if wanxiang:
-            return wanxiang
-        hunyuan = next((o for o in ready if o.provider == "hunyuan_video"), None)
-        if hunyuan:
-            return hunyuan
+
+        # 优先级：可灵 > 即梦 > MiniMax > 通义万相 > 腾讯混元 > stub
+        for provider in ("kling_video", "dreamina_video", "minimax_video", "wanxiang_video", "hunyuan_video"):
+            choice = next((o for o in ready if o.provider == provider), None)
+            if choice:
+                return choice
+
         return next(o for o in options if o.provider == "stub")
 
     def _rank_ollama_model(self, model: str) -> tuple[int, str]:
@@ -783,6 +813,21 @@ class AiModelService:
             from app.adapters.ai_video.minimax import MinimaxVideoAdapter
 
             return MinimaxVideoAdapter(model=model or "MiniMax-Hailuo-2.3")
+        elif provider == "kling_video":
+            from app.adapters.ai_video.kling import KlingVideoAdapter
+
+            base_url = self._config_value("kling_base_url") or "https://api.klingai.com"
+            return KlingVideoAdapter(model=model or "kling-v1", base_url=base_url)
+        elif provider == "dreamina_video":
+            from app.adapters.ai_video.dreamina import DreaminaVideoAdapter
+
+            base_url = self._config_value("dreamina_base_url") or "https://ark.cn-beijing.volces.com/api/v3"
+            return DreaminaVideoAdapter(model=model or "seedance-2.0", base_url=base_url)
+        elif provider == "baidu_video":
+            from app.adapters.ai_video.baidu_video import BaiduVideoAdapter
+
+            base_url = self._config_value("baidu_video_base_url") or "https://qianfan.baidubce.com/v2"
+            return BaiduVideoAdapter(model=model or "bilibili-index", base_url=base_url)
         elif provider == "hunyuan_video":
             from app.adapters.ai_video.hunyuan import HunyuanVideoAdapter
 
@@ -811,8 +856,12 @@ class AiModelService:
         if provider not in {"", "auto"}:
             return provider, model
 
-        # 自动检测可用提供商（优先级：minimax > wanxiang > hunyuan > stub）
-        if self._config_value("minimax_api_key"):
+        # 自动检测可用提供商（优先级：可灵 > 即梦 > MiniMax > 通义万相 > 腾讯混元 > stub）
+        if self._config_value("kling_api_key"):
+            return "kling_video", "kling-v1"
+        elif self._config_value("dreamina_api_key"):
+            return "dreamina_video", "seedance-2.0"
+        elif self._config_value("minimax_api_key"):
             return "minimax_video", "MiniMax-Hailuo-2.3"
         elif self._config_value("dashscope_api_key"):
             return "wanxiang_video", "video-synthesis-v1"

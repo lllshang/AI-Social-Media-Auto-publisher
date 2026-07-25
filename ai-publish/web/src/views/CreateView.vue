@@ -268,7 +268,12 @@
       <div v-if="generationTasks.length === 0" class="empty">暂无生成记录</div>
       <div v-for="gen in sortedGenerations" :key="gen.id" class="gen-item">
         <span>{{ genTypeLabel(gen.gen_type) }}</span>
-        <el-tag size="small" :type="gen.status === 'completed' ? 'success' : gen.status === 'failed' ? 'danger' : gen.status === 'running' ? 'warning' : 'info'">
+        <el-tooltip v-if="gen.status === 'failed' && gen.error_message" :content="gen.error_message" placement="top" effect="light">
+          <el-tag size="small" type="danger" style="cursor: help;">
+            失败
+          </el-tag>
+        </el-tooltip>
+        <el-tag v-else size="small" :type="gen.status === 'completed' ? 'success' : gen.status === 'failed' ? 'danger' : gen.status === 'running' ? 'warning' : 'info'">
           {{ gen.status === 'pending' ? '队列中' : gen.status === 'running' ? `${gen.progress}%` : gen.status === 'completed' ? '已完成' : '失败' }}
         </el-tag>
         <span class="gen-time">{{ formatTime(gen.created_at) }}</span>

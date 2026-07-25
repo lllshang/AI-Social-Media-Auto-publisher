@@ -66,6 +66,27 @@ PROVIDER_FIELDS: dict[str, dict[str, Any]] = {
         "default_base_url": "https://api.minimax.chat/v1",
         "kind": "text",
     },
+    "kling": {
+        "label": "可灵 AI (Kling)",
+        "key_field": "kling_api_key",
+        "base_url_field": "kling_base_url",
+        "default_base_url": "https://api.klingai.com",
+        "kind": "video",
+    },
+    "dreamina": {
+        "label": "即梦 Dreamina",
+        "key_field": "dreamina_api_key",
+        "base_url_field": "dreamina_base_url",
+        "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+        "kind": "video",
+    },
+    "baidu_video": {
+        "label": "百度文心一格/千帆视频",
+        "key_field": "baidu_api_key",
+        "base_url_field": "baidu_video_base_url",
+        "default_base_url": "https://qianfan.baidubce.com/v2",
+        "kind": "video",
+    },
     "openai": {
         "label": "OpenAI",
         "key_field": "openai_api_key",
