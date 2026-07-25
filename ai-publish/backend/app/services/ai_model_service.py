@@ -148,8 +148,9 @@ class AiModelService:
             "base_url_field": "doubao_base_url",
             "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
             "models": [
-                ("doubao-pro-32k", "doubao-pro-32k"),
-                ("doubao-lite-32k", "doubao-lite-32k"),
+                ("doubao-seed-1.6", "doubao-seed-1.6"),
+                ("doubao-1.5-pro-32k", "doubao-1.5-pro-32k"),
+                ("doubao-1.5-lite-32k", "doubao-1.5-lite-32k"),
             ],
         },
         {
@@ -188,6 +189,16 @@ class AiModelService:
     )
 
     REMOTE_IMAGE_PROVIDERS = (
+        {
+            "provider": "doubao",
+            "label": "字节豆包 生图",
+            "key_field": "doubao_api_key",
+            "base_url_field": "doubao_base_url",
+            "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+            "models": [
+                ("doubao-seedream-4.0", "seedream-4.0"),
+            ],
+        },
         {
             "provider": "wanxiang",
             "label": "通义万相 (DashScope)",
@@ -792,6 +803,10 @@ class AiModelService:
             from app.adapters.ai_image.openai_dalle import OpenAiDalleImageAdapter
 
             return OpenAiDalleImageAdapter(model=model or "black-forest-labs/FLUX.1-schnell")
+        if provider == "doubao":
+            from app.adapters.ai_image.openai_dalle import OpenAiDalleImageAdapter
+
+            return OpenAiDalleImageAdapter(model=model or "doubao-seedream-4.0")
         custom = self.provider_config.get_custom_provider(provider)
         if custom and custom.get("kind") in {"image", "both"}:
             from app.adapters.ai_image.openai_dalle import OpenAiDalleImageAdapter
@@ -859,7 +874,7 @@ class AiModelService:
         # 自动检测可用提供商（优先级：可灵 > 即梦 > MiniMax > 通义万相 > 腾讯混元 > stub）
         if self._config_value("kling_api_key"):
             return "kling_video", "kling-v1"
-        elif self._config_value("dreamina_api_key"):
+        elif self._config_value("dreamina_api_key") or self._config_value("doubao_api_key"):
             return "dreamina_video", "seedance-2.0"
         elif self._config_value("minimax_api_key"):
             return "minimax_video", "MiniMax-Hailuo-2.3"

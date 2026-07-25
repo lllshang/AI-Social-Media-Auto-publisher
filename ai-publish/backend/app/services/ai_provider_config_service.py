@@ -43,7 +43,7 @@ PROVIDER_FIELDS: dict[str, dict[str, Any]] = {
         "key_field": "doubao_api_key",
         "base_url_field": "doubao_base_url",
         "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
-        "kind": "text",
+        "kind": "both",
     },
     "baidu": {
         "label": "百度千帆 (文心)",

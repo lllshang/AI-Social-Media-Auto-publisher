@@ -111,7 +111,11 @@ class DreaminaVideoAdapter:
         from app.services.ai_provider_config_service import AiProviderConfigService
 
         storage = get_adapter_factory().get_storage_adapter()
-        api_key = AiProviderConfigService().get_field_value("dreamina_api_key")
+        config = AiProviderConfigService()
+        api_key = config.get_field_value("dreamina_api_key")
+        # 火山方舟 Key 通用，未单独配置 dreamina 时复用 doubao (火山) Key
+        if not api_key:
+            api_key = config.get_field_value("doubao_api_key")
 
         if not api_key:
             result = await StubVideoAdapter().generate(data)
