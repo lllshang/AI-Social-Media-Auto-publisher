@@ -283,6 +283,7 @@ class CreativeSession(Base):
     final_copy: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # {title, body, tags}
     polish_history: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)  # [{role, content}]
     output_material_ids: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)
+    draft_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # {step, form, copy, videoParams, imageParams}
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

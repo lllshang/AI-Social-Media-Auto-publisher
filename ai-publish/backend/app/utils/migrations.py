@@ -183,9 +183,15 @@ def run_migrations() -> None:
             "final_copy TEXT, "
             "polish_history TEXT, "
             "output_material_ids TEXT, "
+            "draft_data TEXT, "
             "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
             "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
+
+    if inspector.has_table("creative_sessions"):
+        session_columns = {col["name"] for col in inspector.get_columns("creative_sessions")}
+        if "draft_data" not in session_columns:
+            statements.append("ALTER TABLE creative_sessions ADD COLUMN draft_data TEXT")
 
     if not inspector.has_table("generation_tasks"):
         statements.append(

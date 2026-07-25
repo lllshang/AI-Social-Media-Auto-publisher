@@ -858,6 +858,7 @@ class CreativeSessionResponse(BaseModel):
     final_copy: dict | None = None
     polish_history: list | None = None
     output_material_ids: list[int] | None = None
+    draft_data: dict | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -867,6 +868,14 @@ class CreativeSessionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SaveDraftRequest(BaseModel):
+    step: int = 0
+    form: dict | None = None
+    copy_data: dict | None = None  # 避免与 BaseModel.copy() 冲突
+    video_params: dict | None = None
+    image_params: dict | None = None
 
 
 class CreativeSessionListResponse(BaseModel):

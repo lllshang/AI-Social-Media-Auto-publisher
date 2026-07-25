@@ -15,6 +15,7 @@ from app.schemas import (
     GenerationRequest as GenRequestData,
     PolishRequest,
     PolishResponse,
+    SaveDraftRequest,
 )
 
 
@@ -454,6 +455,48 @@ class CreateService:
         self.db.commit()
 
         return [{"id": mid} for mid in output_ids]
+
+    # ── 草稿保存 ────────────────────────────────────────────────
+
+    def save_draft(self, session_id: int, user_id: int, data: SaveDraftRequest):
+        """保存创作草稿（页面离开时调用）"""
+        session = self._require_session(session_id, user_id)
+
+        draft = {}
+        if data.step is not None:
+            draft["step"] = data.step
+        if data.form is not None:
+            draft["form"] = data.form
+        if data.copy_data is not None:
+            draft["copy"] = data.copy_data
+        if data.video_params is not None:
+            draft["video_params"] = data.video_params
+        if data.image_params is not None:
+            draft["image_params"] = data.image_params
+
+        # 合并已有 draft_data（防止覆盖未提供的字段）
+        if session.draft_data:
+            existing = dict(session.draft_data)
+            existing.update(draft)
+            draft = existing
+
+        session.draft_data = draft
+        session.updated_at = datetime.utcnow()
+        self.db.commit()
+
+    def get_drafting_sessions(
+        self, user_id: int
+    ) -> list[CreativeSession]:
+        """获取未完成的创作会话（可恢复的草稿）"""
+        return (
+            self.db.query(CreativeSession)
+            .filter(
+                CreativeSession.user_id == user_id,
+                CreativeSession.status.in_(["drafting", "generating"]),
+            )
+            .order_by(CreativeSession.updated_at.desc())
+            .all()
+        )
 
     # ── 内部辅助 ────────────────────────────────────────────────
 

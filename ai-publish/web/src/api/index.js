@@ -178,6 +178,8 @@ export const api = {
   getGenerations: (id) => http.get(`/api/create/${id}/generations`),
   getGenerationStatus: (genId) => http.get(`/api/create/generations/${genId}`),
   completeSession: (id) => http.post(`/api/create/${id}/complete`),
+  saveDraft: (id, data) => http.put(`/api/create/${id}/save-draft`, data),
+  getDrafts: () => http.get('/api/create/drafts'),
 }
 
 export default http

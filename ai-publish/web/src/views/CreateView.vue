@@ -2,6 +2,37 @@
   <div class="create-wizard">
     <h2>内容创作</h2>
 
+    <!-- ========== 草稿列表（无活跃会话时显示） ========== -->
+    <div v-if="showDraftList" class="step-card draft-list-card">
+      <div class="draft-list-header">
+        <h3>草稿箱</h3>
+        <el-button type="primary" @click="startNewSession">新建创作</el-button>
+      </div>
+      <div v-if="drafts.length === 0" class="empty-drafts">
+        <p>暂无草稿，点击"新建创作"开始</p>
+      </div>
+      <div v-for="draft in drafts" :key="draft.id" class="draft-item">
+        <div class="draft-info">
+          <span class="draft-keywords">{{ draft.keywords || '未命名草稿' }}</span>
+          <el-tag size="small" :type="draft.content_type === 'video' ? '' : 'success'">
+            {{ draft.content_type === 'video' ? '视频' : '图文' }}
+          </el-tag>
+          <el-tag size="small" type="info">{{ draft.status === 'drafting' ? '草稿中' : '生成中' }}</el-tag>
+          <span class="draft-time">{{ formatDraftTime(draft.updated_at) }}</span>
+        </div>
+        <div class="draft-actions">
+          <el-button size="small" type="primary" @click="resumeDraft(draft)">继续创作</el-button>
+          <el-popconfirm title="确定删除这个草稿？" @confirm="removeDraft(draft.id)">
+            <template #reference>
+              <el-button size="small" type="danger">删除</el-button>
+            </template>
+          </el-popconfirm>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 创作向导（有活跃会话时显示） ========== -->
+    <template v-if="!showDraftList">
     <!-- 步骤条 -->
     <el-steps :active="step" align-center finish-status="success" class="steps">
       <el-step title="灵感输入" />
@@ -260,12 +291,13 @@
         </el-button>
       </div>
     </div>
+    </template>
   </div>
 </template>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { api } from '@/api'
 
@@ -292,6 +324,131 @@ const quickActions = [
   { key: 'xiaohongshu_style', label: '小红书风格' },
   { key: 'douyin_style', label: '抖音风格' },
 ]
+
+// ── 草稿列表 ──────────────────────────────────────────────────
+const showDraftList = ref(false)
+const drafts = ref([])
+
+async function loadDrafts() {
+  try {
+    drafts.value = await api.getDrafts()
+  } catch { drafts.value = [] }
+}
+
+function formatDraftTime(ts) {
+  if (!ts) return ''
+  const d = new Date(ts)
+  const now = new Date()
+  const diffMs = now - d
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return '刚刚'
+  if (diffMin < 60) return `${diffMin}分钟前`
+  const diffH = Math.floor(diffMin / 60)
+  if (diffH < 24) return `${diffH}小时前`
+  const diffD = Math.floor(diffH / 24)
+  if (diffD < 7) return `${diffD}天前`
+  return d.toLocaleDateString()
+}
+
+function startNewSession() {
+  showDraftList.value = false
+  step.value = 0
+  sessionId.value = null
+  resetForm()
+}
+
+async function removeDraft(id) {
+  try {
+    await api.deleteSession(id)
+    ElMessage.success('草稿已删除')
+    loadDrafts()
+  } catch (e) {
+    ElMessage.error(e.message || '删除失败')
+  }
+}
+
+function resetForm() {
+  form.content_type = 'video'
+  form.keywords = ''
+  form.background = ''
+  form.theme_style = ''
+  form.scene_desc = ''
+  form.platforms = []
+  copy.title = ''
+  copy.body = ''
+  copy.tagsText = ''
+  chatMessages.value = []
+  polishMessage.value = ''
+  videoGenType.value = 'text_to_video'
+  videoDesc.value = ''
+  videoDuration.value = 5
+  videoResolution.value = '720p'
+  imagePreview.value = ''
+  imageFile.value = null
+  selectedAvatarId.value = null
+  avatars.value = []
+  imageStyle.value = '科技感'
+  brandColor.value = ''
+  brandHint.value = ''
+  imageCount.value = 4
+  generationTasks.value = []
+  selectedGenIds.value = []
+  starting.value = false
+}
+
+async function resumeDraft(draft) {
+  sessionId.value = draft.id
+  showDraftList.value = false
+
+  // 恢复 Step 0 表单
+  form.content_type = draft.content_type || 'video'
+  form.keywords = draft.keywords || ''
+  form.background = draft.background || ''
+  form.theme_style = draft.theme_style || ''
+  form.scene_desc = draft.scene_desc || ''
+  form.platforms = draft.platforms || []
+
+  // 恢复文案
+  if (draft.final_copy) {
+    copy.title = draft.final_copy.title || ''
+    copy.body = draft.final_copy.body || ''
+    copy.tagsText = (draft.final_copy.tags || []).join(' ')
+  }
+
+  // 恢复 draft_data
+  const dd = draft.draft_data
+  if (dd) {
+    // 恢复 Step 2 参数
+    if (dd.video_params) {
+      videoGenType.value = dd.video_params.genType || 'text_to_video'
+      videoDesc.value = dd.video_params.desc || ''
+      videoDuration.value = dd.video_params.duration || 5
+      videoResolution.value = dd.video_params.resolution || '720p'
+    }
+    if (dd.image_params) {
+      imageStyle.value = dd.image_params.style || '科技感'
+      brandColor.value = dd.image_params.brandColor || ''
+      brandHint.value = dd.image_params.brandHint || ''
+      if (dd.image_params.count) imageCount.value = dd.image_params.count
+    }
+
+    // 恢复步骤
+    step.value = dd.step || 0
+  } else {
+    // 无 draft_data 时，根据状态推断
+    if (draft.status === 'generating') {
+      step.value = 3
+      loadGenerations()
+      startPolling()
+    } else if (draft.final_copy && draft.final_copy.body) {
+      step.value = 1
+    } else {
+      step.value = 0
+    }
+  }
+
+  ElMessage.success('已恢复草稿，继续创作')
+}
 
 // ── 状态 ──────────────────────────────────────────────────────
 const step = ref(0)
@@ -372,6 +529,41 @@ function toggleSelect(gen) {
   else selectedGenIds.value.push(gen.id)
 }
 
+// ── 收集草稿数据 ──────────────────────────────────────────────
+function collectDraftData() {
+  return {
+    step: step.value,
+    form: { ...form },
+    copy_data: { title: copy.title, body: copy.body, tagsText: copy.tagsText },
+    video_params: {
+      genType: videoGenType.value,
+      desc: videoDesc.value,
+      duration: videoDuration.value,
+      resolution: videoResolution.value,
+    },
+    image_params: {
+      style: imageStyle.value,
+      brandColor: brandColor.value,
+      brandHint: brandHint.value,
+      count: imageCount.value,
+    },
+  }
+}
+
+// ── 保存草稿（带防重入） ──────────────────────────────────────
+let savingDraft = false
+async function doSaveDraft() {
+  if (!sessionId.value || savingDraft) return
+  savingDraft = true
+  try {
+    await api.saveDraft(sessionId.value, collectDraftData())
+  } catch {
+    // 静默失败，不影响用户操作
+  } finally {
+    savingDraft = false
+  }
+}
+
 // ── Step 0: 开始创作 ──────────────────────────────────────────
 async function startSession() {
   starting.value = true
@@ -386,6 +578,7 @@ async function startSession() {
     })
     sessionId.value = session.id
     step.value = 1
+    showDraftList.value = false
     // 自动生成初始文案
     await generateInitialCopy()
   } catch (e) {
@@ -572,7 +765,6 @@ function startPolling() {
     try {
       const tasks = await api.getGenerations(sessionId.value)
       generationTasks.value = tasks
-      // 全部完成或失败，停止轮询
       if (tasks.every(t => t.status === 'completed' || t.status === 'failed')) {
         stopPolling()
       }
@@ -616,7 +808,6 @@ async function finishCreation() {
   try {
     const res = await api.completeSession(sessionId.value)
     ElMessage.success(`创作完成！产出 ${res.materials?.length || 0} 个素材`)
-    // 可选：跳转到发布向导
     router.push({ path: '/publish', query: { withSession: sessionId.value } })
   } catch (e) {
     ElMessage.error(e.message || '完成失败')
@@ -625,17 +816,65 @@ async function finishCreation() {
   }
 }
 
+// ── 路由守卫：离开页面前自动保存草稿 ──────────────────────────
+onBeforeRouteLeave(async (_to, _from, next) => {
+  if (sessionId.value) {
+    await doSaveDraft()
+  }
+  next()
+})
+
+// ── 浏览器关闭/刷新：尽力保存草稿 ────────────────────────────
+function onBeforeUnload() {
+  if (sessionId.value && !savingDraft) {
+    // 使用 keepalive fetch 在页面关闭时发送请求
+    const data = collectDraftData()
+    fetch(`/api/create/${sessionId.value}/save-draft`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      keepalive: true,
+    })
+  }
+}
+
 // ── 生命周期 ──────────────────────────────────────────────────
-onMounted(() => {
-  // 检查是否有 ref 参数（从发布向导跳转过来）
+onMounted(async () => {
+  window.addEventListener('beforeunload', onBeforeUnload)
+
+  // 检查是否有恢复参数
+  if (route.query.resume) {
+    try {
+      const session = await api.getSession(parseInt(route.query.resume))
+      if (session && session.status !== 'completed') {
+        await resumeDraft(session)
+        return
+      }
+    } catch { /* ignore */ }
+  }
+
   if (route.query.platform) {
     form.platforms = [route.query.platform]
+  }
+
+  // 加载草稿列表
+  await loadDrafts()
+  // 如果没有活跃 session 且有草稿，显示草稿列表
+  if (!sessionId.value && route.query.resume === undefined) {
+    showDraftList.value = true
   }
 })
 
 onBeforeUnmount(() => {
   stopPolling()
   clearTimeout(saveTimer)
+  window.removeEventListener('beforeunload', onBeforeUnload)
+  // 离开时保存草稿
+  if (sessionId.value) {
+    // 立即保存（非异步等待）
+    const data = collectDraftData()
+    api.saveDraft(sessionId.value, data).catch(() => {})
+  }
 })
 </script>
 
@@ -650,6 +889,25 @@ onBeforeUnmount(() => {
 }
 .type-radio { margin-bottom: 20px; }
 .input-form { margin-top: 12px; }
+
+/* 草稿列表 */
+.draft-list-card { min-height: 200px; }
+.draft-list-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #eee;
+}
+.draft-list-header h3 { margin: 0; }
+.empty-drafts { text-align: center; color: #999; padding: 60px 0; }
+.draft-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 16px; border: 1px solid #eee; border-radius: 8px;
+  margin-bottom: 10px; transition: background 0.2s;
+}
+.draft-item:hover { background: #f9fafb; }
+.draft-info { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+.draft-keywords { font-weight: 600; font-size: 15px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.draft-time { color: #999; font-size: 13px; margin-left: auto; }
+.draft-actions { display: flex; gap: 8px; margin-left: 16px; flex-shrink: 0; }
 
 /* Step 1 左右分栏 */
 .split-layout { display: flex; gap: 20px; min-height: 520px; }

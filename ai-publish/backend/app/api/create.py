@@ -13,6 +13,7 @@ from app.schemas import (
     GenerationTaskResponse,
     PolishRequest,
     PolishResponse,
+    SaveDraftRequest,
 )
 from app.services.create_service import CreateService
 
@@ -183,3 +184,30 @@ def complete_session(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"ok": True, "materials": materials}
+
+
+@router.put("/api/create/{session_id}/save-draft")
+def save_draft(
+    session_id: int,
+    data: SaveDraftRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_permission(PERM_PUBLISH_WRITE)),
+):
+    """保存创作草稿（页面离开时自动调用）"""
+    svc = CreateService(db)
+    try:
+        svc.save_draft(session_id, current_user.id, data)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"ok": True}
+
+
+@router.get("/api/create/drafts", response_model=list[CreativeSessionResponse])
+def list_drafts(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_permission(PERM_PUBLISH_WRITE)),
+):
+    """获取当前用户的草稿列表（未完成的创作会话）"""
+    svc = CreateService(db)
+    sessions = svc.get_drafting_sessions(current_user.id)
+    return [CreativeSessionResponse.model_validate(s) for s in sessions]
