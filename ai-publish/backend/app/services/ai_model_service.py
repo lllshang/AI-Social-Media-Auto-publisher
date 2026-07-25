@@ -286,6 +286,7 @@ class AiModelService:
             "provider": "dreamina_video",
             "label": "即梦 Dreamina 视频",
             "key_field": "dreamina_api_key",
+            "fallback_key_field": "doubao_api_key",
             "base_url_field": "dreamina_base_url",
             "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
             "models": [
@@ -549,6 +550,9 @@ class AiModelService:
         options: list[ModelOption] = []
         for spec in self.REMOTE_VIDEO_PROVIDERS:
             api_key = self._config_value(spec["key_field"])
+            fallback_key_field = spec.get("fallback_key_field")
+            if not api_key and fallback_key_field:
+                api_key = self._config_value(fallback_key_field)
             ready = bool(api_key)
             reason = None if ready else "未配置 API Key"
             for model_id, model_name in spec["models"]:
