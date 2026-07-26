@@ -54,7 +54,7 @@
               :src="imageResult.materials[0].url"
               :preview-src-list="[imageResult.materials[0].url]"
               fit="contain"
-              style="width: 100%; max-height: 160px; border-radius: 6px"
+              style="max-width: 100%; max-height: 160px; border-radius: 6px"
             />
             <p class="test-meta">{{ imageResult.provider }} / {{ imageResult.model }} · 耗费 {{ imageResult.cost }}</p>
             <pre v-if="imageResult.prompt" class="result" style="max-height: 100px">{{ imageResult.prompt }}</pre>
@@ -76,7 +76,7 @@
               :src="videoResult.materials[0].thumbnail_url"
               :preview-src-list="[videoResult.materials[0].thumbnail_url]"
               fit="contain"
-              style="width: 100%; max-height: 160px; border-radius: 6px"
+              style="max-width: 100%; max-height: 160px; border-radius: 6px"
             />
             <p class="test-meta">{{ videoResult.provider }} / {{ videoResult.model }} · {{ videoResult.materials?.[0]?.duration || videoResult.cost }}s · 耗费 {{ videoResult.cost }}</p>
             <pre v-if="videoResult.prompt" class="result" style="max-height: 100px">{{ videoResult.prompt }}</pre>
