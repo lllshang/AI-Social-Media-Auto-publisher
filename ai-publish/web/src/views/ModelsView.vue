@@ -49,7 +49,13 @@
           </el-select>
           <el-button type="primary" style="margin-top: 12px" :loading="generatingImage" @click="testImage">生成图片</el-button>
           <div v-if="imageResult" class="test-result">
-            <el-image v-if="imageResult.materials?.length" :src="imageResult.materials[0].url" fit="contain" style="max-height: 160px; border-radius: 6px" />
+            <el-image
+              v-if="imageResult.materials?.length"
+              :src="imageResult.materials[0].url"
+              :preview-src-list="[imageResult.materials[0].url]"
+              fit="contain"
+              style="width: 100%; max-height: 160px; border-radius: 6px"
+            />
             <p class="test-meta">{{ imageResult.provider }} / {{ imageResult.model }} · 耗费 {{ imageResult.cost }}</p>
             <pre v-if="imageResult.prompt" class="result" style="max-height: 100px">{{ imageResult.prompt }}</pre>
           </div>
@@ -65,7 +71,13 @@
           </el-select>
           <el-button type="primary" style="margin-top: 12px" :loading="generatingVideo" @click="testVideo">生成视频</el-button>
           <div v-if="videoResult" class="test-result">
-            <el-image v-if="videoResult.materials?.length && videoResult.materials[0].thumbnail_url" :src="videoResult.materials[0].thumbnail_url" fit="contain" style="max-height: 160px; border-radius: 6px" />
+            <el-image
+              v-if="videoResult.materials?.length && videoResult.materials[0].thumbnail_url"
+              :src="videoResult.materials[0].thumbnail_url"
+              :preview-src-list="[videoResult.materials[0].thumbnail_url]"
+              fit="contain"
+              style="width: 100%; max-height: 160px; border-radius: 6px"
+            />
             <p class="test-meta">{{ videoResult.provider }} / {{ videoResult.model }} · {{ videoResult.materials?.[0]?.duration || videoResult.cost }}s · 耗费 {{ videoResult.cost }}</p>
             <pre v-if="videoResult.prompt" class="result" style="max-height: 100px">{{ videoResult.prompt }}</pre>
           </div>
