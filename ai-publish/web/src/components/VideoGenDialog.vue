@@ -39,8 +39,12 @@
         </el-select>
         <p v-if="!simulationHumanAvatars.length" class="muted">暂无仿真人，请先在「数字人 / 仿真人」页创建。</p>
       </el-form-item>
+      <el-form-item v-if="videoError" label=" ">
+        <el-alert type="error" :closable="true" :title="videoError" @close="videoError = ''" show-icon />
+      </el-form-item>
     </el-form>
     <template #footer>
+      <span class="cost-tag" style="margin-right: auto">预估 ¥2.50 (5秒)</span>
       <el-button @click="visible = false">取消</el-button>
       <el-button type="primary" :loading="generating" :disabled="!canGenerate" @click="confirmGenerate">确认生成</el-button>
     </template>
@@ -71,6 +75,7 @@ const driverPhotoPreview = ref('')
 const generating = ref(false)
 const avatars = ref([])
 const selectedAvatarId = ref(null)
+const videoError = ref('')
 
 const digitalHumanAvatars = computed(() => avatars.value.filter((a) => a.type === 'digital_human'))
 const simulationHumanAvatars = computed(() => avatars.value.filter((a) => a.type === 'simulation_human'))
@@ -88,6 +93,7 @@ async function onOpen() {
   genMode.value = 't2v'
   selectedAvatarId.value = null
   clearDriverPhoto()
+  videoError.value = ''
   try {
     avatars.value = await api.listAvatars()
   } catch {
@@ -126,6 +132,7 @@ async function confirmGenerate() {
   }
 
   generating.value = true
+  videoError.value = ''
   try {
     let imageUrl = null
     let avatarId = null
@@ -167,7 +174,7 @@ async function confirmGenerate() {
     emit('generated', res)
     visible.value = false
   } catch (e) {
-    ElMessage.error(e.message)
+    videoError.value = e.message || '视频生成失败'
   } finally {
     generating.value = false
   }
@@ -182,5 +189,14 @@ watch(visible, (val) => {
 .muted {
   color: #888;
   font-size: 13px;
+}
+.cost-tag {
+  font-size: 12px;
+  color: #e6a23c;
+  white-space: nowrap;
+  padding: 2px 8px;
+  background: #fdf6ec;
+  border: 1px solid #faecd8;
+  border-radius: 4px;
 }
 </style>

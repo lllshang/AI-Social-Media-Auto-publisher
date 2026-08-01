@@ -290,8 +290,9 @@ class AiModelService:
             "base_url_field": "dreamina_base_url",
             "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
             "models": [
-                ("seedance-2.0", "Seedance 2.0"),
-                ("seedance-2.5", "Seedance 2.5"),
+                ("doubao-seedance-2-0-mini-260615", "Seedance 2.0 Mini"),
+                ("doubao-seedance-2-0-260128", "Seedance 2.0"),
+                ("doubao-seedance-2-0-pro-260528", "Seedance 2.0 Pro"),
             ],
         },
         {
@@ -310,6 +311,27 @@ class AiModelService:
             "key_field": "hunyuan_api_key",
             "models": [
                 ("hunyuan-video-v1", "混元视频 V1（未公开）"),
+            ],
+        },
+        {
+            "provider": "tencent_vod_video",
+            "label": "腾讯 VOD AIGC 视频",
+            "key_field": "tencent_vod_secret_id",
+            "fallback_key_field": "tencent_secret_id",
+            "secret_key_field": "tencent_vod_secret_key",
+            "fallback_secret_key_field": "tencent_secret_key",
+            "sub_app_id_field": "tencent_vod_sub_app_id",
+            "models": [
+                ("Hailuo|H3", "海螺 H3"),
+                ("Hailuo|2.0", "海螺 2.0"),
+                ("Hunyuan|1.5", "混元 1.5"),
+                ("Kling|2.6", "可灵 2.6"),
+                ("Kling|2.0", "可灵 2.0"),
+                ("Vidu|1.5", "Vidu 1.5"),
+                ("PixVerse|2.0", "PixVerse 2.0"),
+                ("Mingmou|1.0", "明眸 1.0"),
+                ("GV|1.0", "GV 1.0"),
+                ("OS|1.0", "OS 1.0"),
             ],
         },
     )
@@ -841,7 +863,8 @@ class AiModelService:
             from app.adapters.ai_video.dreamina import DreaminaVideoAdapter
 
             base_url = self._config_value("dreamina_base_url") or "https://ark.cn-beijing.volces.com/api/v3"
-            return DreaminaVideoAdapter(model=model or "seedance-2.0", base_url=base_url)
+            dreamina_model = self._config_value("dreamina_model") or model or "doubao-seedance-2-0-mini-260615"
+            return DreaminaVideoAdapter(model=dreamina_model, base_url=base_url)
         elif provider == "baidu_video":
             from app.adapters.ai_video.baidu_video import BaiduVideoAdapter
 
@@ -851,6 +874,25 @@ class AiModelService:
             from app.adapters.ai_video.hunyuan import HunyuanVideoAdapter
 
             return HunyuanVideoAdapter(model=model or "hunyuan-video-v1")
+        elif provider == "tencent_vod_video":
+            from app.adapters.ai_video.tencent_vod import TencentVodVideoAdapter
+
+            secret_id = self._config_value("tencent_vod_secret_id") or self._config_value("tencent_secret_id") or ""
+            secret_key = self._config_value("tencent_vod_secret_key") or self._config_value("tencent_secret_key") or ""
+            sub_app_id = self._config_value("tencent_vod_sub_app_id") or ""
+            try:
+                cost_per_second = float(self._config_value("tencent_vod_cost_per_second") or 0)
+            except (TypeError, ValueError):
+                cost_per_second = 0.0
+            model_name, _, model_version = (model or "Hailuo|H3").partition("|")
+            return TencentVodVideoAdapter(
+                model_name=model_name or "Hunyuan",
+                model_version=model_version or "1.5",
+                sub_app_id=sub_app_id,
+                secret_id=secret_id,
+                secret_key=secret_key,
+                cost_per_second=cost_per_second,
+            )
         elif provider == "digital_human_video":
             from app.adapters.ai_video.digital_human_stub import DigitalHumanStubVideoAdapter
 
@@ -875,7 +917,7 @@ class AiModelService:
         if provider not in {"", "auto"}:
             return provider, model
 
-        # 自动检测可用提供商（优先级：可灵 > 即梦 > MiniMax > 通义万相 > 腾讯混元 > stub）
+        # 自动检测可用提供商（优先级：可灵 > 即梦 > MiniMax > 通义万相 > 腾讯 VOD AIGC > 腾讯混元 > stub）
         if self._config_value("kling_api_key"):
             return "kling_video", "kling-v1"
         elif self._config_value("dreamina_api_key") or self._config_value("doubao_api_key"):
@@ -884,6 +926,8 @@ class AiModelService:
             return "minimax_video", "MiniMax-Hailuo-2.3"
         elif self._config_value("dashscope_api_key"):
             return "wanxiang_video", "video-synthesis-v1"
+        elif self._config_value("tencent_vod_secret_id") and self._config_value("tencent_vod_secret_key"):
+            return "tencent_vod_video", "Hailuo|H3"
         elif self._config_value("hunyuan_api_key"):
             return "hunyuan_video", "hunyuan-video-v1"
         else:

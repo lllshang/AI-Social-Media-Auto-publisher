@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     hunyuan_api_key: str = ""
     hunyuan_base_url: str = "https://api.hunyuan.cloud.tencent.com/v1"
     hunyuan_image_base_url: str = "https://api.cloudai.tencent.com/v1"
+    tencent_vod_secret_id: str = ""
+    tencent_vod_secret_key: str = ""
+    tencent_vod_sub_app_id: str = "1426095670"
+    tencent_vod_model: str = "Hailuo|H3"
+    tencent_vod_cost_per_second: float = 0.0
     tencent_maas_api_key: str = ""
     tencent_maas_base_url: str = "https://tokenhub.tencentmaas.com/v1"
     zhipu_api_key: str = ""

@@ -33,6 +33,7 @@
           <el-input v-model="topic" placeholder="输入主题" />
           <el-button type="primary" style="margin-top: 12px" :loading="generating" @click="testText">生成</el-button>
           <pre v-if="textResult" class="result">{{ textResult }}</pre>
+          <el-alert v-if="textError" type="error" :closable="true" :title="textError" @close="textError = ''" show-icon style="margin-top: 12px" />
         </div>
       </el-col>
     </el-row>
@@ -47,7 +48,10 @@
             <el-option label="1:1（方版）" value="1:1" />
             <el-option label="16:9（横版）" value="16:9" />
           </el-select>
-          <el-button type="primary" style="margin-top: 12px" :loading="generatingImage" @click="testImage">生成图片</el-button>
+          <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px">
+            <el-button type="primary" :loading="generatingImage" @click="testImage">生成图片</el-button>
+            <span class="cost-tag">预估 ¥{{ imageCostEstimate }}</span>
+          </div>
           <div v-if="imageResult" class="test-result">
             <el-image
               v-if="imageResult.materials?.length"
@@ -59,28 +63,31 @@
             <p class="test-meta">{{ imageResult.provider }} / {{ imageResult.model }} · 耗费 {{ imageResult.cost }}</p>
             <pre v-if="imageResult.prompt" class="result" style="max-height: 100px">{{ imageResult.prompt }}</pre>
           </div>
+          <el-alert v-if="imageError" type="error" :closable="true" :title="imageError" @close="imageError = ''" show-icon style="margin-top: 12px" />
         </div>
       </el-col>
       <el-col :span="12">
         <div class="page-card">
           <h3>测试视频生成</h3>
           <el-input v-model="videoTopic" placeholder="输入主题" />
-          <el-select v-model="videoDuration" style="width: 100%; margin-top: 8px">
-            <el-option label="5 秒" :value="5" />
-            <el-option label="10 秒" :value="10" />
-          </el-select>
-          <el-button type="primary" style="margin-top: 12px" :loading="generatingVideo" @click="testVideo">生成视频</el-button>
+          <el-input-number v-model="videoDuration" :min="1" :max="60" :step="1" style="width: 100%; margin-top: 8px" />
+          <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px">
+            <el-button type="primary" :loading="generatingVideo" @click="testVideo">生成视频</el-button>
+            <span class="cost-tag">预估 ¥{{ videoCostEstimate }}</span>
+          </div>
           <div v-if="videoResult" class="test-result">
-            <el-image
-              v-if="videoResult.materials?.length && videoResult.materials[0].thumbnail_url"
-              :src="videoResult.materials[0].thumbnail_url"
-              :preview-src-list="[videoResult.materials[0].thumbnail_url]"
-              fit="contain"
-              style="max-width: 100%; max-height: 160px; border-radius: 6px"
+            <video
+              v-if="videoResult.materials?.length && videoResult.materials[0].url"
+              :src="videoResult.materials[0].url"
+              :poster="videoResult.materials[0].thumbnail_url"
+              controls
+              preload="metadata"
+              style="max-width: 100%; max-height: 240px; border-radius: 6px; display: block"
             />
-            <p class="test-meta">{{ videoResult.provider }} / {{ videoResult.model }} · {{ videoResult.materials?.[0]?.duration || videoResult.cost }}s · 耗费 {{ videoResult.cost }}</p>
+            <p class="test-meta">{{ videoResult.provider }} / {{ videoResult.model }} · {{ videoResult.materials?.[0]?.duration || videoResult.duration }}s · 耗费 {{ videoResult.cost }}</p>
             <pre v-if="videoResult.prompt" class="result" style="max-height: 100px">{{ videoResult.prompt }}</pre>
           </div>
+          <el-alert v-if="videoError" type="error" :closable="true" :title="videoError" @close="videoError = ''" show-icon style="margin-top: 12px" />
         </div>
       </el-col>
     </el-row>
@@ -154,8 +161,14 @@
 
     <el-dialog v-model="providerVisible" :title="`配置 ${providerForm.label}`" width="520px">
       <el-form label-width="90px">
-        <el-form-item v-if="providerForm.key_field" label="API Key">
+        <el-form-item v-if="providerForm.key_field" label="SecretId">
           <el-input v-model="providerForm.api_key" type="password" show-password placeholder="留空则不修改" />
+        </el-form-item>
+        <el-form-item v-if="providerForm.secret_key_field" label="SecretKey">
+          <el-input v-model="providerForm.secret_key" type="password" show-password placeholder="留空则不修改" />
+        </el-form-item>
+        <el-form-item v-if="providerForm.sub_app_id_field" label="SubAppId">
+          <el-input v-model="providerForm.sub_app_id" placeholder="留空则不修改" />
         </el-form-item>
         <el-form-item v-if="providerForm.base_url_field || providerForm.custom" label="Base URL">
           <el-input v-model="providerForm.base_url" :placeholder="providerForm.default_base_url" />
@@ -227,6 +240,10 @@ const selectedVideo = ref('')
 const topic = ref('春茶上新')
 const textResult = ref('')
 const generating = ref(false)
+const textError = ref('')
+const imageError = ref('')
+const videoError = ref('')
+const pageError = ref('')
 const imageTopic = ref('春茶上新')
 const imageRatio = ref('3:4')
 const imageResult = ref(null)
@@ -242,10 +259,14 @@ const providerForm = reactive({
   provider: '',
   label: '',
   key_field: '',
+  secret_key_field: '',
+  sub_app_id_field: '',
   base_url_field: '',
   default_base_url: '',
   custom: false,
   api_key: '',
+  secret_key: '',
+  sub_app_id: '',
   base_url: '',
 })
 const addForm = reactive({
@@ -271,6 +292,26 @@ const current = computed(() => ({
 const textOptions = computed(() => modelData.value?.text?.available || [])
 const imageOptions = computed(() => modelData.value?.image?.available || [])
 const videoOptions = computed(() => modelData.value?.video?.available || [])
+
+// --- 费用预估 ---
+function getVideoPricePerSec(modelName) {
+  if (!modelName) return 0.5
+  if (modelName.includes('mini')) return 0.5
+  if (modelName.includes('pro')) return 1.5
+  if (modelName.includes('seedance-2-0')) return 1.0
+  return 0.5
+}
+
+function getImagePricePerImage(modelName) {
+  if (!modelName) return 0.02
+  if (modelName.includes('seedream')) return 0.02
+  return 0.08
+}
+
+const currentVideoModel = computed(() => modelData.value?.video?.current?.model || '')
+const currentImageModel = computed(() => modelData.value?.image?.current?.model || '')
+const videoCostEstimate = computed(() => (videoDuration.value * getVideoPricePerSec(currentVideoModel.value)).toFixed(2))
+const imageCostEstimate = computed(() => getImagePricePerImage(currentImageModel.value).toFixed(2))
 
 function splitModels(raw) {
   return raw
@@ -309,10 +350,10 @@ async function load() {
     try {
       await loadProviders()
     } catch (providerError) {
-      ElMessage.error(providerError.message || '加载厂商列表失败')
+      pageError.value = providerError.message || '加载厂商列表失败'
     }
     if (!modelData.value) {
-      ElMessage.error(e.message || '加载模型信息失败')
+      pageError.value = e.message || '加载模型信息失败'
     }
   } finally {
     loading.value = false
@@ -325,7 +366,7 @@ async function detect() {
     ElMessage.success('已重新自动匹配')
     await load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '自动匹配失败'
   }
 }
 
@@ -346,17 +387,18 @@ async function apply() {
     ElMessage.success('已切换模型')
     await load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '切换模型失败'
   }
 }
 
 async function testText() {
   generating.value = true
+  textError.value = ''
   try {
     const res = await api.generateText(topic.value)
     textResult.value = JSON.stringify(res, null, 2)
   } catch (e) {
-    ElMessage.error(e.message)
+    textError.value = e.message || '文案生成失败'
   } finally {
     generating.value = false
   }
@@ -365,11 +407,12 @@ async function testText() {
 async function testImage() {
   generatingImage.value = true
   imageResult.value = null
+  imageError.value = ''
   try {
     const res = await api.generateImage({ topic: imageTopic.value, platform: 'xhs', ratio: imageRatio.value, count: 1 })
     imageResult.value = res
   } catch (e) {
-    ElMessage.error(e.message)
+    imageError.value = e.message || '图片生成失败'
   } finally {
     generatingImage.value = false
   }
@@ -378,11 +421,12 @@ async function testImage() {
 async function testVideo() {
   generatingVideo.value = true
   videoResult.value = null
+  videoError.value = ''
   try {
     const res = await api.generateVideo({ topic: videoTopic.value, platform: 'douyin', duration: videoDuration.value })
     videoResult.value = res
   } catch (e) {
-    ElMessage.error(e.message)
+    videoError.value = e.message || '视频生成失败'
   } finally {
     generatingVideo.value = false
   }
@@ -392,10 +436,14 @@ function openProvider(row) {
   providerForm.provider = row.provider
   providerForm.label = row.label
   providerForm.key_field = row.key_field
+  providerForm.secret_key_field = row.secret_key_field
+  providerForm.sub_app_id_field = row.sub_app_id_field
   providerForm.base_url_field = row.base_url_field
   providerForm.default_base_url = row.default_base_url
   providerForm.custom = !!row.custom
   providerForm.api_key = ''
+  providerForm.secret_key = ''
+  providerForm.sub_app_id = ''
   providerForm.base_url = row.base_url || row.default_base_url || ''
   providerVisible.value = true
 }
@@ -424,7 +472,7 @@ async function submitAddProvider() {
     addVisible.value = false
     await load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '添加失败'
   }
 }
 
@@ -433,13 +481,15 @@ async function saveProvider() {
     await api.saveProviderConfig({
       provider: providerForm.provider,
       api_key: providerForm.api_key || undefined,
+      secret_key: providerForm.secret_key || undefined,
+      sub_app_id: providerForm.sub_app_id || undefined,
       base_url: providerForm.base_url || undefined,
     })
     ElMessage.success('配置已保存')
     providerVisible.value = false
     await load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '保存配置失败'
   }
 }
 
@@ -450,7 +500,7 @@ async function clearProvider() {
     providerVisible.value = false
     await load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '清除配置失败'
   }
 }
 
@@ -503,5 +553,14 @@ onMounted(load)
   margin: 8px 0 0;
   color: #666;
   font-size: 13px;
+}
+.cost-tag {
+  font-size: 12px;
+  color: #e6a23c;
+  white-space: nowrap;
+  padding: 2px 8px;
+  background: #fdf6ec;
+  border: 1px solid #faecd8;
+  border-radius: 4px;
 }
 </style>

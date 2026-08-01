@@ -24,6 +24,8 @@ class AiModelSelectRequest(BaseModel):
 class AiProviderConfigRequest(BaseModel):
     provider: str
     api_key: str | None = None
+    secret_key: str | None = None
+    sub_app_id: str | None = None
     base_url: str | None = None
     clear_key: bool = False
 
@@ -81,6 +83,8 @@ def save_provider_config(data: AiProviderConfigRequest, _: User = Depends(requir
         item = service.save_provider_config(
             data.provider,
             api_key=data.api_key,
+            secret_key=data.secret_key,
+            sub_app_id=data.sub_app_id,
             base_url=data.base_url,
             clear_key=data.clear_key,
         )

@@ -1,14 +1,14 @@
 """即梦 Dreamina / 火山 Seedance 视频生成适配器
 
 官方平台: https://dreamina.capcut.com/
-企业级 API 通常通过火山引擎 (https://www.volcengine.com/) 或方舟平台开放。
+企业级 API 通常通过火山引擎方舟平台开放：https://www.volcengine.com/
 
-当前实现为通用 OpenAI/火山风格异步任务适配器，默认 endpoint:
-- 提交任务 POST {base_url}/v1/videos/generations
-- 查询任务 GET  {base_url}/v1/videos/{task_id}
+当前实现对接火山方舟原生异步任务 API：
+- 提交任务 POST {base_url}/contents/generations/tasks
+- 查询任务 GET  {base_url}/contents/generations/tasks/{task_id}
 
-由于官方视频 API 端点可能变化，强烈建议在使用前根据火山引擎官方文档
-确认 endpoint，并通过后台 "模型配置" 修改 dreamina_base_url 与 dreamina_model。
+火山方舟视频生成要求 model 字段填写「推理接入点/Endpoint ID」（通常以 ep- 开头），
+因此强烈建议在后台配置 dreamina_model，未配置时默认使用 seedance-2.0。
 """
 
 import asyncio
@@ -30,13 +30,15 @@ MAX_POLL_ATTEMPTS = 120
 
 
 class DreaminaVideoAdapter:
-    """即梦 Dreamina 视频生成适配器"""
+    """即梦 Dreamina 视频生成适配器（火山方舟原生 API）"""
 
     provider = "dreamina_video"
 
-    def __init__(self, model: str = "seedance-2.0", base_url: str = DEFAULT_BASE_URL) -> None:
+    def __init__(self, model: str = "doubao-seedance-2-0-mini-260615", base_url: str = DEFAULT_BASE_URL) -> None:
         self.model = model
         self.base_url = base_url.rstrip("/")
+        self.submit_url = f"{self.base_url}/contents/generations/tasks"
+        self.poll_url_tpl = f"{self.base_url}/contents/generations/tasks/{{task_id}}"
 
     def _headers(self, api_key: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -56,28 +58,53 @@ class DreaminaVideoAdapter:
             encoded = base64.b64encode(f.read()).decode("utf-8")
         return f"data:{mime_type};base64,{encoded}"
 
-    def _resolve_size(self, resolution: str) -> str:
-        mapping = {
-            "720p": "1280x720",
-            "1080p": "1920x1080",
-            "portrait": "720x1280",
-            "square": "1024x1024",
-        }
-        return mapping.get(resolution, "1280x720")
+    def _resolve_ratio(self, resolution: str) -> str:
+        r = (resolution or "").lower()
+        if "3:4" in r:
+            return "3:4"
+        if "9:16" in r or "竖" in r or "portrait" in r or "720x1280" in r:
+            return "9:16"
+        if "1:1" in r or "square" in r or "1024x1024" in r:
+            return "1:1"
+        if "16:9" in r or "landscape" in r or "横" in r or "1280x720" in r or "1920x1080" in r:
+            return "16:9"
+        return "16:9"
+
+    def _resolve_resolution(self, resolution: str) -> str:
+        r = (resolution or "").lower()
+        if "1080" in r:
+            return "1080p"
+        if "480" in r:
+            return "480p"
+        return "720p"
+
+    def _build_content(self, data: VideoGenerateInput) -> list[dict[str, Any]]:
+        """构造火山方舟 content 数组，支持文生视频与图生视频。"""
+        content: list[dict[str, Any]] = [{"type": "text", "text": data.topic}]
+
+        image_url = self._resolve_image(data.image_url)
+        if image_url:
+            content.append({"type": "image_url", "image_url": {"url": image_url}, "role": "first_frame"})
+
+        return content
 
     async def _poll_task(self, client: httpx.AsyncClient, headers: dict, task_id: str) -> dict[str, Any]:
-        query_url = f"{self.base_url}/v1/videos/{task_id}"
+        query_url = self.poll_url_tpl.format(task_id=task_id)
         for _ in range(MAX_POLL_ATTEMPTS):
             resp = await client.get(query_url, headers=headers, timeout=30)
             resp.raise_for_status()
             data = resp.json()
 
-            status = data.get("status") or data.get("task_status") or data.get("data", {}).get("status")
-            if status in ("succeed", "success", "SUCCEEDED", "completed"):
+            status = (data.get("status") or data.get("task_status") or data.get("data", {}).get("status") or "").lower()
+            if status in ("succeeded", "succeed", "success", "completed"):
                 return data
-            if status in ("failed", "fail", "FAILED", "error"):
-                msg = data.get("message") or data.get("error", {}).get("message", "未知错误")
+            if status in ("failed", "fail", "error", "cancelled", "canceled"):
+                msg = (data.get("error", {}).get("message")
+                       or data.get("message")
+                       or data.get("status", {}).get("message")
+                       or "未知错误")
                 raise RuntimeError(f"即梦视频生成失败: {msg}")
+            # running, queued, pending, processing — 继续轮询
 
             await asyncio.sleep(POLL_INTERVAL)
 
@@ -105,6 +132,36 @@ class DreaminaVideoAdapter:
         thumbnail_path, _ = storage.save_bytes(thumbnail_bytes.tobytes(), suffix=".jpg")
         return thumbnail_path
 
+    def _extract_video_url(self, data: dict[str, Any]) -> str | None:
+        """从火山方舟响应中提取视频 URL，兼容多种字段布局。"""
+        # 1. 新格式：content 为 dict / content 为 list
+        content = data.get("content") or data.get("data", {}).get("content")
+        if isinstance(content, dict):
+            url = content.get("video_url") or content.get("url")
+            if url:
+                return url
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict):
+                    url = item.get("video_url") or item.get("url")
+                    if url:
+                        return url
+
+        # 2. 常见字段
+        for key in ("video_url", "url", "video"):
+            value = data.get(key) or data.get("data", {}).get(key)
+            if isinstance(value, str):
+                return value
+
+        # 3. data 数组
+        arr = data.get("data") or data.get("videos")
+        if isinstance(arr, list) and arr:
+            first = arr[0]
+            if isinstance(first, dict):
+                return first.get("video_url") or first.get("url") or first.get("video")
+
+        return None
+
     async def generate(self, data: VideoGenerateInput) -> VideoGenerateResult:
         from app.adapters.ai_video.stub import StubVideoAdapter
         from app.adapters.factory import get_adapter_factory
@@ -124,23 +181,18 @@ class DreaminaVideoAdapter:
             return result
 
         headers = self._headers(api_key)
-        size = self._resolve_size(data.resolution)
-
         payload: dict[str, Any] = {
             "model": self.model,
-            "prompt": data.topic,
-            "size": size,
+            "content": self._build_content(data),
+            "resolution": self._resolve_resolution(data.resolution),
+            "ratio": self._resolve_ratio(data.resolution),
             "duration": data.duration,
+            "fps": data.fps,
+            "generate_audio": True,
         }
 
-        image_url = self._resolve_image(data.image_url)
-        if image_url:
-            payload["image"] = image_url
-
-        submit_url = f"{self.base_url}/v1/videos/generations"
-
         async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(submit_url, headers=headers, json=payload)
+            resp = await client.post(self.submit_url, headers=headers, json=payload)
             resp.raise_for_status()
             result = resp.json()
 
@@ -155,21 +207,17 @@ class DreaminaVideoAdapter:
 
             final = await self._poll_task(client, headers, task_id)
 
-        video_url = (
-            final.get("video_url")
-            or final.get("url")
-            or final.get("data", {}).get("video_url")
-            or final.get("data", {}).get("url")
-        )
-        if not video_url:
-            raise RuntimeError(f"即梦任务成功但未返回视频 URL: {final}")
+            video_url = self._extract_video_url(final)
+            if not video_url:
+                raise RuntimeError(f"即梦任务成功但未返回视频 URL: {final}")
 
-        video_content = await self._download_video(client, video_url)
+            video_content = await self._download_video(client, video_url)
+
         video_path, _ = storage.save_bytes(video_content, suffix=".mp4")
         thumbnail_path = await self._generate_thumbnail(video_path)
 
-        # 参考价：约 0.3 元/秒（以官方 pricing 为准）
-        cost = float(data.duration) * 0.3
+        # 参考价：Seedance 2.0 Mini 约 0.5 元/秒@720P（以官方 pricing 为准）
+        cost = float(data.duration) * 0.5
 
         return VideoGenerateResult(
             video_paths=[video_path],
@@ -181,7 +229,7 @@ class DreaminaVideoAdapter:
             metadata={
                 "task_id": task_id,
                 "model": self.model,
-                "size": size,
-                "mode": "image2video" if image_url else "text2video",
+                "ratio": self._resolve_ratio(data.resolution),
+                "mode": "image2video" if data.image_url else "text2video",
             },
         )

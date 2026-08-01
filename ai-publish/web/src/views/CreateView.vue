@@ -73,6 +73,7 @@
       <el-button type="primary" size="large" :disabled="!canStart" :loading="starting" @click="startSession">
         开始创作 →
       </el-button>
+      <el-alert v-if="sessionError" type="error" :closable="true" :title="sessionError" @close="sessionError = ''" show-icon style="margin-top: 12px" />
     </div>
 
     <!-- ========== Step 1: 文案创作 + 润色 ========== -->
@@ -124,6 +125,7 @@
             定稿文案，进入下一步 →
           </el-button>
         </div>
+        <el-alert v-if="copyError" type="error" :closable="true" :title="copyError" @close="copyError = ''" show-icon style="margin-top: 12px" />
       </div>
     </div>
 
@@ -167,11 +169,8 @@
             </el-form-item>
           </template>
           <el-form-item label="时长">
-            <el-select v-model="videoDuration">
-              <el-option :value="5" label="5秒" />
-              <el-option :value="8" label="8秒" />
-              <el-option :value="10" label="10秒" />
-            </el-select>
+            <el-input-number v-model="videoDuration" :min="1" :max="60" :step="1" style="width: 160px" />
+            <span class="cost-tag" style="margin-left: 8px">预估 ¥{{ videoCostEstimate }}</span>
           </el-form-item>
           <el-form-item label="分辨率">
             <el-select v-model="videoResolution">
@@ -207,7 +206,10 @@
           </el-form-item>
         </el-form>
 
-        <el-button type="primary" :loading="genStarting" @click="startImageGen(1)">生成封面</el-button>
+        <div class="step-actions">
+          <el-button type="primary" :loading="genStarting" @click="startImageGen(1)">生成封面</el-button>
+          <span class="cost-tag" style="margin-left: 8px">预估 ¥{{ imageCostEstimate }}</span>
+        </div>
 
         <el-divider />
 
@@ -222,6 +224,7 @@
             <el-select v-model="imageCount">
               <el-option v-for="n in [1,2,3,4,6,9]" :key="n" :label="`${n}张`" :value="n" />
             </el-select>
+            <span class="cost-tag" style="margin-left: 8px">预估 ¥{{ multiImageCostEstimate }}</span>
           </el-form-item>
         </el-form>
 
@@ -233,6 +236,8 @@
         </div>
       </template>
     </div>
+
+    <el-alert v-if="genError" type="error" :closable="true" :title="genError" @close="genError = ''" show-icon style="margin-top: 12px" />
 
     <!-- ========== Step 3: 生成状态页 ========== -->
     <div v-if="step === 3" class="step-card">
@@ -295,6 +300,7 @@
           选定产出 → 完成创作
         </el-button>
       </div>
+      <el-alert v-if="statusError" type="error" :closable="true" :title="statusError" @close="statusError = ''" show-icon style="margin-top: 12px" />
     </div>
     </template>
   </div>
@@ -457,6 +463,18 @@ async function resumeDraft(draft) {
 
 // ── 状态 ──────────────────────────────────────────────────────
 const step = ref(0)
+const sessionError = ref('')
+const copyError = ref('')
+const genError = ref('')
+const statusError = ref('')
+
+// 切换步骤时清除对应错误
+watch(step, (newStep) => {
+  if (newStep !== 1) copyError.value = ''
+  if (newStep !== 2) genError.value = ''
+  if (newStep !== 3) statusError.value = ''
+  if (newStep !== 0) sessionError.value = ''
+})
 const sessionId = ref(null)
 const starting = ref(false)
 const generatingCopy = ref(false)
@@ -491,6 +509,11 @@ const imageStyle = ref('科技感')
 const brandColor = ref('')
 const brandHint = ref('')
 const imageCount = ref(4)
+
+// 费用预估（以常见默认价格估算）
+const videoCostEstimate = computed(() => (videoDuration.value * 0.5).toFixed(2))
+const imageCostEstimate = computed(() => '0.02')
+const multiImageCostEstimate = computed(() => (imageCount.value * 0.02).toFixed(2))
 
 const generationTasks = ref([])
 const selectedGenIds = ref([])
@@ -572,6 +595,7 @@ async function doSaveDraft() {
 // ── Step 0: 开始创作 ──────────────────────────────────────────
 async function startSession() {
   starting.value = true
+  sessionError.value = ''
   try {
     const session = await api.createSession({
       content_type: form.content_type,
@@ -587,7 +611,7 @@ async function startSession() {
     // 自动生成初始文案
     await generateInitialCopy()
   } catch (e) {
-    ElMessage.error(e.message || '创建失败')
+    sessionError.value = e.message || '创建失败'
   } finally {
     starting.value = false
   }
@@ -596,6 +620,7 @@ async function startSession() {
 // ── Step 1: 文案 ──────────────────────────────────────────────
 async function generateInitialCopy() {
   generatingCopy.value = true
+  copyError.value = ''
   try {
     const res = await api.generateCopy(sessionId.value)
     copy.title = res.title || ''
@@ -603,7 +628,7 @@ async function generateInitialCopy() {
     copy.tagsText = (res.tags || []).join(' ')
     chatMessages.value = [{ role: 'assistant', content: `已根据你的输入生成初稿：「${copy.title}」` }]
   } catch (e) {
-    ElMessage.error(e.message || '生成文案失败')
+    copyError.value = e.message || '生成文案失败'
   } finally {
     generatingCopy.value = false
   }
@@ -616,6 +641,7 @@ async function regenerateCopy() {
 async function doPolish() {
   if (!polishMessage.value.trim()) return
   isPolishing.value = true
+  copyError.value = ''
   const msg = polishMessage.value.trim()
   polishMessage.value = ''
   chatMessages.value.push({ role: 'user', content: msg })
@@ -627,7 +653,7 @@ async function doPolish() {
     copy.tagsText = (res.tags || []).join(' ')
     chatMessages.value.push({ role: 'assistant', content: `已根据「${msg}」润色文案` })
   } catch (e) {
-    ElMessage.error(e.message || '润色失败')
+    copyError.value = e.message || '润色失败'
     chatMessages.value.push({ role: 'assistant', content: `润色失败：${e.message || '未知错误'}` })
   } finally {
     isPolishing.value = false
@@ -639,6 +665,7 @@ async function doPolish() {
 
 async function quickPolish(action) {
   isPolishing.value = true
+  copyError.value = ''
   const label = quickActions.find(a => a.key === action)?.label || action
   chatMessages.value.push({ role: 'user', content: `[${label}]` })
 
@@ -649,7 +676,7 @@ async function quickPolish(action) {
     copy.tagsText = (res.tags || []).join(' ')
     chatMessages.value.push({ role: 'assistant', content: `已按「${label}」风格润色` })
   } catch (e) {
-    ElMessage.error(e.message || '润色失败')
+    copyError.value = e.message || '润色失败'
   } finally {
     isPolishing.value = false
     nextTick(() => {
@@ -711,6 +738,7 @@ async function uploadImageIfNeeded() {
 
 async function startVideoGen() {
   genStarting.value = true
+  genError.value = ''
   try {
     const imageUrl = videoGenType.value === 'image_to_video' ? await uploadImageIfNeeded() : null
     const payload = {
@@ -729,7 +757,7 @@ async function startVideoGen() {
     step.value = 3
     loadGenerations()
   } catch (e) {
-    ElMessage.error(e.message || '启动生成失败')
+    genError.value = e.message || '启动生成失败'
   } finally {
     genStarting.value = false
   }
@@ -737,6 +765,7 @@ async function startVideoGen() {
 
 async function startImageGen(count) {
   genStarting.value = true
+  genError.value = ''
   try {
     await api.startGeneration(sessionId.value, {
       gen_type: count === 1 ? 'cover' : 'images',
@@ -749,7 +778,7 @@ async function startImageGen(count) {
     step.value = 3
     loadGenerations()
   } catch (e) {
-    ElMessage.error(e.message || '启动生成失败')
+    genError.value = e.message || '启动生成失败'
   } finally {
     genStarting.value = false
   }
@@ -796,12 +825,13 @@ function previewGeneration(gen) {
 
 async function regenerateWith(gen) {
   genStarting.value = true
+  statusError.value = ''
   try {
     const params = gen.input_params || {}
     await api.startGeneration(sessionId.value, params)
     loadGenerations()
   } catch (e) {
-    ElMessage.error(e.message || '重新生成失败')
+    statusError.value = e.message || '重新生成失败'
   } finally {
     genStarting.value = false
     startPolling()
@@ -810,12 +840,13 @@ async function regenerateWith(gen) {
 
 async function finishCreation() {
   completing.value = true
+  statusError.value = ''
   try {
     const res = await api.completeSession(sessionId.value)
     ElMessage.success(`创作完成！产出 ${res.materials?.length || 0} 个素材`)
     router.push({ path: '/publish', query: { withSession: sessionId.value } })
   } catch (e) {
-    ElMessage.error(e.message || '完成失败')
+    statusError.value = e.message || '完成失败'
   } finally {
     completing.value = false
   }
@@ -947,4 +978,13 @@ onBeforeUnmount(() => {
 .gen-time { color: #999; font-size: 12px; margin-left: auto; }
 .gen-actions { display: flex; gap: 6px; }
 .empty { color: #999; padding: 20px 0; }
+.cost-tag {
+  font-size: 12px;
+  color: #e6a23c;
+  white-space: nowrap;
+  padding: 2px 8px;
+  background: #fdf6ec;
+  border: 1px solid #faecd8;
+  border-radius: 4px;
+}
 </style>

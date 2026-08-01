@@ -390,7 +390,6 @@ class AiContentService:
         record = AiGenerationRecord(
             type="video",
             provider=result.provider,
-            model="",  # 可从 adapter 获取
             prompt=result.prompt,
             result_summary=json.dumps(
                 {
@@ -398,12 +397,11 @@ class AiContentService:
                     "duration": result.duration,
                     "resolution": resolution,
                     "fps": fps,
+                    "model": result.metadata.get("model") if result.metadata else None,
                 },
                 ensure_ascii=False,
             ),
             cost=result.cost,
-            token_count=0,
-            generated_count=len(result.video_paths),
             created_by=user_id,
         )
         self.db.add(record)
@@ -415,24 +413,15 @@ class AiContentService:
 
         for idx, (video_path, thumb_path) in enumerate(zip(result.video_paths, result.thumbnail_paths)):
             video_url = storage.get_url(video_path)
-            thumb_url = storage.get_url(thumb_path)
 
             material = Material(
-                user_id=user_id,
+                created_by=user_id,
                 name=f"{topic}_视频_{idx + 1}",
                 type="video",
                 source="ai_generated",
                 file_path=video_path,
                 url=video_url,
                 thumbnail=thumb_path,
-                metadata={
-                    "thumbnail_path": thumb_path,
-                    "thumbnail_url": thumb_url,
-                    "duration": result.duration,
-                    "resolution": resolution,
-                    "fps": fps,
-                    "prompt": result.prompt,
-                },
                 ai_record_id=record.id,
             )
             self.db.add(material)
@@ -449,7 +438,7 @@ class AiContentService:
                 {
                     "id": m.id,
                     "url": m.url,
-                    "thumbnail_url": m.metadata.get("thumbnail_url"),
+                    "thumbnail_url": storage.get_url(m.thumbnail) if m.thumbnail else None,
                     "duration": result.duration,
                 }
                 for m in materials

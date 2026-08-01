@@ -112,6 +112,8 @@
         <el-button type="primary" :disabled="!form.title" @click="goAfterText">下一步</el-button>
         <el-button type="primary" plain @click="goToCreate">文案不太满意？去内容创作润色</el-button>
       </div>
+      <el-alert v-if="publishError" type="error" :closable="true" :title="publishError" @close="publishError = ''" show-icon style="margin-top: 12px" />
+      <el-alert v-if="draftError" type="error" :closable="true" :title="draftError" @close="draftError = ''" show-icon style="margin-top: 8px" />
     </div>
 
     <!-- Step 2 -->
@@ -168,6 +170,7 @@
           <el-button type="primary" @click="step = 3">下一步：确认素材</el-button>
         </div>
       </template>
+      <el-alert v-if="publishError" type="error" :closable="true" :title="publishError" @close="publishError = ''" show-icon style="margin-top: 12px" />
     </div>
 
     <!-- Step 3 -->
@@ -221,6 +224,7 @@
       <el-button @click="step = isVideo ? (needsVideoCover ? 2 : 1) : 2">上一步</el-button>
       <el-button :loading="saving" @click="saveDraft">保存草稿</el-button>
       <el-button type="primary" :disabled="!form.material_ids.length" @click="step = 4">下一步：排期提交</el-button>
+      <el-alert v-if="publishError" type="error" :closable="true" :title="publishError" @close="publishError = ''" show-icon style="margin-top: 12px" />
     </div>
 
     <!-- Step 4 -->
@@ -258,6 +262,8 @@
       <el-button type="primary" :loading="saving" @click="submitPending">
         {{ requireReview ? '提交审核' : '提交待发布' }}
       </el-button>
+      <el-alert v-if="publishError" type="error" :closable="true" :title="publishError" @close="publishError = ''" show-icon style="margin-top: 12px" />
+      <el-alert v-if="draftError" type="error" :closable="true" :title="draftError" @close="draftError = ''" show-icon style="margin-top: 8px" />
     </div>
 
     <!-- Step 3: AI 生成图片 Dialog -->
@@ -279,6 +285,7 @@
         </el-form-item>
       </el-form>
       <template #footer>
+        <span class="cost-tag" style="margin-right: auto">预估 ¥{{ step3ImageCostEstimate }}</span>
         <el-button @click="showStep3ImageGen = false">取消</el-button>
         <el-button type="primary" :loading="generatingImageInStep3" @click="generateImageInStep3">生成</el-button>
       </template>
@@ -317,6 +324,14 @@ const step = ref(0)
 const draftId = ref(null)
 const generating = ref(false)
 const generatingImage = ref(false)
+const publishError = ref('')
+const draftError = ref('')
+
+// 切换步骤时清除错误
+watch(step, () => {
+  publishError.value = ''
+  draftError.value = ''
+})
 const savingTextMaterial = ref(false)
 const lastTextRecordId = ref(null)
 const previewingPrompt = ref(false)
@@ -336,6 +351,7 @@ const step3ImageStyle = ref('default')
 const step3ImageBrandColor = ref('')
 const step3ImageBrandHint = ref('')
 const step3ImageCount = ref(1)
+const step3ImageCostEstimate = computed(() => (step3ImageCount.value * 0.02).toFixed(2))
 
 const form = reactive({
   platform: 'xhs',
@@ -596,7 +612,7 @@ async function saveTextToMaterial() {
     })
     ElMessage.success('文案已保存到素材库')
   } catch (e) {
-    ElMessage.error(e.message)
+    draftError.value = e.message || '保存失败'
   } finally {
     savingTextMaterial.value = false
   }
@@ -604,6 +620,7 @@ async function saveTextToMaterial() {
 
 async function generateText() {
   generating.value = true
+  publishError.value = ''
   try {
     const res = await api.generateText(form.topic, form.platform, form.content_type)
     form.title = res.title
@@ -614,7 +631,7 @@ async function generateText() {
     lastTextRecordId.value = res.record_id || null
     ElMessage.success(`文案已生成 (${res.provider}/${res.model || '-'})`)
   } catch (e) {
-    ElMessage.error(e.message)
+    publishError.value = e.message || '文案生成失败'
   } finally {
     generating.value = false
   }
@@ -651,7 +668,7 @@ async function previewCoverPrompt() {
     promptPreview.prompt_en = res.prompt_en || ''
     promptPreview.negative_prompt = res.negative_prompt || ''
   } catch (e) {
-    ElMessage.error(e.message)
+    publishError.value = e.message || '预览失败'
   } finally {
     previewingPrompt.value = false
   }
@@ -668,7 +685,7 @@ async function generateVideoCover() {
     coverPreview.value = mat.url
     ElMessage.success('视频封面已生成')
   } catch (e) {
-    ElMessage.error(e.message)
+    publishError.value = e.message || '封面生成失败'
   } finally {
     generatingImage.value = false
   }
@@ -706,7 +723,7 @@ async function generateCover() {
     form.material_ids = [mat.id]
     coverPreview.value = mat.url
   } catch (e) {
-    ElMessage.error(e.message)
+    publishError.value = e.message || '封面生成失败'
   } finally {
     generatingImage.value = false
   }
@@ -770,7 +787,7 @@ async function generateImageInStep3() {
     form.material_ids = mats.map((m) => m.id)
     ElMessage.success(`已生成 ${mats.length} 张图片`)
   } catch (e) {
-    ElMessage.error(e.message)
+    publishError.value = e.message || '图片生成失败'
   } finally {
     generatingImageInStep3.value = false
   }
@@ -817,7 +834,7 @@ async function persistTask(submit) {
       router.replace({ path: '/publish', query: { id: task.id } })
     }
   } catch (e) {
-    ElMessage.error(e.message)
+    draftError.value = e.message || '保存失败'
   } finally {
     saving.value = false
   }
@@ -843,7 +860,7 @@ async function removeDraft() {
     ElMessage.success('草稿已删除')
     router.push('/tasks')
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error(e.message || '删除失败')
+    if (e !== 'cancel') draftError.value = e.message || '删除失败'
   }
 }
 
@@ -988,5 +1005,14 @@ onMounted(async () => {
 }
 .summary p {
   margin: 4px 0;
+}
+.cost-tag {
+  font-size: 12px;
+  color: #e6a23c;
+  white-space: nowrap;
+  padding: 2px 8px;
+  background: #fdf6ec;
+  border: 1px solid #faecd8;
+  border-radius: 4px;
 }
 </style>

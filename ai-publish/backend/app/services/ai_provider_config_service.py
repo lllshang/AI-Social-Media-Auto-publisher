@@ -78,6 +78,8 @@ PROVIDER_FIELDS: dict[str, dict[str, Any]] = {
         "key_field": "dreamina_api_key",
         "base_url_field": "dreamina_base_url",
         "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+        "model_field": "dreamina_model",
+        "default_model": "doubao-seedance-2-0-mini-260615",
         "kind": "video",
     },
     "baidu_video": {
@@ -85,6 +87,17 @@ PROVIDER_FIELDS: dict[str, dict[str, Any]] = {
         "key_field": "baidu_api_key",
         "base_url_field": "baidu_video_base_url",
         "default_base_url": "https://qianfan.baidubce.com/v2",
+        "kind": "video",
+    },
+    "tencent_vod_video": {
+        "label": "腾讯 VOD AIGC 视频",
+        "key_field": "tencent_vod_secret_id",
+        "secret_key_field": "tencent_vod_secret_key",
+        "sub_app_id_field": "tencent_vod_sub_app_id",
+        "base_url_field": None,
+        "default_base_url": "",
+        "model_field": "tencent_vod_model",
+        "default_model": "Hailuo|H3",
         "kind": "video",
     },
     "openai": {
@@ -174,23 +187,32 @@ class AiProviderConfigService:
     def _build_builtin_item(self, provider_id: str, spec: dict[str, Any]) -> dict[str, Any]:
         key_field = spec.get("key_field")
         base_field = spec.get("base_url_field")
+        model_field = spec.get("model_field")
         api_key = self.get_field_value(key_field) if key_field else ""
         base_url = self.get_field_value(base_field) if base_field else spec.get("default_base_url", "")
         if not base_url and base_field:
             base_url = getattr(self.settings, base_field, spec.get("default_base_url", ""))
+        model = self.get_field_value(model_field) if model_field else spec.get("default_model", "")
+        if not model and model_field:
+            model = getattr(self.settings, model_field, spec.get("default_model", ""))
         raw = self._load_raw()
         return {
             "provider": provider_id,
             "label": spec["label"],
             "kind": spec["kind"],
             "key_field": key_field,
+            "secret_key_field": secret_key_field,
+            "sub_app_id_field": sub_app_id_field,
             "base_url_field": base_field,
+            "model_field": model_field,
             "default_base_url": spec.get("default_base_url", ""),
+            "default_model": spec.get("default_model", ""),
             "image_base_url_field": spec.get("image_base_url_field"),
             "default_image_base_url": spec.get("default_image_base_url", ""),
             "configured": bool(api_key) if key_field else bool(base_url),
             "api_key_masked": self._mask_key(api_key),
             "base_url": base_url or spec.get("default_base_url", ""),
+            "model": model or spec.get("default_model", ""),
             "source": "runtime" if (key_field and raw.get(key_field)) else "env",
             "custom": False,
         }
@@ -240,6 +262,9 @@ class AiProviderConfigService:
         *,
         api_key: str | None = None,
         base_url: str | None = None,
+        model: str | None = None,
+        secret_key: str | None = None,
+        sub_app_id: str | None = None,
         clear_key: bool = False,
     ) -> dict[str, Any]:
         custom = self.get_custom_provider(provider)
@@ -248,6 +273,7 @@ class AiProviderConfigService:
                 provider,
                 api_key=api_key,
                 base_url=base_url,
+                model=model,
                 clear_key=clear_key,
             )
 
@@ -258,6 +284,9 @@ class AiProviderConfigService:
         raw = self._load_raw()
         key_field = spec.get("key_field")
         base_field = spec.get("base_url_field")
+        model_field = spec.get("model_field")
+        secret_key_field = spec.get("secret_key_field")
+        sub_app_id_field = spec.get("sub_app_id_field")
 
         if clear_key and key_field:
             raw.pop(key_field, None)
@@ -267,11 +296,29 @@ class AiProviderConfigService:
             else:
                 raw.pop(key_field, None)
 
+        if secret_key is not None and secret_key_field:
+            if secret_key.strip():
+                raw[secret_key_field] = encrypt_text(secret_key.strip(), self.settings.cookie_encryption_key)
+            else:
+                raw.pop(secret_key_field, None)
+
+        if sub_app_id is not None and sub_app_id_field:
+            if sub_app_id.strip():
+                raw[sub_app_id_field] = sub_app_id.strip()
+            else:
+                raw.pop(sub_app_id_field, None)
+
         if base_url is not None and base_field:
             if base_url.strip():
                 raw[base_field] = base_url.strip()
             else:
                 raw.pop(base_field, None)
+
+        if model is not None and model_field:
+            if model.strip():
+                raw[model_field] = model.strip()
+            else:
+                raw.pop(model_field, None)
 
         self._save_raw(raw)
         return next(item for item in self.list_providers() if item["provider"] == provider)
@@ -282,6 +329,7 @@ class AiProviderConfigService:
         *,
         api_key: str | None = None,
         base_url: str | None = None,
+        model: str | None = None,
         clear_key: bool = False,
     ) -> dict[str, Any]:
         custom = self.get_custom_provider(provider)

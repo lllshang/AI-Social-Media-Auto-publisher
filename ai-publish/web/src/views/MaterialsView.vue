@@ -67,7 +67,8 @@
               v-else-if="row.type === 'video' && row.thumbnail_url"
               :src="row.thumbnail_url"
               fit="cover"
-              class="thumb"
+              class="thumb clickable"
+              @click="openVideoPreview(row)"
             />
             <span v-else>-</span>
           </template>
@@ -148,10 +149,12 @@
         </el-form-item>
       </el-form>
       <template #footer>
+        <span class="cost-tag" style="margin-right: auto">预估 ¥{{ aiImageCostEstimate }}</span>
         <el-button @click="previewPrompt" :loading="previewing">预览 Prompt</el-button>
         <el-button @click="showAiGenerate = false">取消</el-button>
         <el-button type="primary" :loading="aiGenerating" @click="submitAiGenerate">生成</el-button>
       </template>
+      <el-alert v-if="pageError" type="error" :closable="true" :title="pageError" @close="pageError = ''" show-icon style="margin-top: 12px" />
     </el-dialog>
 
     <el-dialog v-model="showAiVideoGenerate" title="AI 生成视频" width="560px">
@@ -181,16 +184,15 @@
           <p class="upload-hint">上传人物照片，AI 将生成仿真人说话/动作视频（需 MiniMax Key）</p>
         </el-form-item>
         <el-form-item label="时长">
-          <el-select v-model="aiVideoForm.duration" style="width: 100%">
-            <el-option label="5 秒" :value="5" />
-            <el-option label="10 秒" :value="10" />
-          </el-select>
+          <el-input-number v-model="aiVideoForm.duration" :min="1" :max="60" :step="1" style="width: 100%" />
         </el-form-item>
       </el-form>
       <template #footer>
+        <span class="cost-tag" style="margin-right: auto">预估 ¥{{ aiVideoCostEstimate }}</span>
         <el-button @click="showAiVideoGenerate = false">取消</el-button>
         <el-button type="primary" :loading="aiVideoGenerating" @click="submitAiVideoGenerate">生成</el-button>
       </template>
+      <el-alert v-if="pageError" type="error" :closable="true" :title="pageError" @close="pageError = ''" show-icon style="margin-top: 12px" />
     </el-dialog>
 
     <el-drawer v-model="textPreviewVisible" :title="textPreviewTitle" size="480px">
@@ -203,11 +205,22 @@
         readonly
       />
     </el-drawer>
+
+    <el-dialog v-model="videoPreviewVisible" title="视频预览" width="640px" align-center destroy-on-close>
+      <video
+        :src="videoPreviewUrl"
+        :poster="videoPreviewPoster"
+        controls
+        autoplay
+        preload="auto"
+        style="width: 100%; max-height: 70vh; border-radius: 8px; display: block"
+      />
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import { PLATFORMS, platformCoverRatio } from '@/constants/platforms'
@@ -219,6 +232,7 @@ import { usePermission } from '@/composables/usePermission'
 const { can } = usePermission()
 
 const loading = ref(false)
+const pageError = ref('')
 const uploading = ref(false)
 const materials = ref([])
 const categories = ref([])
@@ -234,6 +248,9 @@ const textPreviewVisible = ref(false)
 const textPreviewTitle = ref('文案预览')
 const textPreviewContent = ref('')
 const textPreviewLoading = ref(false)
+const videoPreviewVisible = ref(false)
+const videoPreviewUrl = ref('')
+const videoPreviewPoster = ref('')
 
 // AI 生成视频
 const showAiVideoGenerate = ref(false)
@@ -273,10 +290,17 @@ async function previewText(row) {
     const detail = await api.getMaterial(row.id)
     textPreviewContent.value = detail.text_content || detail.text_preview || '（无正文）'
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '加载失败'
   } finally {
     textPreviewLoading.value = false
   }
+}
+
+function openVideoPreview(row) {
+  if (!row.url) return ElMessage.warning('视频链接不存在')
+  videoPreviewUrl.value = row.url
+  videoPreviewPoster.value = row.thumbnail_url || ''
+  videoPreviewVisible.value = true
 }
 
 const aiForm = reactive({
@@ -289,6 +313,10 @@ const aiForm = reactive({
   ratio: '3:4',
   count: 1,
 })
+
+// 费用预估
+const aiImageCostEstimate = computed(() => (aiForm.count * 0.02).toFixed(2))
+const aiVideoCostEstimate = computed(() => (aiVideoForm.duration * 0.5).toFixed(2))
 
 function onPlatformChange() {
   aiForm.ratio = platformCoverRatio(aiForm.platform)
@@ -312,7 +340,7 @@ async function previewPrompt() {
     promptPreview.prompt_en = res.prompt_en || ''
     promptPreview.negative_prompt = res.negative_prompt || ''
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '预览失败'
   } finally {
     previewing.value = false
   }
@@ -357,12 +385,13 @@ async function remove(row) {
     ElMessage.success('已删除')
     load()
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error(e.message || '删除失败')
+    if (e !== 'cancel') pageError.value = e.message || '删除失败'
   }
 }
 
 async function submitUpload() {
   if (!uploadFile.value) return ElMessage.warning('请选择文件')
+  pageError.value = ''
   uploading.value = true
   try {
     await api.uploadMaterial(uploadFile.value, {
@@ -377,13 +406,14 @@ async function submitUpload() {
     await loadCategories()
     load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '上传失败'
   } finally {
     uploading.value = false
   }
 }
 
 async function submitAiGenerate() {
+  pageError.value = ''
   if (!aiForm.topic.trim()) return ElMessage.warning('请填写主题')
   aiGenerating.value = true
   try {
@@ -404,7 +434,7 @@ async function submitAiGenerate() {
     promptPreview.negative_prompt = ''
     load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '图片生成失败'
   } finally {
     aiGenerating.value = false
   }
@@ -428,6 +458,7 @@ function platformVideoResolution(platform) {
 async function submitAiVideoGenerate() {
   if (!aiVideoForm.topic.trim()) return ElMessage.warning('请填写主题')
   if (aiVideoForm.mode === 'i2v' && !videoDriverPhotoFile.value) return ElMessage.warning('请先上传驱动照片')
+  pageError.value = ''
   aiVideoGenerating.value = true
   try {
     let imageUrl = null
@@ -452,7 +483,7 @@ async function submitAiVideoGenerate() {
     videoDriverPhotoPreview.value = ''
     load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '视频生成失败'
   } finally {
     aiVideoGenerating.value = false
   }
@@ -485,5 +516,14 @@ onMounted(async () => {
   margin: 4px 0 0;
   color: #999;
   font-size: 12px;
+}
+.cost-tag {
+  font-size: 12px;
+  color: #e6a23c;
+  white-space: nowrap;
+  padding: 2px 8px;
+  background: #fdf6ec;
+  border: 1px solid #faecd8;
+  border-radius: 4px;
 }
 </style>
