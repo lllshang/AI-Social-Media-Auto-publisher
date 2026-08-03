@@ -17,11 +17,14 @@
           <el-tag size="small" :type="draft.content_type === 'video' ? '' : 'success'">
             {{ draft.content_type === 'video' ? '视频' : '图文' }}
           </el-tag>
-          <el-tag size="small" type="info">{{ draft.status === 'drafting' ? '草稿中' : '生成中' }}</el-tag>
+          <el-tag v-if="draft.status === 'completed'" size="small" type="success">已完成</el-tag>
+          <el-tag v-else-if="draft.status === 'drafting'" size="small" type="info">草稿中</el-tag>
+          <el-tag v-else size="small" type="warning">生成中</el-tag>
           <span class="draft-time">{{ formatDraftTime(draft.updated_at) }}</span>
         </div>
         <div class="draft-actions">
-          <el-button size="small" type="primary" @click="resumeDraft(draft)">继续创作</el-button>
+          <el-button v-if="draft.status === 'completed'" size="small" type="success" @click="viewSession(draft)">查看成果</el-button>
+          <el-button v-else size="small" type="primary" @click="resumeDraft(draft)">继续创作</el-button>
           <el-popconfirm title="确定删除这个草稿？" @confirm="removeDraft(draft.id)">
             <template #reference>
               <el-button size="small" type="danger">删除</el-button>
@@ -33,6 +36,12 @@
 
     <!-- ========== 创作向导（有活跃会话时显示） ========== -->
     <template v-if="!showDraftList">
+    <!-- 顶部工具条：返回草稿箱 -->
+    <div class="wizard-toolbar">
+      <el-button text @click="backToDrafts">
+        <span>← 返回草稿箱</span>
+      </el-button>
+    </div>
     <!-- 步骤条 -->
     <el-steps :active="step" align-center finish-status="success" class="steps">
       <el-step title="灵感输入" />
@@ -85,6 +94,18 @@
           <div v-for="(msg, i) in chatMessages" :key="i" :class="['msg', msg.role]">
             <div class="msg-content">{{ msg.content }}</div>
           </div>
+          <div v-if="generatingCopy && chatMessages.length === 0" class="msg assistant loading-bubble">
+            <div class="msg-content">
+              <span class="loading-spinner"></span>
+              <span>AI 正在生成初稿文案...</span>
+            </div>
+          </div>
+          <div v-else-if="generatingCopy" class="msg assistant loading-bubble">
+            <div class="msg-content">
+              <span class="loading-spinner"></span>
+              <span>AI 正在重新生成...</span>
+            </div>
+          </div>
         </div>
         <!-- 快捷按钮 -->
         <div class="quick-actions">
@@ -103,7 +124,7 @@
       </div>
 
       <!-- 右侧：文案编辑区 -->
-      <div class="editor-panel">
+      <div class="editor-panel" v-loading="generatingCopy" element-loading-text="AI 正在生成文案，请稍候...">
         <div class="editor-header">
           <span>文案编辑</span>
           <el-button size="small" :loading="generatingCopy" @click="regenerateCopy">重新生成</el-button>
@@ -253,7 +274,7 @@
         </div>
         <el-progress
           v-if="activeTask.status !== 'completed' && activeTask.status !== 'failed'"
-          :percentage="activeTask.progress"
+          :percentage="displayProgress"
           :stroke-width="16"
           :text-inside="true"
           :status="activeTask.status === 'running' ? '' : undefined"
@@ -262,7 +283,17 @@
           {{ activeTask.error_message }}
         </div>
         <div class="progress-hint">
-          {{ activeTask.status === 'running' ? '预计还需 2 分钟...' : '' }}
+          {{
+            activeTask.status === 'pending'
+              ? '排队中，等待生成槽位...'
+              : activeTask.progress <= 5
+                ? '排队中，等待生成槽位...'
+                : displayProgress < 30
+                  ? '正在调用 AI 生成服务...'
+                  : displayProgress >= 99
+                    ? '即将完成...'
+                    : `预计还需 ${remainingMinutes} 分钟...`
+          }}
         </div>
       </div>
 
@@ -272,25 +303,42 @@
       <h4>生成历史</h4>
       <div v-if="generationTasks.length === 0" class="empty">暂无生成记录</div>
       <div v-for="gen in sortedGenerations" :key="gen.id" class="gen-item">
-        <span>{{ genTypeLabel(gen.gen_type) }}</span>
-        <el-tooltip v-if="gen.status === 'failed' && gen.error_message" :content="gen.error_message" placement="top" effect="light">
-          <el-tag size="small" type="danger" style="cursor: help;">
-            失败
+        <div class="gen-item-head">
+          <span>{{ genTypeLabel(gen.gen_type) }}</span>
+          <el-tooltip v-if="gen.status === 'failed' && gen.error_message" :content="gen.error_message" placement="top" effect="light">
+            <el-tag size="small" type="danger" style="cursor: help;">
+              失败
+            </el-tag>
+          </el-tooltip>
+          <el-tag v-else size="small" :type="gen.status === 'completed' ? 'success' : gen.status === 'failed' ? 'danger' : gen.status === 'running' ? 'warning' : 'info'">
+            {{ gen.status === 'pending' ? '队列中' : gen.status === 'running' ? `${gen.progress}%` : gen.status === 'completed' ? '已完成' : '失败' }}
           </el-tag>
-        </el-tooltip>
-        <el-tag v-else size="small" :type="gen.status === 'completed' ? 'success' : gen.status === 'failed' ? 'danger' : gen.status === 'running' ? 'warning' : 'info'">
-          {{ gen.status === 'pending' ? '队列中' : gen.status === 'running' ? `${gen.progress}%` : gen.status === 'completed' ? '已完成' : '失败' }}
-        </el-tag>
-        <span class="gen-time">{{ formatTime(gen.created_at) }}</span>
-        <div class="gen-actions">
-          <el-button v-if="gen.status === 'completed' && gen.result?.material_ids?.length" size="small" @click="previewGeneration(gen)">预览</el-button>
-          <el-button size="small" @click="regenerateWith(gen)">重新生成</el-button>
-          <el-button
-            v-if="gen.status === 'completed' && gen.result?.material_ids?.length"
-            :type="isSelected(gen) ? 'primary' : 'default'"
-            size="small"
-            @click="toggleSelect(gen)"
-          >{{ isSelected(gen) ? '已选定' : '选定' }}</el-button>
+          <span class="gen-time">{{ formatTime(gen.created_at) }}</span>
+          <div class="gen-actions">
+            <el-button v-if="gen.status === 'completed' && gen.result?.material_ids?.length" size="small" :loading="gen._previewing" @click="previewGeneration(gen)">
+              {{ gen._previewOpen ? '收起' : '预览' }}
+            </el-button>
+            <el-button size="small" @click="regenerateWith(gen)">重新生成</el-button>
+            <el-button
+              v-if="gen.status === 'completed' && gen.result?.material_ids?.length"
+              :type="isSelected(gen) ? 'primary' : 'default'"
+              size="small"
+              @click="toggleSelect(gen)"
+            >{{ isSelected(gen) ? '已选定' : '选定' }}</el-button>
+          </div>
+        </div>
+
+        <!-- 内联预览区 -->
+        <div v-if="gen._previewOpen && gen.status === 'completed'" class="gen-preview">
+          <template v-for="mid in (gen.result?.material_ids || [])" :key="mid">
+            <div v-if="materialCache[mid]" class="preview-block">
+              <div class="preview-name">{{ materialCache[mid].name || ('素材 #' + mid) }}</div>
+              <video v-if="materialCache[mid].type === 'video' && materialCache[mid].url" :src="materialCache[mid].url" controls class="preview-media" />
+              <img v-else-if="materialCache[mid].type === 'image' && materialCache[mid].url" :src="materialCache[mid].url" class="preview-media" alt="预览" />
+              <a v-else-if="materialCache[mid].url" :href="materialCache[mid].url" target="_blank" class="preview-link">打开素材</a>
+              <span v-else class="preview-empty">无可用预览</span>
+            </div>
+          </template>
         </div>
       </div>
 
@@ -342,7 +390,8 @@ const drafts = ref([])
 
 async function loadDrafts() {
   try {
-    drafts.value = await api.getDrafts()
+    const res = await api.getSessions({ page: 1, page_size: 20 })
+    drafts.value = res.items || []
   } catch { drafts.value = [] }
 }
 
@@ -368,6 +417,11 @@ function startNewSession() {
   resetForm()
 }
 
+function backToDrafts() {
+  showDraftList.value = true
+  loadDrafts()
+}
+
 async function removeDraft(id) {
   try {
     await api.deleteSession(id)
@@ -375,6 +429,25 @@ async function removeDraft(id) {
     loadDrafts()
   } catch (e) {
     ElMessage.error(e.message || '删除失败')
+  }
+}
+
+async function viewSession(draft) {
+  sessionId.value = draft.id
+  showDraftList.value = false
+  step.value = 3
+  // 恢复基础信息
+  try {
+    const res = await api.getSession(draft.id)
+    const s = res.session || res
+    form.keywords = s.keywords || ''
+    form.background = s.background || ''
+    form.content_type = s.content_type || 'video'
+    loadAvatars()
+    await refreshTasks()
+    ElMessage.success('已加载创作成果')
+  } catch (e) {
+    ElMessage.error(e.message || '加载失败')
   }
 }
 
@@ -525,6 +598,50 @@ const canStart = computed(() => form.keywords.trim())
 const activeTask = computed(() =>
   generationTasks.value.find(t => t.status === 'pending' || t.status === 'running') || null
 )
+
+// 显示进度：后端 progress 优先级最高；如果卡在低值但任务在 running，前端按 elapsed
+// 时间在 [20%, 95%] 区间线性增长，避免 UI 一直停在 20%。
+// 后端一旦推 100% 或 completed 状态会立即接管。
+const nowTick = ref(Date.now())
+let progressTicker = null
+
+// 视频/图片生成大概耗时估计（毫秒）。用于前端把 20%→95% 线性铺到这段时间。
+const ESTIMATED_VIDEO_MS = 90 * 1000       // 90 秒
+const ESTIMATED_IMAGE_MS = 30 * 1000       // 30 秒
+
+const displayProgress = computed(() => {
+  const t = activeTask.value
+  if (!t) return 0
+  if (t.status === 'completed') return 100
+  if (t.status === 'failed') return t.progress || 0
+  // 后端推到 95% 以上就以它为准（避免 100% 假完成被前端覆盖）
+  if (t.progress >= 95) return Math.min(99, t.progress)
+  // 凡是后端已经"进入生成阶段"（status=running 且 progress >= 3），无论
+  // progress 卡在 3% 还是 20%，前端都按 elapsed 时间在 [20%, 95%] 平滑铺
+  if (t.status === 'running' && t.progress >= 3) {
+    const start = new Date(t.created_at).getTime()
+    const totalMs = t.gen_type && t.gen_type.includes('video')
+      ? ESTIMATED_VIDEO_MS : ESTIMATED_IMAGE_MS
+    const elapsed = nowTick.value - start
+    const fraction = Math.min(0.95, Math.max(0, elapsed / totalMs))
+    return Math.floor(20 + (95 - 20) * fraction)
+  }
+  return t.progress || 0
+})
+
+const remainingMinutes = computed(() => {
+  const t = activeTask.value
+  if (!t) return 0
+  // 按当前 displayProgress 反推总剩余时间（displayProgress 范围 20~95）
+  const dp = displayProgress.value
+  if (dp >= 95) return 0
+  const totalMs = t.gen_type && t.gen_type.includes('video')
+    ? ESTIMATED_VIDEO_MS : ESTIMATED_IMAGE_MS
+  // 把 [20%, 95%] 映射到 [0, totalMs] 剩余时间
+  const remainMs = Math.max(0, ((95 - dp) / (95 - 20)) * totalMs)
+  if (remainMs < 30 * 1000) return 1   // 不足 30 秒也显示"1 分钟内"
+  return Math.max(1, Math.ceil(remainMs / 60000))
+})
 
 const sortedGenerations = computed(() =>
   [...generationTasks.value].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
@@ -756,6 +873,7 @@ async function startVideoGen() {
     await api.startGeneration(sessionId.value, payload)
     step.value = 3
     loadGenerations()
+    startPolling()
   } catch (e) {
     genError.value = e.message || '启动生成失败'
   } finally {
@@ -777,6 +895,7 @@ async function startImageGen(count) {
     })
     step.value = 3
     loadGenerations()
+    startPolling()
   } catch (e) {
     genError.value = e.message || '启动生成失败'
   } finally {
@@ -794,6 +913,10 @@ async function loadGenerations() {
 
 function startPolling() {
   stopPolling()
+  // 1 秒一刷本地时间，配合 displayProgress 让进度条在生成中平滑推进
+  nowTick.value = Date.now()
+  progressTicker = setInterval(() => { nowTick.value = Date.now() }, 1000)
+  // 3 秒一拉后端
   pollTimer = setInterval(async () => {
     if (!sessionId.value) return
     try {
@@ -808,6 +931,7 @@ function startPolling() {
 
 function stopPolling() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
+  if (progressTicker) { clearInterval(progressTicker); progressTicker = null }
 }
 
 function goBackToGen() {
@@ -815,11 +939,33 @@ function goBackToGen() {
   step.value = 2
 }
 
-function previewGeneration(gen) {
-  if (gen.result?.video_url) window.open(gen.result.video_url, '_blank')
-  else {
-    const ids = gen.result?.material_ids || []
-    if (ids.length) ElMessage.info(`素材ID: ${ids.join(', ')}，可在素材库中查看`)
+const materialCache = ref({}) // { [materialId]: { url, type, name } }
+
+async function previewGeneration(gen) {
+  const ids = gen.result?.material_ids || []
+  if (!ids.length) {
+    if (gen.result?.video_url) window.open(gen.result.video_url, '_blank')
+    return
+  }
+  // 内联展示：逐条拉取素材 url
+  gen._previewing = true
+  try {
+    for (const mid of ids) {
+      if (!materialCache.value[mid]) {
+        const m = await api.getMaterial(mid)
+        materialCache.value[mid] = {
+          url: m.url,
+          type: m.type, // 'video' | 'image' | 'text'
+          name: m.name,
+          thumbnail_url: m.thumbnail_url,
+        }
+      }
+    }
+    gen._previewOpen = !gen._previewOpen
+  } catch (e) {
+    ElMessage.error('预览加载失败：' + (e.message || ''))
+  } finally {
+    gen._previewing = false
   }
 }
 
@@ -827,7 +973,10 @@ async function regenerateWith(gen) {
   genStarting.value = true
   statusError.value = ''
   try {
-    const params = gen.input_params || {}
+    const params = {
+      gen_type: gen.gen_type,
+      ...(gen.input_params || {}),
+    }
     await api.startGeneration(sessionId.value, params)
     loadGenerations()
   } catch (e) {
@@ -917,6 +1066,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .create-wizard { max-width: 960px; margin: 0 auto; }
 .steps { margin: 24px 0 32px; }
+.wizard-toolbar { display: flex; justify-content: flex-start; padding: 8px 0 0 4px; }
 .step-card {
   background: #fff;
   border-radius: 8px;
@@ -960,6 +1110,13 @@ onBeforeUnmount(() => {
 .quick-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .chat-input-row { display: flex; gap: 8px; }
 .editor-actions { margin-top: auto; padding-top: 16px; display: flex; justify-content: space-between; }
+.loading-bubble .msg-content { display: inline-flex !important; align-items: center; gap: 6px; color: #666; }
+.loading-spinner {
+  display: inline-block; width: 12px; height: 12px;
+  border: 2px solid #c8c8c8; border-top-color: #1d9bf0;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 .step-actions { margin-top: 20px; display: flex; justify-content: space-between; }
 
 /* Step 2 */
@@ -972,11 +1129,24 @@ onBeforeUnmount(() => {
 .progress-hint { margin-top: 8px; color: #999; font-size: 13px; }
 .error-msg { color: #f56c6c; margin-top: 6px; font-size: 13px; }
 .gen-item {
-  display: flex; align-items: center; gap: 12px;
   padding: 10px 0; border-bottom: 1px solid #f0f0f0;
+}
+.gen-item-head {
+  display: flex; align-items: center; gap: 12px;
 }
 .gen-time { color: #999; font-size: 12px; margin-left: auto; }
 .gen-actions { display: flex; gap: 6px; }
+.gen-preview {
+  margin-top: 10px; padding: 12px; background: #fafafa; border-radius: 8px;
+  display: flex; flex-wrap: wrap; gap: 12px;
+}
+.preview-block { max-width: 320px; }
+.preview-name { font-size: 12px; color: #666; margin-bottom: 4px; }
+.preview-media {
+  max-width: 300px; max-height: 220px; border-radius: 6px; background: #000;
+}
+.preview-link { font-size: 13px; color: #409eff; }
+.preview-empty { font-size: 12px; color: #999; }
 .empty { color: #999; padding: 20px 0; }
 .cost-tag {
   font-size: 12px;

@@ -3,8 +3,28 @@
 from __future__ import annotations
 
 import json
+import logging
+import asyncio
 from datetime import datetime
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# 全局生成并发信号量：限制同时调用第三方 AIGC（腾讯云 VOD 等同账号并发受限，
+# 超过会触发 RequestLimitExceeded）。同账号全局最多 2 个生成任务并行执行。
+# 放在模块级，保证所有 CreateService 实例共享同一个 Semaphore。
+GENERATION_SEMAPHORE = asyncio.Semaphore(2)
+
+
+def _log_task_exception(task):
+    """asyncio.create_task 的 done_callback：捕获后台 task 异常避免静默丢失。"""
+    try:
+        exc = task.exception()
+        if exc is not None:
+            logger.exception("后台异步任务异常未捕获", exc_info=exc)
+    except (asyncio.CancelledError, Exception):  # noqa: BLE001
+        pass
+
 
 from sqlalchemy.orm import Session
 
@@ -261,9 +281,21 @@ class CreateService:
 
         # 启动异步生成
         self.db.expunge(task)
+        # session 是 self.db 附着的 ORM 对象，跨 event loop 后再访问会
+        # DetachedInstanceError。提前把需要的字段抠出来传给后台 task。
         import asyncio
-
-        asyncio.create_task(self._execute_generation(task.id, session, data))
+        session_snapshot = {
+            "platforms": list(session.platforms or []),
+            "user_id": session.user_id,
+            "final_copy": session.final_copy,
+            "keywords": session.keywords,
+            "theme_style": session.theme_style,
+        }
+        _task_handle = asyncio.create_task(
+            self._execute_generation(task.id, session_snapshot, data)
+        )
+        # 捕获 task 异常，避免 "Task exception was never retrieved"
+        _task_handle.add_done_callback(_log_task_exception)
 
         # 重新查询以获取最新状态
         session.status = "generating"
@@ -274,58 +306,93 @@ class CreateService:
         return self.db.query(GenerationTask).filter(GenerationTask.id == task.id).first()
 
     async def _execute_generation(
-        self, task_id: int, session: CreativeSession, data: GenRequestData
+        self, task_id: int, session_snapshot: dict, data: GenRequestData
     ):
-        """后台执行生成任务"""
+        """后台执行生成任务。
+        session_snapshot 是 dict 快照（不再传 ORM 对象），避免
+        DetachedInstanceError。
+        """
         from app.database import SessionLocal
 
         # 新 db session 用于后台任务
         bg_db = SessionLocal()
         try:
+            logger.info(f"[gen:{task_id}] 开始后台执行任务, gen_type={data.gen_type}")
             task = bg_db.query(GenerationTask).filter(GenerationTask.id == task_id).first()
             if not task:
+                logger.warning(f"[gen:{task_id}] 未找到任务, 直接退出")
                 return
 
             task.status = "running"
             task.progress = 10
             bg_db.commit()
+            logger.info(f"[gen:{task_id}] 任务状态更新为 running/10%")
 
-            if data.gen_type in ("text_to_video", "image_to_video", "simulation_human", "digital_human"):
-                result = await self._generate_video_for_task(bg_db, task, session, data)
-            elif data.gen_type in ("cover", "images"):
-                result = await self._generate_images_for_task(bg_db, task, session, data)
-            else:
-                raise ValueError(f"Unknown gen_type: {data.gen_type}")
+            # 全局并发限流：等待拿到信号量后再真正调用第三方 AIGC，
+            # 避免同账号并发过高触发 RequestLimitExceeded。
+            # 在排队期间也持续更新 progress，让前端轮询能看到"等待中"而不是卡在 10%。
+            logger.info(f"[gen:{task_id}] 等待生成并发信号量 (可用={GENERATION_SEMAPHORE._value})")
+            # 先把进度改成 3% 表示"排队等待并发槽位"
+            task.progress = 3
+            bg_db.commit()
+            async with GENERATION_SEMAPHORE:
+                logger.info(f"[gen:{task_id}] 获得生成并发信号量，开始调用第三方 AIGC")
+                # 拿到信号量后立刻把进度推进到 20%，让前端感知到状态变化
+                task.progress = 20
+                task.status = "running"
+                bg_db.commit()
+                if data.gen_type in ("text_to_video", "image_to_video", "simulation_human", "digital_human"):
+                    logger.info(f"[gen:{task_id}] 进入视频生成分支")
+                    result = await self._generate_video_for_task(bg_db, task, session_snapshot, data)
+                elif data.gen_type in ("cover", "images"):
+                    logger.info(f"[gen:{task_id}] 进入图片生成分支")
+                    result = await self._generate_images_for_task(bg_db, task, session_snapshot, data)
+                else:
+                    raise ValueError(f"Unknown gen_type: {data.gen_type}")
 
+            logger.info(f"[gen:{task_id}] 生成完成, result={result}")
             task.status = "completed"
             task.progress = 100
             task.result = result
             task.completed_at = datetime.utcnow()
             bg_db.commit()
+            logger.info(f"[gen:{task_id}] 任务状态更新为 completed/100%")
 
         except Exception as exc:
-            task = bg_db.query(GenerationTask).filter(GenerationTask.id == task_id).first()
-            if task:
-                task.status = "failed"
-                task.error_message = str(exc)
-                task.completed_at = datetime.utcnow()
-                bg_db.commit()
+            # 前台/后台任务中若 DB 写入失败（如字段超长），session 可能已进入
+            # PendingRollback 状态，必须先 rollback 才能写入失败状态，否则会二次
+            # 抛异常导致任务永远停在 10%（"Task exception was never retrieved"）。
+            try:
+                bg_db.rollback()
+            except Exception:
+                pass
+            try:
+                task = bg_db.query(GenerationTask).filter(GenerationTask.id == task_id).first()
+                if task:
+                    task.status = "failed"
+                    task.error_message = str(exc)
+                    task.completed_at = datetime.utcnow()
+                    bg_db.commit()
+            except Exception as commit_exc:
+                logger.error(f"[gen:{task_id}] 更新生成任务失败状态失败: {commit_exc}")
+                logger.exception(f"[gen:{task_id}] 生成任务异常", exc_info=exc)
         finally:
             bg_db.close()
 
     async def _generate_video_for_task(
-        self, db: Session, task: GenerationTask, session: CreativeSession, data: GenRequestData
+        self, db: Session, task: GenerationTask, session_snapshot: dict, data: GenRequestData
     ) -> dict:
         """执行视频生成"""
         from app.services.material_service import AiContentService
 
         svc = AiContentService(db)
 
-        platform = session.platforms[0] if session.platforms else "douyin"
+        platforms = session_snapshot.get("platforms") or []
+        platform = platforms[0] if platforms else "douyin"
+        final_copy = session_snapshot.get("final_copy") or {}
         description = data.description or ""
-        if not description and session.final_copy:
-            copy = session.final_copy
-            description = f"{copy.get('title', '')} {copy.get('body', '')}"[:200]
+        if not description and final_copy:
+            description = f"{final_copy.get('title', '')} {final_copy.get('body', '')}"[:200]
 
         result = await svc.generate_video(
             topic=description,
@@ -334,7 +401,7 @@ class CreateService:
             resolution=data.resolution,
             fps=data.fps,
             image_url=data.image_url,
-            user_id=session.user_id,
+            user_id=session_snapshot.get("user_id"),
             avatar_id=data.avatar_id,
             avatar_type=data.avatar_type,
         )
@@ -343,41 +410,50 @@ class CreateService:
         db.commit()
 
         material_ids = [m["id"] for m in result.get("materials", [])]
+        # Video URL: 优先顶层 video_url；否则取第一个 material 的 url
+        _video_url = result.get("video_url")
+        if not _video_url and result.get("materials"):
+            _video_url = result["materials"][0].get("url")
+        # 视频生成不产生图片，image_urls 固定为空，避免误把 mp4 当图片
         return {
             "material_ids": material_ids,
-            "video_url": result.get("video_url"),
+            "video_url": _video_url,
+            "image_urls": [],
             "provider": result.get("provider"),
         }
 
     async def _generate_images_for_task(
-        self, db: Session, task: GenerationTask, session: CreativeSession, data: GenRequestData
+        self, db: Session, task: GenerationTask, session_snapshot: dict, data: GenRequestData
     ) -> dict:
         """执行图片/封面生成"""
         from app.services.material_service import AiContentService
 
         svc = AiContentService(db)
 
-        platform = session.platforms[0] if session.platforms else "xhs"
-        description = data.description or session.keywords
+        platforms = session_snapshot.get("platforms") or []
+        platform = platforms[0] if platforms else "xhs"
+        description = data.description or session_snapshot.get("keywords") or ""
 
         result = await svc.generate_image(
             topic=description,
             platform=platform,
-            style=data.style or session.theme_style or "default",
+            style=data.style or session_snapshot.get("theme_style") or "default",
             ratio="3:4",
             count=data.count,
             cover_text=data.cover_text,
             brand_color=data.brand_color,
             brand_hint=data.brand_hint,
-            user_id=session.user_id,
+            user_id=session_snapshot.get("user_id"),
         )
 
         task.provider = result.get("provider", "unknown")
         db.commit()
 
         material_ids = [m["id"] for m in result.get("materials", [])]
+        _image_urls = [m.get("url") for m in result.get("materials", []) if m.get("url")]
         return {
             "material_ids": material_ids,
+            "image_urls": _image_urls,
             "provider": result.get("provider"),
         }
 

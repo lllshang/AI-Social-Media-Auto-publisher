@@ -832,6 +832,7 @@ class GenerationTaskResponse(BaseModel):
     provider: str
     status: str
     progress: int
+    input_params: dict | None = None
     result: dict | None = None
     error_message: str | None = None
     created_at: datetime

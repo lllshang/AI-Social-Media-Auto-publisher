@@ -201,19 +201,82 @@ async def cookie_auth(account_file):
 
 
 async def _find_tencent_qrcode_locator(page: Page):
-    iframe = page.frame_locator('[src*="login-for-iframe"]')
+    # 视频号登录页二维码可能承载在两种 iframe：
+    #   1) open.weixin.qq.com/connect/qrconnect (微信开放平台扫码)
+    #   2) channels.weixin.qq.com/login-for-iframe (旧版内嵌)
+    # 先动态收集这些目标 iframe，再用 JS 快速扫描其中的二维码图片（最快最稳）
+    try:
+        await page.locator("iframe").first.wait_for(state="attached", timeout=15000)
+    except Exception:
+        tencent_logger.warning(_msg("🧾", "等待 iframe 出现超时"))
+
+    target_frames = []
+    for idx, f in enumerate(page.frames):
+        try:
+            furl = f.url or ""
+            if "open.weixin.qq.com" in furl or "login-for-iframe" in furl:
+                target_frames.append((idx, f))
+                tencent_logger.info(_msg("🧾", f"命中目标 iframe[{idx}] url={furl}"))
+        except Exception:
+            continue
+
+    # 策略一：JS 直接遍历目标 iframe 内的 img/canvas，命中即返回
+    for idx, f in target_frames:
+        try:
+            await f.wait_for_load_state("domcontentloaded", timeout=15000)
+        except Exception:
+            pass
+        try:
+            qr_info = await f.evaluate(
+                """() => {
+                    const imgs = Array.from(document.querySelectorAll('img, canvas'));
+                    return imgs.map((i, pos) => ({
+                        pos,
+                        tag: i.tagName.toLowerCase(),
+                        src: i.getAttribute('src') || '',
+                        cls: i.className || '',
+                        w: i.tagName.toLowerCase() === 'img' ? i.naturalWidth : i.width,
+                        h: i.tagName.toLowerCase() === 'img' ? i.naturalHeight : i.height,
+                        visible: i.offsetParent !== null || i.getClientRects().length > 0
+                    }));
+                }"""
+            )
+            tencent_logger.info(_msg("🖼️", f"iframe[{idx}] 全部 img/canvas ({len(qr_info)}): {qr_info[:10]}"))
+            qr_candidate = None
+            for info in qr_info:
+                if info["tag"] == "img" and info["w"] >= 200 and info["h"] >= 200 and info["visible"]:
+                    cls = info.get("cls", "")
+                    src = info.get("src", "")
+                    if "qrcode" in cls.lower() or "qrconnect" in src or "qrcode" in src.lower():
+                        qr_candidate = info
+                        break
+                    if qr_candidate is None:
+                        qr_candidate = info
+            if qr_candidate:
+                tencent_logger.info(_msg("🎯", f"JS 选中二维码: iframe[{idx}] pos={qr_candidate['pos']} cls={qr_candidate['cls']}"))
+                return f.locator("img, canvas").nth(qr_candidate["pos"])
+        except Exception as je:
+            tencent_logger.warning(_msg("🖼️", f"iframe[{idx}] JS 扫描失败: {je}"))
+
+    # 策略二：常规 locator 兜底
+    iframe = page.frame_locator('[src*="open.weixin.qq.com"]')
+    iframe_legacy = page.frame_locator('[src*="login-for-iframe"]')
     candidates = [
-        iframe.locator("img.qrcode").first,
-        iframe.locator("div#app img.qrcode").first,
-        iframe.locator("div.login-qrcode-wrap img.qrcode").first,
+        iframe.locator("img.js_qrcode_img").first,
+        iframe.locator(".web_qrcode_img").first,
+        iframe.locator(".qrcode.js_qrcode_img").first,
+        iframe_legacy.locator("img.qrcode").first,
+        iframe_legacy.locator("div#app img.qrcode").first,
+        iframe_legacy.locator("div.login-qrcode-wrap img.qrcode").first,
         page.locator("div.login-qrcode-wrap img.qrcode").first,
         page.locator("div.qrcode-wrap img.qrcode").first,
         page.locator("img.qrcode").first,
     ]
     for qr_code_img in candidates:
         try:
-            await qr_code_img.wait_for(state="visible", timeout=30000)
+            await qr_code_img.wait_for(state="visible", timeout=5000)
             if await qr_code_img.count():
+                tencent_logger.info(_msg("🎯", "常规 locator 命中二维码"))
                 return qr_code_img
         except Exception:
             continue

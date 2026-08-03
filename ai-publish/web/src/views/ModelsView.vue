@@ -17,6 +17,15 @@
       description="当前账号仅可查看模型配置，无法修改或切换模型。"
       style="margin-bottom: 16px"
     />
+    <el-alert
+      v-if="pageError"
+      type="error"
+      :closable="true"
+      show-icon
+      :title="pageError"
+      style="margin-bottom: 16px"
+      @close="pageError = ''"
+    />
 
     <el-row :gutter="16">
       <el-col :span="canWrite ? 12 : 24">
@@ -60,7 +69,7 @@
               fit="contain"
               style="max-width: 100%; max-height: 160px; border-radius: 6px"
             />
-            <p class="test-meta">{{ imageResult.provider }} / {{ imageResult.model }} · 耗费 {{ imageResult.cost }}</p>
+            <p class="test-meta">{{ imageResult.provider }} / {{ imageResult.model }} · 预估 ¥{{ imageResult.cost }} · 耗时 {{ formatElapsed(imageResult.elapsed) }}</p>
             <pre v-if="imageResult.prompt" class="result" style="max-height: 100px">{{ imageResult.prompt }}</pre>
           </div>
           <el-alert v-if="imageError" type="error" :closable="true" :title="imageError" @close="imageError = ''" show-icon style="margin-top: 12px" />
@@ -84,7 +93,7 @@
               preload="metadata"
               style="max-width: 100%; max-height: 240px; border-radius: 6px; display: block"
             />
-            <p class="test-meta">{{ videoResult.provider }} / {{ videoResult.model }} · {{ videoResult.materials?.[0]?.duration || videoResult.duration }}s · 耗费 {{ videoResult.cost }}</p>
+            <p class="test-meta">{{ videoResult.provider }} / {{ videoResult.model }} · {{ videoResult.materials?.[0]?.duration || videoResult.duration }}s · 预估 ¥{{ videoResult.cost }} · 耗时 {{ formatElapsed(videoResult.elapsed) }}</p>
             <pre v-if="videoResult.prompt" class="result" style="max-height: 100px">{{ videoResult.prompt }}</pre>
           </div>
           <el-alert v-if="videoError" type="error" :closable="true" :title="videoError" @close="videoError = ''" show-icon style="margin-top: 12px" />
@@ -308,6 +317,14 @@ function getImagePricePerImage(modelName) {
   return 0.08
 }
 
+function formatElapsed(seconds) {
+  const s = Number(seconds) || 0
+  if (s < 60) return `${s.toFixed(1)} 秒`
+  const m = Math.floor(s / 60)
+  const rest = Math.round(s % 60)
+  return `${m} 分 ${rest} 秒`
+}
+
 const currentVideoModel = computed(() => modelData.value?.video?.current?.model || '')
 const currentImageModel = computed(() => modelData.value?.image?.current?.model || '')
 const videoCostEstimate = computed(() => (videoDuration.value * getVideoPricePerSec(currentVideoModel.value)).toFixed(2))
@@ -490,6 +507,7 @@ async function saveProvider() {
     await load()
   } catch (e) {
     pageError.value = e.message || '保存配置失败'
+    ElMessage.error(pageError.value)
   }
 }
 

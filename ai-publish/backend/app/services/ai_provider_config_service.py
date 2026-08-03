@@ -100,6 +100,17 @@ PROVIDER_FIELDS: dict[str, dict[str, Any]] = {
         "default_model": "Hailuo|H3",
         "kind": "video",
     },
+    "tencent_vod_image": {
+        "label": "腾讯 VOD AIGC 生图",
+        "key_field": "tencent_vod_secret_id",
+        "secret_key_field": "tencent_vod_secret_key",
+        "sub_app_id_field": "tencent_vod_sub_app_id",
+        "base_url_field": None,
+        "default_base_url": "",
+        "model_field": "tencent_vod_image_model",
+        "default_model": "Hunyuan|3.0",
+        "kind": "image",
+    },
     "openai": {
         "label": "OpenAI",
         "key_field": "openai_api_key",
@@ -186,6 +197,8 @@ class AiProviderConfigService:
 
     def _build_builtin_item(self, provider_id: str, spec: dict[str, Any]) -> dict[str, Any]:
         key_field = spec.get("key_field")
+        secret_key_field = spec.get("secret_key_field")
+        sub_app_id_field = spec.get("sub_app_id_field")
         base_field = spec.get("base_url_field")
         model_field = spec.get("model_field")
         api_key = self.get_field_value(key_field) if key_field else ""

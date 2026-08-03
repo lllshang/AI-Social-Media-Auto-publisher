@@ -248,6 +248,20 @@ class AiModelService:
                 ("black-forest-labs/FLUX.1-schnell", "black-forest-labs/FLUX.1-schnell"),
             ],
         },
+        {
+            "provider": "tencent_vod_image",
+            "label": "腾讯 VOD AIGC 生图",
+            "key_field": "tencent_vod_secret_id",
+            "secret_key_field": "tencent_vod_secret_key",
+            "sub_app_id_field": "tencent_vod_sub_app_id",
+            "cost_field": "tencent_vod_cost_per_image",
+            "models": [
+                ("Hunyuan|3.0", "混元 Hunyuan 3.0"),
+                ("OG", "OG"),
+                ("GG", "GG"),
+                ("Qwen", "Qwen"),
+            ],
+        },
     )
 
     REMOTE_VIDEO_PROVIDERS = (
@@ -542,6 +556,16 @@ class AiModelService:
             api_key = self._config_value(spec["key_field"])
             ready = bool(api_key)
             reason = None if ready else "未配置 API Key"
+            secret_key_field = spec.get("secret_key_field")
+            sub_app_id_field = spec.get("sub_app_id_field")
+            if secret_key_field:
+                if not self._config_value(secret_key_field):
+                    ready = False
+                    reason = reason or "未配置 SecretKey"
+            if sub_app_id_field:
+                if not self._config_value(sub_app_id_field):
+                    ready = False
+                    reason = reason or "未配置 SubAppId"
             for _, model_name in spec["models"]:
                 options.append(
                     ModelOption(
@@ -838,6 +862,25 @@ class AiModelService:
             from app.adapters.ai_image.openai_dalle import OpenAiDalleImageAdapter
 
             return OpenAiDalleImageAdapter(model=model or "default")
+        if provider == "tencent_vod_image":
+            from app.adapters.ai_image.tencent_vod_image import TencentVodImageAdapter
+
+            secret_id = self._config_value("tencent_vod_secret_id") or self._config_value("tencent_secret_id") or ""
+            secret_key = self._config_value("tencent_vod_secret_key") or self._config_value("tencent_secret_key") or ""
+            sub_app_id = self._config_value("tencent_vod_sub_app_id") or ""
+            try:
+                cost_per_image = float(self._config_value("tencent_vod_cost_per_image") or 0)
+            except (TypeError, ValueError):
+                cost_per_image = 0.0
+            model_name, _, model_version = (model or "Hunyuan|3.0").partition("|")
+            return TencentVodImageAdapter(
+                model_name=model_name or "Hunyuan",
+                model_version=model_version or "3.0",
+                sub_app_id=sub_app_id,
+                secret_id=secret_id,
+                secret_key=secret_key,
+                cost_per_image=cost_per_image,
+            )
         from app.adapters.ai_image.stub import StubImageAdapter
 
         return StubImageAdapter()
@@ -942,12 +985,16 @@ class AiModelService:
         provider: str,
         *,
         api_key: str | None = None,
+        secret_key: str | None = None,
+        sub_app_id: str | None = None,
         base_url: str | None = None,
         clear_key: bool = False,
     ) -> dict[str, Any]:
         return self.provider_config.save_provider_config(
             provider,
             api_key=api_key,
+            secret_key=secret_key,
+            sub_app_id=sub_app_id,
             base_url=base_url,
             clear_key=clear_key,
         )

@@ -9,7 +9,26 @@ from app.adapters.factory import get_adapter_factory
 from app.models import AiGenerationRecord, Avatar, Material
 from app.schemas import MaterialResponse
 from app.services.image_moderation_service import ImageModerationService
+import logging
+
 from app.utils.thumbnail import generate_image_thumbnail
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_material_name(name: str | None, limit: int = 200) -> str | None:
+    """素材 name 截断保护。
+
+    数据库 materials.name 字段早期为 VARCHAR(128)，长口播文案会触发
+    DataError(1406) 导致生成任务卡死。统一在此截断，避免任意来源
+    （视频 topic、图片文案、草稿标题）写入超长内容。
+    """
+    if not name:
+        return name
+    name = str(name).strip()
+    if len(name) > limit:
+        return name[: limit - 1].rstrip() + "…"
+    return name
 
 
 class MaterialService:
@@ -164,7 +183,7 @@ class MaterialService:
             type="text",
             source="draft",
             file_path=file_path,
-            name=title,
+            name=_safe_material_name(title),
             category=category or "文案草稿",
             ai_record_id=ai_record_id,
             created_by=user_id,
@@ -344,6 +363,7 @@ class AiContentService:
             "brand_color": brand_color,
             "brand_hint": brand_hint,
             "cost": float(result.cost),
+            "elapsed": float(getattr(result, "elapsed", 0.0)),
         }
 
     async def generate_video(
@@ -381,8 +401,24 @@ class AiContentService:
             avatar_type=avatar_type,
         )
 
+        logger.info(
+            "开始 AI 视频生成: topic=%s, duration=%s, resolution=%s, adapter=%s",
+            topic,
+            duration,
+            resolution,
+            getattr(adapter, "provider", type(adapter).__name__),
+        )
+
         # 调用适配器生成
         result = await adapter.generate(video_input)
+
+        logger.info(
+            "AI 视频生成完成: videos=%s, thumbnails=%s, provider=%s, elapsed=%s",
+            result.video_paths,
+            result.thumbnail_paths,
+            result.provider,
+            result.elapsed,
+        )
 
         # 记录 AI 调用日志
         import json
@@ -416,7 +452,7 @@ class AiContentService:
 
             material = Material(
                 created_by=user_id,
-                name=f"{topic}_视频_{idx + 1}",
+                name=_safe_material_name(f"{topic}_视频_{idx + 1}"),
                 type="video",
                 source="ai_generated",
                 file_path=video_path,
@@ -447,5 +483,6 @@ class AiContentService:
             "model": getattr(adapter, "model", None),
             "prompt": result.prompt,
             "cost": float(result.cost),
+            "elapsed": float(getattr(result, "elapsed", 0.0)),
         }
 

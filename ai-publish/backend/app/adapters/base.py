@@ -85,6 +85,7 @@ class ImageGenerateResult:
     prompt: str
     cost: float = 0.0
     negative_prompt: str | None = None
+    elapsed: float = 0.0
 
 
 @dataclass
@@ -109,6 +110,7 @@ class VideoGenerateResult:
     prompt: str
     cost: float = 0.0
     duration: float = 0.0
+    elapsed: float = 0.0
     metadata: dict = field(default_factory=dict)
 
 

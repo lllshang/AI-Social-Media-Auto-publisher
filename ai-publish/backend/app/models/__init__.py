@@ -99,7 +99,7 @@ class Material(Base):
     file_path: Mapped[str] = mapped_column(String(512), nullable=False)
     thumbnail: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
-    name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
     moderation_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
