@@ -273,26 +273,33 @@
           </el-tag>
         </div>
         <el-progress
-          v-if="activeTask.status !== 'completed' && activeTask.status !== 'failed'"
+          v-if="activeTask.status !== 'failed'"
           :percentage="displayProgress"
           :stroke-width="16"
           :text-inside="true"
-          :status="activeTask.status === 'running' ? '' : undefined"
+          :status="activeTask.status === 'completed' ? 'success' : activeTask.status === 'running' ? '' : undefined"
         />
         <div v-if="activeTask.status === 'failed'" class="error-msg">
           {{ activeTask.error_message }}
         </div>
+        <div v-if="actualCostSeconds !== null" class="progress-cost">
+          实际生成耗时：{{ actualCostSeconds }} 秒
+        </div>
         <div class="progress-hint">
           {{
-            activeTask.status === 'pending'
-              ? '排队中，等待生成槽位...'
-              : activeTask.progress <= 5
+            activeTask.status === 'completed'
+              ? '生成完成'
+              : activeTask.status === 'pending'
                 ? '排队中，等待生成槽位...'
-                : displayProgress < 30
-                  ? '正在调用 AI 生成服务...'
-                  : displayProgress >= 99
-                    ? '即将完成...'
-                    : `预计还需 ${remainingMinutes} 分钟...`
+                : activeTask.progress <= 5
+                  ? '排队中，等待生成槽位...'
+                  : displayProgress < 30
+                    ? '正在调用 AI 生成服务...'
+                    : displayProgress >= 95
+                      ? (isHardStalled
+                          ? '生成较慢，请稍候或刷新页面查看素材库是否已生成'
+                          : progressStalled ? '生成即将完成，请稍候...' : '即将完成...')
+                      : `预计还需 ${remainingMinutes} 分钟...`
           }}
         </div>
       </div>
@@ -314,6 +321,9 @@
             {{ gen.status === 'pending' ? '队列中' : gen.status === 'running' ? `${gen.progress}%` : gen.status === 'completed' ? '已完成' : '失败' }}
           </el-tag>
           <span class="gen-time">{{ formatTime(gen.created_at) }}</span>
+          <span v-if="gen.status === 'completed' && gen.completed_at" class="gen-cost">
+            耗时 {{ genCostSeconds(gen) }} 秒
+          </span>
           <div class="gen-actions">
             <el-button v-if="gen.status === 'completed' && gen.result?.material_ids?.length" size="small" :loading="gen._previewing" @click="previewGeneration(gen)">
               {{ gen._previewOpen ? '收起' : '预览' }}
@@ -596,8 +606,19 @@ let pollTimer = null
 const canStart = computed(() => form.keywords.trim())
 
 const activeTask = computed(() =>
-  generationTasks.value.find(t => t.status === 'pending' || t.status === 'running') || null
+  generationTasks.value.find(t => ['pending', 'running', 'failed', 'completed'].includes(t.status)) || null
 )
+
+// 实际生成耗时（秒）：从 API 调用（任务创建）到视频产物生成完成（completed_at）。
+// 仅当任务已完成（拿到 completed_at）才展示，进行中/失败不展示。
+const actualCostSeconds = computed(() => {
+  const t = activeTask.value
+  if (!t || t.status !== 'completed') return null
+  const start = new Date(t.created_at).getTime()
+  const end = t.completed_at ? new Date(t.completed_at).getTime() : null
+  if (!end || isNaN(end) || end < start) return null
+  return Math.max(0, Math.round((end - start) / 1000))
+})
 
 // 显示进度：后端 progress 优先级最高；如果卡在低值但任务在 running，前端按 elapsed
 // 时间在 [20%, 95%] 区间线性增长，避免 UI 一直停在 20%。
@@ -616,6 +637,8 @@ const displayProgress = computed(() => {
   if (t.status === 'failed') return t.progress || 0
   // 后端推到 95% 以上就以它为准（避免 100% 假完成被前端覆盖）
   if (t.progress >= 95) return Math.min(99, t.progress)
+  // 硬卡：超过预估时间 + 90s 仍 running，强制封顶 95%，不再让进度卡在中间值
+  if (isHardStalled.value) return stalledProgress
   // 凡是后端已经"进入生成阶段"（status=running 且 progress >= 3），无论
   // progress 卡在 3% 还是 20%，前端都按 elapsed 时间在 [20%, 95%] 平滑铺
   if (t.status === 'running' && t.progress >= 3) {
@@ -623,11 +646,35 @@ const displayProgress = computed(() => {
     const totalMs = t.gen_type && t.gen_type.includes('video')
       ? ESTIMATED_VIDEO_MS : ESTIMATED_IMAGE_MS
     const elapsed = nowTick.value - start
-    const fraction = Math.min(0.95, Math.max(0, elapsed / totalMs))
+    const fraction = Math.min(1.0, Math.max(0, elapsed / totalMs))
     return Math.floor(20 + (95 - 20) * fraction)
   }
   return t.progress || 0
 })
+
+// 生成是否已超过预估时间但仍未完成（用于显示"即将完成"提示，避免卡在中间值）
+const progressStalled = computed(() => {
+  const t = activeTask.value
+  if (!t || t.status !== 'running') return false
+  const start = new Date(t.created_at).getTime()
+  const totalMs = t.gen_type && t.gen_type.includes('video')
+    ? ESTIMATED_VIDEO_MS : ESTIMATED_IMAGE_MS
+  return (nowTick.value - start) > totalMs
+})
+
+// 生成超过预估时间 + 90 秒仍未完成/失败，说明后端可能卡死或前端数据滞后，
+// 此时强制把进度封顶 95% 并提示"生成较慢"，避免永远卡在 91% 等。
+const isHardStalled = computed(() => {
+  const t = activeTask.value
+  if (!t || t.status !== 'running') return false
+  const start = new Date(t.created_at).getTime()
+  const totalMs = (t.gen_type && t.gen_type.includes('video')
+    ? ESTIMATED_VIDEO_MS : ESTIMATED_IMAGE_MS)
+  return (nowTick.value - start) > totalMs + 90000
+})
+
+// 硬卡时使用的固定百分比
+const stalledProgress = 95
 
 const remainingMinutes = computed(() => {
   const t = activeTask.value
@@ -660,6 +707,15 @@ function genTypeLabel(type) {
 function formatTime(ts) {
   if (!ts) return ''
   return new Date(ts).toLocaleTimeString()
+}
+
+// 实际生成耗时（秒）：任务创建 → 完成，用于生成历史展示
+function genCostSeconds(gen) {
+  if (!gen.completed_at) return '-'
+  const start = new Date(gen.created_at).getTime()
+  const end = new Date(gen.completed_at).getTime()
+  if (isNaN(end) || end < start) return '-'
+  return Math.max(0, Math.round((end - start) / 1000))
 }
 
 function isSelected(gen) {
@@ -904,7 +960,26 @@ async function startImageGen(count) {
 }
 
 // ── Step 3: 状态页 ────────────────────────────────────────────
+const DEBUG_MODE = new URLSearchParams(location.search).has('debug')
+
+// 调试模式：不调后端，注入一条伪 running 任务，用于零成本验证进度条链路
+function loadDebugTask() {
+  const now = Date.now()
+  generationTasks.value = [{
+    id: 99999,
+    session_id: sessionId.value,
+    gen_type: 'text_to_video',
+    status: 'running',
+    progress: 20,
+    provider: 'debug',
+    created_at: new Date(now - 2000).toISOString(),
+    result: null,
+    error_message: null,
+  }]
+}
+
 async function loadGenerations() {
+  if (DEBUG_MODE) { loadDebugTask(); return }
   if (!sessionId.value) return
   try {
     generationTasks.value = await api.getGenerations(sessionId.value)
@@ -913,6 +988,23 @@ async function loadGenerations() {
 
 function startPolling() {
   stopPolling()
+  // 调试模式：用伪任务驱动 UI，不调后端、不花钱
+  if (DEBUG_MODE) {
+    nowTick.value = Date.now()
+    progressTicker = setInterval(() => { nowTick.value = Date.now() }, 1000)
+    // 10 秒后把伪任务置为 completed，模拟生成完成
+    pollTimer = setInterval(() => {
+      const t = generationTasks.value[0]
+      if (t && t.id === 99999 && Date.now() - new Date(t.created_at).getTime() > 10000) {
+        t.status = 'completed'
+        t.progress = 100
+        t.result = { material_ids: [1], video_url: '/static/materials/debug.mp4', image_urls: [] }
+        generationTasks.value = [...generationTasks.value]
+        stopPolling()
+      }
+    }, 1000)
+    return
+  }
   // 1 秒一刷本地时间，配合 displayProgress 让进度条在生成中平滑推进
   nowTick.value = Date.now()
   progressTicker = setInterval(() => { nowTick.value = Date.now() }, 1000)
@@ -921,10 +1013,12 @@ function startPolling() {
     if (!sessionId.value) return
     try {
       const tasks = await api.getGenerations(sessionId.value)
+      // 空数组说明轮询暂时无数据，不要停 ticker，避免进度冻结
+      if (!tasks.length) return
       generationTasks.value = tasks
-      if (tasks.every(t => t.status === 'completed' || t.status === 'failed')) {
-        stopPolling()
-      }
+      // 仅当确实有终态任务且不存在 running/pending 时才停止轮询
+      const hasActive = tasks.some(t => t.status === 'running' || t.status === 'pending')
+      if (!hasActive) stopPolling()
     } catch { /* ignore */ }
   }, 3000)
 }
@@ -1127,7 +1221,9 @@ onBeforeUnmount(() => {
 .progress-card { background: #f5f7fa; padding: 20px; border-radius: 8px; margin-bottom: 16px; }
 .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .progress-hint { margin-top: 8px; color: #999; font-size: 13px; }
+.progress-cost { margin-top: 8px; color: #409eff; font-size: 13px; font-weight: 600; }
 .error-msg { color: #f56c6c; margin-top: 6px; font-size: 13px; }
+.gen-cost { margin-left: 10px; color: #409eff; font-size: 12px; }
 .gen-item {
   padding: 10px 0; border-bottom: 1px solid #f0f0f0;
 }

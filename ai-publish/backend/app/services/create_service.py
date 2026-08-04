@@ -10,10 +10,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# 全局生成并发信号量：限制同时调用第三方 AIGC（腾讯云 VOD 等同账号并发受限，
-# 超过会触发 RequestLimitExceeded）。同账号全局最多 2 个生成任务并行执行。
+# 全局生成并发信号量：腾讯云 VOD AIGC 同账号短时间内并发极易触发
+# RequestLimitExceeded（ErrCode 70000）。设为 1 强制串行，避免连点两次时
+# 两个任务同时打腾讯云导致限流失败。
 # 放在模块级，保证所有 CreateService 实例共享同一个 Semaphore。
-GENERATION_SEMAPHORE = asyncio.Semaphore(2)
+GENERATION_SEMAPHORE = asyncio.Semaphore(1)
 
 
 def _log_task_exception(task):

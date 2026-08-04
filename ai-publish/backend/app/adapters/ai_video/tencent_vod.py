@@ -180,11 +180,28 @@ class TencentVodVideoAdapter:
             )
             task_info = resp.get("AigcVideoTask", {})
             status = task_info.get("Status", "")
+            err_code = task_info.get("ErrCode", 0)
+            err_code_ext = task_info.get("ErrCodeExt", "")
+            message = task_info.get("Message", "")
 
+            # 腾讯云在限流等异常时也会返回 Status=FINISH，但 ErrCode != 0。
+            # 必须显式检查 ErrCode，否则会把限流失败当成成功往下走。
             if status == "FINISH":
+                if err_code and int(err_code) != 0:
+                    if "RequestLimitExceeded" in str(err_code_ext) or int(err_code) == 70000:
+                        raise RuntimeError(
+                            f"腾讯云 VOD AIGC 触发限流（RequestLimitExceeded），"
+                            f"请稍候再试。ErrCode={err_code}, Message={message}"
+                        )
+                    raise RuntimeError(
+                        f"腾讯云 VOD AIGC 任务失败: ErrCode={err_code}, "
+                        f"ErrCodeExt={err_code_ext}, Message={message}"
+                    )
                 return task_info
             if status in ("FAILED", "FAIL", "ABORTED"):
-                raise RuntimeError(f"腾讯云 VOD AIGC 视频生成任务失败: {task_info}")
+                raise RuntimeError(
+                    f"腾讯云 VOD AIGC 视频生成任务失败: {task_info}"
+                )
 
             await asyncio.sleep(POLL_INTERVAL)
 
