@@ -100,6 +100,12 @@ class VideoGenerateInput:
     count: int = 1
     avatar_id: int | None = None
     avatar_type: str | None = None  # digital_human | simulation_human
+    # ====== 腾讯云 VOD AIGC (Kling) scene 专用 ======
+    scene_type: str | None = None  # avatar_i2v | lip_sync | motion_control
+    reference_image_url: str | None = None  # 数字人参考图 (Usage=Reference)
+    reference_video_url: str | None = None  # 仿真人/对口型参考视频 (Usage=Reference)
+    reference_audio_url: str | None = None  # 仿真人参考音频 (可选)
+    script_text: str | None = None  # 数字人/仿真人文本驱动 (Prompt)
 
 
 @dataclass

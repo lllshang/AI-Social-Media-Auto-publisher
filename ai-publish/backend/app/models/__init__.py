@@ -237,7 +237,9 @@ class Avatar(Base):
     type: Mapped[str] = mapped_column(String(32), nullable=False)  # digital_human | simulation_human
     gender: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
     config: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # appearance, voice, etc.
-    reference_images: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # material IDs or URLs
+    reference_images: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # 旧字段，保留兼容
+    reference_image_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)  # 数字人参考图 URL
+    reference_video_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)  # 仿真人/数字人参考视频
     thumbnail: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")
     created_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

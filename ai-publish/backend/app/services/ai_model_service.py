@@ -946,10 +946,12 @@ class AiModelService:
             return StubVideoAdapter()
 
     def get_digital_human_video_adapter(self) -> AiVideoAdapter:
-        """获取数字人视频适配器（占位 stub，待接入真实 provider）"""
-        from app.adapters.ai_video.digital_human_stub import DigitalHumanStubVideoAdapter
+        """数字人视频适配器：腾讯云 VOD AIGC (Kling) 数字人/对口型。
 
-        return DigitalHumanStubVideoAdapter()
+        权限默认视为已开通（按需求），若未开通会在生成任务时返回
+        TencentVodPermissionError 明确提示去开通对应能力。
+        """
+        return self.get_ai_video_adapter()
 
     def _resolve_video_target(self) -> tuple[str, str]:
         """解析视频生成目标（provider, model）"""

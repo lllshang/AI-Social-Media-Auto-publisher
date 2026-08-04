@@ -65,68 +65,40 @@
           </el-select>
         </el-form-item>
 
-        <!-- Digital human appearance config -->
+        <!-- 数字人：参考图（腾讯云 Kling avatar_i2v） -->
         <template v-if="avatarForm.type === 'digital_human'">
-          <el-form-item label="发型">
-            <el-select v-model="avatarForm.config.hairstyle" style="width: 100%">
-              <el-option label="短发" value="short" />
-              <el-option label="长发" value="long" />
-              <el-option label="卷发" value="curly" />
-              <el-option label="马尾" value="ponytail" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="服装">
-            <el-select v-model="avatarForm.config.clothing" style="width: 100%">
-              <el-option label="商务正装" value="business" />
-              <el-option label="休闲装" value="casual" />
-              <el-option label="传统服饰" value="traditional" />
-              <el-option label="运动装" value="sportswear" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="声音">
-            <el-select v-model="avatarForm.config.voice" style="width: 100%">
-              <el-option label="标准女声" value="female_standard" />
-              <el-option label="标准男声" value="male_standard" />
-              <el-option label="温柔女声" value="female_soft" />
-              <el-option label="沉稳男声" value="male_deep" />
-            </el-select>
+          <el-form-item label="参考图" required>
+            <p class="muted">上传一张正面清晰人像，将作为数字人形象（腾讯云 Kling 数字人 avatar_i2v）。</p>
+            <AvatarMediaUploader
+              v-model="avatarForm.reference_image_url"
+              media-type="image"
+              label="参考图"
+              category="数字人参考"
+              hint="建议正面、光线充足、无遮挡的人像照片"
+            />
           </el-form-item>
         </template>
 
-        <!-- Simulation human reference -->
+        <!-- 仿真人：参考视频 + 口播词（腾讯云 Kling lip_sync） -->
         <template v-if="avatarForm.type === 'simulation_human'">
-          <el-form-item label="描述">
-            <el-input v-model="avatarForm.config.description" type="textarea" :rows="2" placeholder="仿真人外貌、风格等描述" />
+          <el-form-item label="参考视频" required>
+            <p class="muted">上传一段真人视频，Kling 对口型(lip_sync)将据此生成仿真人讲解视频。</p>
+            <AvatarMediaUploader
+              v-model="avatarForm.reference_video_url"
+              media-type="video"
+              label="参考视频"
+              category="仿真人参考"
+              hint="建议 5-15 秒、面部清晰、单次说话的短视频"
+            />
           </el-form-item>
-          <el-form-item label="声音">
-            <el-select v-model="avatarForm.config.voice" style="width: 100%">
-              <el-option label="克隆原声" value="clone" />
-              <el-option label="标准女声" value="female_standard" />
-              <el-option label="标准男声" value="male_standard" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="参考照片">
-            <p class="muted">上传真人照片，S2V-01 会据此生成仿真人视频。照片将自动保存到素材库。</p>
-            <el-upload
-              :auto-upload="false"
-              :show-file-list="false"
-              accept="image/*"
-              @change="onRefPhotoChange"
-            >
-              <el-button>选择照片</el-button>
-            </el-upload>
-            <div v-if="refPhotoPreview" style="margin-top: 8px">
-              <img :src="refPhotoPreview" style="max-width: 160px; max-height: 160px; border-radius: 8px" />
-              <el-button size="small" type="danger" plain style="margin-left: 8px" @click="clearRefPhoto">清除</el-button>
-            </div>
-            <div v-if="existingRefImages.length" style="margin-top: 8px">
-              <p class="muted">已保存的参考照片：</p>
-              <div style="display: flex; gap: 8px; flex-wrap: wrap">
-                <div v-for="img in existingRefImages" :key="img.id" style="position: relative">
-                  <el-image :src="img.url" fit="cover" style="width: 80px; height: 80px; border-radius: 4px" />
-                </div>
-              </div>
-            </div>
+          <el-form-item label="口播词">
+            <el-input
+              v-model="avatarForm.config.script"
+              type="textarea"
+              :rows="3"
+              placeholder="仿真人将要讲述的文案（生成时作为驱动文本）"
+            />
+            <p class="muted">留空则直接使用生成视频时填写的视频描述。</p>
           </el-form-item>
         </template>
       </el-form>
@@ -162,6 +134,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import { usePermission } from '@/composables/usePermission'
+import AvatarMediaUploader from '@/components/AvatarMediaUploader.vue'
 
 const { can } = usePermission()
 const canWrite = computed(() => can('avatars:write'))
@@ -179,17 +152,12 @@ const thumbnailFile = ref(null)
 const thumbnailPreview = ref('')
 const uploadingThumbnail = ref(false)
 
-// Reference photo for simulation_human
-const refPhotoFile = ref(null)
-const refPhotoPreview = ref('')
-const existingRefImages = ref([])
-const uploadingRefPhoto = ref(false)
-
 const defaultConfig = () => ({
   hairstyle: '',
   clothing: '',
   voice: '',
   description: '',
+  script: '', // 仿真人口播词
 })
 
 const avatarForm = reactive({
@@ -197,6 +165,8 @@ const avatarForm = reactive({
   name: '',
   gender: 'female',
   config: defaultConfig(),
+  reference_image_url: '', // 数字人参考图 URL
+  reference_video_url: '', // 仿真人参考视频 URL
 })
 
 const filteredAvatars = computed(() => {
@@ -221,8 +191,8 @@ function openCreate() {
   avatarForm.name = ''
   avatarForm.gender = 'female'
   avatarForm.config = defaultConfig()
-  existingRefImages.value = []
-  clearRefPhoto()
+  avatarForm.reference_image_url = ''
+  avatarForm.reference_video_url = ''
   dialogVisible.value = true
 }
 
@@ -232,12 +202,8 @@ function openEdit(row) {
   avatarForm.name = row.name
   avatarForm.gender = row.gender || ''
   avatarForm.config = { ...defaultConfig(), ...(row.config || {}) }
-  // Load existing reference images
-  existingRefImages.value = []
-  clearRefPhoto()
-  if (row.reference_images && row.reference_images.length) {
-    loadRefImageDetails(row.reference_images)
-  }
+  avatarForm.reference_image_url = row.reference_image_url || (row.reference_images?.[0] || '')
+  avatarForm.reference_video_url = row.reference_video_url || ''
   dialogVisible.value = true
 }
 
@@ -246,24 +212,13 @@ async function submitAvatar() {
     ElMessage.warning('请输入名称')
     return
   }
-  // Simulation human with ref photo: upload first
-  if (avatarForm.type === 'simulation_human' && refPhotoFile.value) {
-    uploadingRefPhoto.value = true
-    try {
-      const uploadRes = await api.uploadMaterial(refPhotoFile.value, {
-        name: `仿真人参考照片_${avatarForm.name.trim()}`,
-        category: '仿真人参考',
-      })
-      // Collect reference image IDs: existing + newly uploaded
-      const existingIds = (existingRefImages.value || []).map((img) => img.id)
-      avatarForm.reference_images = [...existingIds, uploadRes.id]
-    } catch (e) {
-      ElMessage.error(`参考照片上传失败: ${e.message}`)
-      uploadingRefPhoto.value = false
-      return
-    } finally {
-      uploadingRefPhoto.value = false
-    }
+  if (avatarForm.type === 'digital_human' && !avatarForm.reference_image_url) {
+    ElMessage.warning('请上传数字人参考图')
+    return
+  }
+  if (avatarForm.type === 'simulation_human' && !avatarForm.reference_video_url) {
+    ElMessage.warning('请上传仿真人参考视频')
+    return
   }
 
   submitting.value = true
@@ -273,11 +228,16 @@ async function submitAvatar() {
       type: avatarForm.type,
       gender: avatarForm.gender || null,
       config: { ...avatarForm.config },
-      reference_images: avatarForm.reference_images || undefined,
     }
     // Clean empty config values
     for (const key of Object.keys(payload.config)) {
       if (!payload.config[key]) delete payload.config[key]
+    }
+
+    if (avatarForm.type === 'digital_human') {
+      payload.reference_image_url = avatarForm.reference_image_url || undefined
+    } else if (avatarForm.type === 'simulation_human') {
+      payload.reference_video_url = avatarForm.reference_video_url || undefined
     }
 
     if (editingId.value) {
@@ -332,31 +292,6 @@ async function uploadThumbnail() {
     ElMessage.error(e.message)
   } finally {
     uploadingThumbnail.value = false
-  }
-}
-
-// Reference photo handling
-function onRefPhotoChange(uploadFile) {
-  const file = uploadFile.raw || uploadFile
-  refPhotoFile.value = file
-  refPhotoPreview.value = URL.createObjectURL(file)
-}
-
-function clearRefPhoto() {
-  refPhotoFile.value = null
-  refPhotoPreview.value = ''
-}
-
-async function loadRefImageDetails(ids) {
-  // Fetch material details for each reference image ID
-  try {
-    const mats = await api.listMaterials()
-    existingRefImages.value = ids
-      .map((id) => mats.find((m) => m.id === id))
-      .filter(Boolean)
-      .map((m) => ({ id: m.id, url: m.url || m.thumbnail_url }))
-  } catch {
-    existingRefImages.value = []
   }
 }
 

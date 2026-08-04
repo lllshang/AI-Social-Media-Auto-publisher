@@ -159,7 +159,7 @@
           <el-radio-button value="text_to_video">文生视频</el-radio-button>
           <el-radio-button value="image_to_video">图生视频</el-radio-button>
           <el-radio-button value="simulation_human">仿真人</el-radio-button>
-          <el-radio-button value="digital_human">数字人(开发中)</el-radio-button>
+          <el-radio-button value="digital_human">数字人</el-radio-button>
         </el-radio-group>
 
         <el-form label-width="100px" class="output-form">
@@ -180,13 +180,21 @@
                 <el-option v-for="av in avatars.filter(a => a.type === 'simulation_human')" :key="av.id" :label="av.name" :value="av.id" />
               </el-select>
             </el-form-item>
+            <el-form-item label="口播词">
+              <el-input
+                v-model="avatarScript"
+                type="textarea"
+                :rows="3"
+                placeholder="留空则使用上方视频描述 / 定稿文案作为口播内容"
+              />
+              <p class="muted">仿真人将根据口播词（或视频描述）驱动对口型生成。</p>
+            </el-form-item>
           </template>
           <template v-if="videoGenType === 'digital_human'">
             <el-form-item label="选择数字人">
               <el-select v-model="selectedAvatarId" placeholder="选择已创建的数字人" @focus="loadAvatars">
                 <el-option v-for="av in avatars.filter(a => a.type === 'digital_human')" :key="av.id" :label="av.name" :value="av.id" />
               </el-select>
-              <el-tag size="small" type="warning" style="margin-top:4px">视频生成服务开发中，将产出占位视频</el-tag>
             </el-form-item>
           </template>
           <el-form-item label="时长">
@@ -480,6 +488,7 @@ function resetForm() {
   imagePreview.value = ''
   imageFile.value = null
   selectedAvatarId.value = null
+  avatarScript.value = ''
   avatars.value = []
   imageStyle.value = '科技感'
   brandColor.value = ''
@@ -587,6 +596,7 @@ const imagePreview = ref('')
 const imageFile = ref(null)
 const selectedAvatarId = ref(null)
 const avatars = ref([])
+const avatarScript = ref('') // 仿真人/数字人口播词（可选，覆盖视频描述）
 
 const imageStyle = ref('科技感')
 const brandColor = ref('')
@@ -914,15 +924,18 @@ async function startVideoGen() {
   genError.value = ''
   try {
     const imageUrl = videoGenType.value === 'image_to_video' ? await uploadImageIfNeeded() : null
+    // 数字人/仿真人：口播词优先作为视频描述（后端用作驱动文本）
+    const isAvatar = videoGenType.value === 'simulation_human' || videoGenType.value === 'digital_human'
+    const desc = isAvatar && avatarScript.value.trim() ? avatarScript.value.trim() : videoDesc.value
     const payload = {
       gen_type: videoGenType.value,
-      description: videoDesc.value,
+      description: desc,
       duration: videoDuration.value,
       resolution: videoResolution.value,
       fps: 24,
       image_url: imageUrl,
     }
-    if (videoGenType.value === 'simulation_human' || videoGenType.value === 'digital_human') {
+    if (isAvatar) {
       payload.avatar_id = selectedAvatarId.value || undefined
       payload.avatar_type = videoGenType.value
     }

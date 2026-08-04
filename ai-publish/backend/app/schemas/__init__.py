@@ -124,7 +124,9 @@ class AvatarCreate(BaseModel):
     type: str  # digital_human | simulation_human
     gender: str | None = None
     config: dict | None = None
-    reference_images: list[int] | None = None  # material IDs
+    reference_images: list[int] | None = None  # 旧字段，保留兼容
+    reference_image_url: str | None = None  # 数字人参考图 URL
+    reference_video_url: str | None = None  # 仿真人参考视频 URL
 
 
 class AvatarUpdate(BaseModel):
@@ -132,6 +134,8 @@ class AvatarUpdate(BaseModel):
     gender: str | None = None
     config: dict | None = None
     reference_images: list[int] | None = None
+    reference_image_url: str | None = None
+    reference_video_url: str | None = None
     thumbnail: str | None = None
     status: str | None = None
 
@@ -143,6 +147,8 @@ class AvatarResponse(BaseModel):
     gender: str | None = None
     config: dict | None = None
     reference_images: list | None = None
+    reference_image_url: str | None = None
+    reference_video_url: str | None = None
     thumbnail_url: str | None = None
     status: str
     created_at: datetime

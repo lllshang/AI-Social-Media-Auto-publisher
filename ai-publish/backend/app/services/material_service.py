@@ -379,14 +379,42 @@ class AiContentService:
         avatar_type: str | None = None,
     ) -> dict:
         """AI 视频生成核心逻辑"""
-        # 仿真人 → MiniMax S2V-01 (主体参考视频)
-        if avatar_type == "simulation_human":
-            adapter = self.factory.get_ai_video_adapter()
-            # 从 Avatar 读取 reference_images 作为 subject_reference_image
-            if avatar_id and not image_url:
-                image_url = self._resolve_avatar_reference_image(avatar_id)
+        # 数字人 / 仿真人 → 腾讯云 VOD AIGC (Kling)
+        # 数字人: avatar_i2v + 参考图; 仿真人: lip_sync + 参考视频 + 文案
+        scene_type: str | None = None
+        reference_image_url: str | None = None
+        reference_video_url: str | None = None
+        script_text: str | None = None
+
+        if avatar_type in ("simulation_human", "digital_human") and avatar_id:
+            avatar = self.db.query(Avatar).filter(Avatar.id == avatar_id, Avatar.status == "active").first()
+            if not avatar:
+                raise ValueError(f"Avatar(id={avatar_id}) 不存在或已删除")
+            if avatar.type == "digital_human":
+                scene_type = "avatar_i2v"
+                # 数字人读取参考图 URL（avatar_i2v 场景必填，不能为空）
+                reference_image_url = avatar.reference_image_url
+                if not reference_image_url:
+                    raise ValueError(
+                        f"数字人 Avatar(id={avatar_id}) 未配置参考图（reference_image_url），无法生成。"
+                    )
+            elif avatar.type == "simulation_human":
+                scene_type = "lip_sync"
+                reference_video_url = avatar.reference_video_url
+                if not reference_video_url:
+                    raise ValueError(
+                        f"仿真人 Avatar(id={avatar_id}) 未配置参考视频（reference_video_url），无法生成。"
+                    )
+                # 仿真人文案默认用 topic（前端已把 final_copy.body 作为 topic 传入）
+                script_text = topic
         elif avatar_type == "digital_human":
-            adapter = self.factory.get_digital_human_video_adapter()
+            scene_type = "avatar_i2v"
+        elif avatar_type == "simulation_human":
+            scene_type = "lip_sync"
+
+        # 仿真人/数字人统一走腾讯云 VOD AIGC（Kling）
+        if scene_type:
+            adapter = self.factory.get_ai_video_adapter()
         else:
             adapter = self.factory.get_ai_video_adapter()
 
@@ -399,6 +427,10 @@ class AiContentService:
             image_url=image_url,
             avatar_id=avatar_id,
             avatar_type=avatar_type,
+            scene_type=scene_type,
+            reference_image_url=reference_image_url,
+            reference_video_url=reference_video_url,
+            script_text=script_text,
         )
 
         logger.info(

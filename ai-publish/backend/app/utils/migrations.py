@@ -161,12 +161,21 @@ def run_migrations() -> None:
             "gender VARCHAR(16), "
             "config TEXT, "
             "reference_images TEXT, "
+            "reference_image_url VARCHAR(1024), "
             "thumbnail VARCHAR(512), "
             "status VARCHAR(20) DEFAULT 'active', "
             "created_by INTEGER, "
             "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
             "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
+
+    # 兼容已存在 avatars 表：新增参考视频/参考图字段
+    if inspector.has_table("avatars"):
+        avatar_columns = {col["name"] for col in inspector.get_columns("avatars")}
+        if "reference_video_url" not in avatar_columns:
+            statements.append("ALTER TABLE avatars ADD COLUMN reference_video_url VARCHAR(1024)")
+        if "reference_image_url" not in avatar_columns:
+            statements.append("ALTER TABLE avatars ADD COLUMN reference_image_url VARCHAR(1024)")
 
     if not inspector.has_table("creative_sessions"):
         statements.append(

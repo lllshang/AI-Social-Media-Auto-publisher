@@ -24,6 +24,8 @@ class AvatarService:
             gender=avatar.gender,
             config=avatar.config,
             reference_images=avatar.reference_images,
+            reference_image_url=avatar.reference_image_url,
+            reference_video_url=avatar.reference_video_url,
             thumbnail_url=thumbnail_url,
             status=avatar.status,
             created_at=avatar.created_at,
@@ -46,6 +48,8 @@ class AvatarService:
             gender=data.gender,
             config=data.config,
             reference_images=data.reference_images,
+            reference_image_url=data.reference_image_url,
+            reference_video_url=data.reference_video_url,
             created_by=user_id,
         )
         self.db.add(avatar)

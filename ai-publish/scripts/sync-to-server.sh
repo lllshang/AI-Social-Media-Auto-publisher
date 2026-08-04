@@ -30,27 +30,24 @@ fi
 
 echo "同步到 ${SSH_USER}@${PUBLIC_HOST}:${REMOTE_DIR} ..."
 
-ssh "${SSH_USER}@${PUBLIC_HOST}" "mkdir -p ${REMOTE_DIR}" 2>/dev/null || {
-  echo ""
-  echo "无法在 ${REMOTE_DIR} 创建目录（/opt 需 root 权限）。请在服务器执行一次："
-  echo "  ssh ${SSH_USER}@${PUBLIC_HOST}"
-  echo "  sudo mkdir -p ${REMOTE_DIR}"
-  echo "  sudo chown -R ${SSH_USER}:${SSH_USER} ${REMOTE_DIR}"
-  echo ""
-  echo "或把 deploy.env 中 INSTALL_DIR 改为 ~/ai-publish（如 /home/ubuntu/ai-publish）"
-  exit 1
-}
+# 说明：INSTALL_DIR 常见为 /opt/ai-publish（需 root 写权限）。
+# 这里用 --rsync-path="sudo rsync" 让远端以 root 身份写入，
+# 避免 ubuntu 用户对 /opt 无写权导致同步失败；同时去掉会误判退出的
+# ssh mkdir 前置检查（远端已有同名 root 目录时会直接报错退出）。
+RSYNC_OPTS=(-avz --progress --delete
+  --rsync-path="sudo rsync"
+  --exclude 'backend/.venv'
+  --exclude 'backend/data'
+  --exclude 'web/node_modules'
+  --exclude '.env'
+  --exclude '.env.local.backup')
 
-rsync -avz --progress --delete \
-  --exclude 'backend/.venv' \
-  --exclude 'backend/data' \
-  --exclude 'web/node_modules' \
-  --exclude '.env' \
-  --exclude '.env.local.backup' \
+rsync "${RSYNC_OPTS[@]}" \
   "${PROJECT_ROOT}/ai-publish/" \
   "${SSH_USER}@${PUBLIC_HOST}:${REMOTE_DIR}/ai-publish/"
 
 rsync -avz --progress \
+  --rsync-path="sudo rsync" \
   --exclude '.venv' \
   --exclude '__pycache__' \
   "${PROJECT_ROOT}/vendor/" \
