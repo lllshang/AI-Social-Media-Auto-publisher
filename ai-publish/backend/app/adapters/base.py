@@ -76,6 +76,9 @@ class ImageGenerateInput:
     cover_text: str | None = None
     brand_color: str | None = None
     brand_hint: str | None = None
+    # ====== 腾讯云 VOD AIGC 图生图 (数字人背景) 专用 ======
+    reference_image_url: str | None = None  # 参考图（数字人原图），存在则走图生图
+    background_prompt: str | None = None  # 背景描述，图生图时作为 Prompt
 
 
 @dataclass
@@ -106,6 +109,14 @@ class VideoGenerateInput:
     reference_video_url: str | None = None  # 仿真人/对口型参考视频 (Usage=Reference)
     reference_audio_url: str | None = None  # 仿真人参考音频 (可选)
     script_text: str | None = None  # 数字人/仿真人文本驱动 (Prompt)
+    # ====== TTS 语音合成 (edge-tts) ======
+    voice_id: str | None = None  # 音色 ID（如 zh-CN-XiaoxiaoNeural）；为空则用默认
+    tts_text: str | None = None  # 实际要被 TTS 念出来的文本；为空则用 script_text 或 topic
+    voice_sample_url: str | None = None  # 用户自定义上传的声音样本（暂作扩展位，本期不启用）
+    audio_duration: float = 0.0  # TTS 合成音频真实时长（秒）；数字人视频时长由它驱动
+    # ====== 腾讯云主体注册 (Kling SubjectInfos) 专用 ======
+    subject_image_url: str | None = None  # 用于主体注册的干净原图 URL（数字人，建议用 reference_image_url）
+    avatar_subject_id: str | None = None  # 已缓存的腾讯云主体 ID（命中则跳过注册，直接复用）
 
 
 @dataclass

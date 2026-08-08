@@ -241,6 +241,9 @@ class Avatar(Base):
     reference_image_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)  # 数字人参考图 URL
     reference_video_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)  # 仿真人/数字人参考视频
     thumbnail: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    background_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 背景描述(图生图 prompt,可空=原图)
+    background_image_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)  # 已生成的带背景参考图(用于视频驱动图)
+    subject_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # 腾讯云主体注册 ID(Kling 主体注册,用于稳定数字人主体、防止背景漂移)
     status: Mapped[str] = mapped_column(String(20), default="active")
     created_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -286,6 +289,23 @@ class CreativeSession(Base):
     polish_history: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)  # [{role, content}]
     output_material_ids: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)
     draft_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # {step, form, copy, videoParams, imageParams}
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class VoiceCloneTask(Base):
+    """腾讯云声音复刻任务：上传样本 → 异步训练 → 拿到复刻 voice_type"""
+
+    __tablename__ = "voice_clone_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)  # 用户给复刻音色的命名
+    task_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)  # 腾讯云返回的 TaskId
+    sample_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)  # 训练样本音频 URL
+    voice_type: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 训练成功后腾讯云分配的复刻音色 ID
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|training|succeeded|failed
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

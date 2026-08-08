@@ -26,6 +26,8 @@ from app.api.reviews import router as reviews_router
 from app.api.risk import router as risk_router
 from app.api.roles import router as roles_router
 from app.api.system import router as system_router
+from app.api.voices import router as voices_router
+from app.api.voice_clone import router as voice_clone_router
 from app.api.system_configs import router as system_configs_router
 from app.api.trending import router as trending_router
 from app.api.users import router as users_router
@@ -70,9 +72,10 @@ async def lifespan(app: FastAPI):
     settings.storage_path.mkdir(parents=True, exist_ok=True)
     settings.cookie_path.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
-    from app.utils.migrations import run_sqlite_migrations
+    from app.utils.migrations import run_sqlite_migrations, run_universal_migrations
 
     run_sqlite_migrations()
+    run_universal_migrations()
     db = SessionLocal()
     try:
         ensure_admin_user(db)
@@ -146,6 +149,8 @@ app.include_router(system_configs_router)
 app.include_router(roles_router)
 app.include_router(trending_router)
 app.include_router(users_router)
+app.include_router(voices_router)
+app.include_router(voice_clone_router)
 
 settings = get_settings()
 static_dir = settings.storage_path

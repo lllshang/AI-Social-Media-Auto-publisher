@@ -181,13 +181,53 @@
               </el-select>
             </el-form-item>
             <el-form-item label="口播词">
+              <el-checkbox v-model="useCustomScript">自定义口播词（控制视频时长）</el-checkbox>
+              <p class="muted">不勾选时，使用「文案创作」步骤的 AI 定稿文案作为口播内容，其长度决定配音与视频时长。勾选后可自行输入；文案越长，生成的视频越长。</p>
+            </el-form-item>
+            <el-form-item v-if="useCustomScript" label="自定义文案">
               <el-input
                 v-model="avatarScript"
                 type="textarea"
                 :rows="3"
-                placeholder="留空则使用上方视频描述 / 定稿文案作为口播内容"
+                maxlength="600"
+                show-word-limit
+                placeholder="输入口播文案，将按此文案合成配音（视频时长 ≈ 配音时长）"
               />
-              <p class="muted">仿真人将根据口播词（或视频描述）驱动对口型生成。</p>
+            </el-form-item>
+            <el-form-item label="配音音色">
+              <el-select v-model="voiceId" placeholder="选择音色" filterable @focus="loadVoices" @change="onVoiceChange">
+                <el-option-group label="标准音色">
+                  <el-option
+                    v-for="v in voiceOptions"
+                    :key="v.id"
+                    :value="v.id"
+                    :label="`${v.name}（${v.tag}）`"
+                  />
+                </el-option-group>
+                <el-option-group v-if="myVoices.length" label="我的声音（复刻）">
+                  <el-option
+                    v-for="v in myVoices"
+                    :key="v.id"
+                    :value="v.id"
+                    :label="v.status === 'succeeded' ? v.name : `${v.name}（训练中…）`"
+                    :disabled="v.status !== 'succeeded'"
+                  />
+                </el-option-group>
+              </el-select>
+              <el-upload
+                :show-file-list="false"
+                :auto-upload="false"
+                accept="audio/mpeg,audio/mp3,audio/wav,audio/m4a,.m4a"
+                :on-change="onCloneVoiceChange"
+                style="display: inline-block; margin-left: 12px"
+              >
+                <el-button :loading="uploadingVoice" size="small" type="primary" plain>
+                  {{ uploadingVoice ? '复刻中…' : '用我的声音复刻' }}
+                </el-button>
+              </el-upload>
+              <p class="muted">
+                选「我的声音（复刻）」即用你上传的录音合成任意口播；复刻需一段 10 秒左右清晰单人中文录音（wav/mp3/m4a）。未复刻时使用上方标准音色。
+              </p>
             </el-form-item>
           </template>
           <template v-if="videoGenType === 'digital_human'">
@@ -195,12 +235,83 @@
               <el-select v-model="selectedAvatarId" placeholder="选择已创建的数字人" @focus="loadAvatars">
                 <el-option v-for="av in avatars.filter(a => a.type === 'digital_human')" :key="av.id" :label="av.name" :value="av.id" />
               </el-select>
+              <el-alert
+                v-if="selectedDigitalHuman && selectedDigitalHuman.background_image_url"
+                type="success"
+                :closable="false"
+                style="margin-top: 8px"
+                title="已配置背景图，生成时将自动使用「带背景参考图」作为驱动图（视频带背景）"
+              />
+              <el-alert
+                v-else-if="selectedDigitalHuman"
+                type="info"
+                :closable="false"
+                style="margin-top: 8px"
+                title="该数字人未配置背景图，生成的视频使用原参考图（无背景）。可在「数字人管理」中生成背景图。"
+              />
+            </el-form-item>
+            <el-form-item label="口播词">
+              <el-checkbox v-model="useCustomScript">自定义口播词（控制视频时长）</el-checkbox>
+              <p class="muted">不勾选时，使用「文案创作」步骤的 AI 定稿文案作为口播内容，其长度决定配音与视频时长。勾选后可自行输入；文案越长，生成的视频越长。</p>
+            </el-form-item>
+            <el-form-item v-if="useCustomScript" label="自定义文案">
+              <el-input
+                v-model="avatarScript"
+                type="textarea"
+                :rows="3"
+                maxlength="600"
+                show-word-limit
+                placeholder="输入口播文案，将按此文案合成配音（视频时长 ≈ 配音时长）"
+              />
+            </el-form-item>
+            <el-form-item label="配音音色">
+              <el-select v-model="voiceId" placeholder="选择音色" filterable @focus="loadVoices" @change="onVoiceChange">
+                <el-option-group label="标准音色">
+                  <el-option
+                    v-for="v in voiceOptions"
+                    :key="v.id"
+                    :value="v.id"
+                    :label="`${v.name}（${v.tag}）`"
+                  />
+                </el-option-group>
+                <el-option-group v-if="myVoices.length" label="我的声音（复刻）">
+                  <el-option
+                    v-for="v in myVoices"
+                    :key="v.id"
+                    :value="v.id"
+                    :label="v.status === 'succeeded' ? v.name : `${v.name}（训练中…）`"
+                    :disabled="v.status !== 'succeeded'"
+                  />
+                </el-option-group>
+              </el-select>
+              <el-upload
+                :show-file-list="false"
+                :auto-upload="false"
+                accept="audio/mpeg,audio/mp3,audio/wav,audio/m4a,.m4a"
+                :on-change="onCloneVoiceChange"
+                style="display: inline-block; margin-left: 12px"
+              >
+                <el-button :loading="uploadingVoice" size="small" type="primary" plain>
+                  {{ uploadingVoice ? '复刻中…' : '用我的声音复刻' }}
+                </el-button>
+              </el-upload>
+              <p class="muted">
+                选「我的声音（复刻）」即用你上传的录音合成任意口播；复刻需一段 10 秒左右清晰单人中文录音（wav/mp3/m4a）。未复刻时使用上方标准音色。
+              </p>
             </el-form-item>
           </template>
-          <el-form-item label="时长">
+          <el-form-item v-if="videoGenType !== 'digital_human' && videoGenType !== 'simulation_human'" label="时长">
             <el-input-number v-model="videoDuration" :min="1" :max="60" :step="1" style="width: 160px" />
             <span class="cost-tag" style="margin-left: 8px">预估 ¥{{ videoCostEstimate }}</span>
           </el-form-item>
+          <el-alert
+            v-else
+            type="info"
+            :closable="false"
+            style="margin-bottom: 12px"
+            title="数字人 / 仿真人视频时长由口播文案决定"
+            description="音频时长即视频时长，无法单独设置「时长」参数。调整上方口播词（或 AI 定稿文案）的长度即可控制视频长短。"
+          />
           <el-form-item label="分辨率">
             <el-select v-model="videoResolution">
               <el-option value="720p" label="720p" />
@@ -451,21 +562,37 @@ async function removeDraft(id) {
 }
 
 async function viewSession(draft) {
+  console.log('[viewSession] start, draft.id=', draft?.id, 'status=', draft?.status)
   sessionId.value = draft.id
   showDraftList.value = false
   step.value = 3
   // 恢复基础信息
+  let loadOk = false
   try {
     const res = await api.getSession(draft.id)
+    console.log('[viewSession] getSession OK', res)
     const s = res.session || res
     form.keywords = s.keywords || ''
     form.background = s.background || ''
     form.content_type = s.content_type || 'video'
     loadAvatars()
-    await refreshTasks()
-    ElMessage.success('已加载创作成果')
+    loadOk = true
   } catch (e) {
-    ElMessage.error(e.message || '加载失败')
+    console.error('[viewSession] getSession failed:', e)
+  }
+  console.log('[viewSession] about to loadGenerations, sessionId=', sessionId.value, 'step=', step.value)
+  // 注：历史原本调的是不存在的 refreshTasks()，导致整段被中断。
+  // 改为 loadGenerations + startPolling，与 resumeDraft 保持一致。
+  // 不论 getSession 成功与否都拉历史——草稿箱里"已完成"的草稿用户期望看到历史。
+  try {
+    await loadGenerations()
+    console.log('[viewSession] loadGenerations done, count=', generationTasks.value.length)
+  } catch (e) {
+    console.error('[viewSession] loadGenerations failed:', e)
+  }
+  startPolling()
+  if (loadOk) {
+    ElMessage.success('已加载创作成果')
   }
 }
 
@@ -489,6 +616,7 @@ function resetForm() {
   imageFile.value = null
   selectedAvatarId.value = null
   avatarScript.value = ''
+  useCustomScript.value = false
   avatars.value = []
   imageStyle.value = '科技感'
   brandColor.value = ''
@@ -500,6 +628,7 @@ function resetForm() {
 }
 
 async function resumeDraft(draft) {
+  console.log('[resumeDraft] start, draft.id=', draft?.id, 'status=', draft?.status, 'draft_data=', draft?.draft_data)
   sessionId.value = draft.id
   showDraftList.value = false
 
@@ -541,13 +670,37 @@ async function resumeDraft(draft) {
     // 无 draft_data 时，根据状态推断
     if (draft.status === 'generating') {
       step.value = 3
-      loadGenerations()
-      startPolling()
     } else if (draft.final_copy && draft.final_copy.body) {
       step.value = 1
     } else {
       step.value = 0
     }
+  }
+
+  // 兜底：如果这条草稿有"生成中"或"已完成"任务（用户从生成状态步骤被切走），
+  // 强制跳到"生成状态"步骤去看历史；否则用户可能看到的是步骤 2 内容生成，
+  // 完全没有"生成历史"卡片，会以为历史丢了。
+  const hasAnyGen = (draft.generation_count && draft.generation_count > 0)
+    || draft.status === 'generating'
+    || draft.status === 'completed'
+    || draft.status === 'failed'
+  if (hasAnyGen && step.value < 3) {
+    console.log('[resumeDraft] 强制跳到 step=3，因为有历史/未完成任务')
+    step.value = 3
+  }
+  console.log('[resumeDraft] after restore, step=', step.value, 'sessionId=', sessionId.value)
+
+  // 如果恢复后已经进入"生成状态"（step=3），必须把生成历史拉回来，并继续轮询，
+  // 否则会看到"暂无生成记录"。
+  // 注意：把 loadGenerations 放到 try-catch 外面，不依赖 getSession 成功。
+  if (step.value === 3) {
+    try {
+      await loadGenerations()
+      console.log('[resumeDraft] loadGenerations done, count=', generationTasks.value.length)
+    } catch (e) {
+      console.error('[resumeDraft] loadGenerations failed:', e)
+    }
+    startPolling()
   }
 
   ElMessage.success('已恢复草稿，继续创作')
@@ -597,6 +750,98 @@ const imageFile = ref(null)
 const selectedAvatarId = ref(null)
 const avatars = ref([])
 const avatarScript = ref('') // 仿真人/数字人口播词（可选，覆盖视频描述）
+const useCustomScript = ref(false) // 是否使用自定义口播词（否则用 AI 定稿文案，其长度决定视频时长）
+
+// ====== TTS 配音音色 ======
+const voiceId = ref(loadPickedVoice() || 'zh-CN-XiaoxiaoNeural') // 默认晓晓（女·温柔）；若用户曾手动选过，恢复用户的偏好
+const voiceOptions = ref([])                  // 拉取到的标准音色下拉
+const myVoices = ref([])                       // 我的声音（复刻音色），id = clone:<voice_type>
+const uploadedVoice = ref(null)               // 兼容旧逻辑保留字段（不再使用）
+const uploadingVoice = ref(false)            // 复刻中
+
+// 关键修复：用户是否手动选过音色（持久化）。
+// 用 localStorage 持久化，既跨刷新生效，也能避免 Vite/esbuild 把 set-only 的 ref 当死代码消除掉。
+// 标志为 '1' 即视为「用户已显式选过音色」，autoPickVoiceByAvatar 不再覆盖。
+const VOICE_PICKED_KEY = 'createView.userPickedVoice'
+function markVoicePicked() {
+  try { localStorage.setItem(VOICE_PICKED_KEY, '1') } catch (e) { /* noop */ }
+}
+function isVoicePicked() {
+  try { return localStorage.getItem(VOICE_PICKED_KEY) === '1' } catch (e) { return false }
+}
+function loadPickedVoice() {
+  try {
+    const v = localStorage.getItem('createView.lastPickedVoice')
+    return v || null
+  } catch (e) { return null }
+}
+function savePickedVoice(v) {
+  try { localStorage.setItem('createView.lastPickedVoice', v) } catch (e) { /* noop */ }
+}
+
+async function loadVoices() {
+  if (!voiceOptions.value.length) {
+    try {
+      const res = await api.listVoices()
+      voiceOptions.value = res?.voices || res || []
+    } catch (e) {
+      ElMessage.warning('标准音色加载失败，使用默认音色。')
+    }
+  }
+  // 每次聚焦都刷新复刻音色状态（训练完成后会出现在列表）
+  try {
+    const res = await api.listVoiceClones()
+    const items = res?.items || []
+    myVoices.value = items.map(v => ({
+      id: `clone:${v.voice_type}`,
+      name: v.name,
+      status: v.status,
+    }))
+  } catch (e) {
+    // 复刻音色列表加载失败不阻塞主流程
+  }
+}
+
+async function onCloneVoiceChange(file) {
+  if (!file?.raw) return
+  uploadingVoice.value = true
+  try {
+    // 用文件名推断性别：含"女"→女，含"男"→男，默认男
+    const fname = (file.name || '').toLowerCase()
+    const gender = fname.includes('女') ? 2 : fname.includes('男') ? 1 : 1
+    const res = await api.createVoiceClone(file.raw, {
+      name: file.name?.replace(/\.[^.]+$/, '') || '我的声音',
+      voice_gender: gender,
+    })
+    ElMessage.success('已创建复刻任务，训练通常需几分钟，完成后在「我的声音」中可选（下拉可刷新状态）。')
+    loadVoices()
+    if (res?.id) pollCloneStatus(res.id)
+  } catch (e) {
+    ElMessage.error('复刻失败：' + (e.response?.data?.detail || e.message || '未知错误'))
+  } finally {
+    uploadingVoice.value = false
+  }
+}
+
+let _cloneTimer = null
+async function pollCloneStatus(taskId) {
+  if (_cloneTimer) clearInterval(_cloneTimer)
+  _cloneTimer = setInterval(async () => {
+    try {
+      const st = await api.getVoiceCloneStatus(taskId)
+      if (st?.status === 'succeeded') {
+        clearInterval(_cloneTimer)
+        ElMessage.success('声音复刻完成，已可用！')
+        loadVoices()
+      } else if (st?.status === 'failed') {
+        clearInterval(_cloneTimer)
+        ElMessage.error('声音复刻失败：' + (st.error_message || '未知'))
+      }
+    } catch (e) {
+      // 忽略轮询错误
+    }
+  }, 8000)
+}
 
 const imageStyle = ref('科技感')
 const brandColor = ref('')
@@ -903,11 +1148,38 @@ function onImageChange(file) {
 }
 
 async function loadAvatars() {
-  if (avatars.value.length) return
   try {
     avatars.value = await api.listAvatars()
+    // 加载完成后,若已选了数字人,立刻按性别匹配默认音色
+    if (selectedAvatarId.value) autoPickVoiceByAvatar()
   } catch { /* ignore */ }
 }
+
+// 根据当前所选数字人的 gender 自动匹配默认音色:
+// 男→云希(沉稳, zh-CN-YunxiNeural), 女→晓晓(温柔, zh-CN-XiaoxiaoNeural)
+// 关键修复：只有用户"尚未手动选择"音色时才自动匹配，避免覆盖用户在下拉里的显式选择。
+function autoPickVoiceByAvatar() {
+  // 关键修复：用户已手动选过音色（localStorage 持久化，跨刷新生效），则尊重其选择，不被数字人性别自动匹配覆盖。
+  if (isVoicePicked()) return
+  if (voiceId.value?.startsWith('clone:')) return  // 已选复刻音色时不覆盖
+  const a = avatars.value.find(x => x.id === selectedAvatarId.value)
+  if (!a) return
+  if (a.gender === 'male') voiceId.value = 'zh-CN-YunxiNeural'
+  else if (a.gender === 'female') voiceId.value = 'zh-CN-XiaoxiaoNeural'
+}
+
+// 用户手动选了音色：同时写 localStorage（守卫标志 + 最后一次选择，便于下次刷新恢复）
+function onVoiceChange(val) {
+  markVoicePicked()
+  if (val) savePickedVoice(val)
+}
+
+// 当前选中的数字人（用于展示背景图提示）
+const selectedDigitalHuman = computed(() =>
+  avatars.value.find(x => x.id === selectedAvatarId.value && x.type === 'digital_human') || null
+)
+
+watch(selectedAvatarId, () => autoPickVoiceByAvatar())
 
 async function uploadImageIfNeeded() {
   if (!imageFile.value) return null
@@ -927,6 +1199,11 @@ async function startVideoGen() {
     // 数字人/仿真人：口播词优先作为视频描述（后端用作驱动文本）
     const isAvatar = videoGenType.value === 'simulation_human' || videoGenType.value === 'digital_human'
     const desc = isAvatar && avatarScript.value.trim() ? avatarScript.value.trim() : videoDesc.value
+    // 数字人/仿真人必须有口播词，否则 Kling 拿不到干净音频会自己"猜"出乱码字幕
+    if (isAvatar && !(avatarScript.value.trim() || videoDesc.value.trim())) {
+      ElMessage.warning('请先填写口播词（数字人/仿真人必须驱动口型）')
+      return
+    }
     const payload = {
       gen_type: videoGenType.value,
       description: desc,
@@ -938,6 +1215,11 @@ async function startVideoGen() {
     if (isAvatar) {
       payload.avatar_id = selectedAvatarId.value || undefined
       payload.avatar_type = videoGenType.value
+      // 配音：选中的音色（标准音色 id 或 复刻音色 clone:<voice_type>）
+      payload.voice_id = voiceId.value
+      payload.tts_text = avatarScript.value.trim() || videoDesc.value
+      // 注：复刻音色直接通过 voice_id=clone:<voice_type> 走后端 VRS 合成，
+      // 不再依赖前端上传样本 URL（旧的 reference_audio_url 路径已废弃）。
     }
     await api.startGeneration(sessionId.value, payload)
     step.value = 3
@@ -993,10 +1275,18 @@ function loadDebugTask() {
 
 async function loadGenerations() {
   if (DEBUG_MODE) { loadDebugTask(); return }
-  if (!sessionId.value) return
+  if (!sessionId.value) {
+    console.warn('[loadGenerations] sessionId is null, skip')
+    return
+  }
+  console.log('[loadGenerations] fetching for sessionId=', sessionId.value)
   try {
-    generationTasks.value = await api.getGenerations(sessionId.value)
-  } catch { /* ignore */ }
+    const data = await api.getGenerations(sessionId.value)
+    console.log('[loadGenerations] got', Array.isArray(data) ? data.length : '?', 'tasks')
+    generationTasks.value = data
+  } catch (e) {
+    console.error('[loadGenerations] failed:', e)
+  }
 }
 
 function startPolling() {
@@ -1028,7 +1318,15 @@ function startPolling() {
       const tasks = await api.getGenerations(sessionId.value)
       // 空数组说明轮询暂时无数据，不要停 ticker，避免进度冻结
       if (!tasks.length) return
-      generationTasks.value = tasks
+      // 按 id 合并：保留本地 UI 标志（_previewOpen / _previewing），
+      // 否则每秒整体替换会冲掉预览状态导致预览区瞬间关闭、视频播放被中断。
+      const prevById = new Map(generationTasks.value.map(t => [t.id, t]))
+      generationTasks.value = tasks.map(t => {
+        const prev = prevById.get(t.id)
+        if (!prev) return t
+        // 后端字段为主，本地 UI 标志保留
+        return { ...t, _previewOpen: prev._previewOpen, _previewing: prev._previewing }
+      })
       // 仅当确实有终态任务且不存在 running/pending 时才停止轮询
       const hasActive = tasks.some(t => t.status === 'running' || t.status === 'pending')
       if (!hasActive) stopPolling()
@@ -1148,6 +1446,11 @@ onMounted(async () => {
   if (route.query.platform) {
     form.platforms = [route.query.platform]
   }
+
+  // 提前拉取标准音色，保证默认选中项能显示中文名而非 id
+  loadVoices()
+  // 提前拉取数字人列表，避免用户没点过头像下拉就发请求时拿到 null
+  loadAvatars()
 
   // 加载草稿列表
   await loadDrafts()

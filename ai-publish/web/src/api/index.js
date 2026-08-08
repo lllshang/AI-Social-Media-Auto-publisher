@@ -126,6 +126,9 @@ export const api = {
   createAvatar: (payload) => http.post('/api/avatars', payload),
   updateAvatar: (id, payload) => http.put(`/api/avatars/${id}`, payload),
   deleteAvatar: (id) => http.delete(`/api/avatars/${id}`),
+  // 为指定数字人生成 2 张带背景的候选参考图（图生图）
+  generateAvatarBackground: (id, payload) =>
+    http.post(`/api/avatars/${id}/generate-background`, payload),
   uploadAvatarThumbnail: (id, file) => {
     const form = new FormData()
     form.append('file', file)
@@ -133,6 +136,25 @@ export const api = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  // === TTS 配音音色 ===
+  listVoices: () => http.get('/api/voices'),
+  // === 声音复刻（VRS）===
+  listVoiceClones: () => http.get('/api/voice-clone'),
+  createVoiceClone: (file, { name, voice_gender }) => {
+    const form = new FormData()
+    form.append('audio', file)
+    if (name) form.append('name', name)
+    if (voice_gender != null) form.append('voice_gender', String(voice_gender))
+    return http.post('/api/voice-clone', form)
+  },
+  getVoiceCloneStatus: (taskId) => http.get(`/api/voice-clone/${taskId}/status`),
+  getVoiceCloneTrainingText: () => http.get('/api/voice-clone/training-text'),
+  previewVoice: ({ text, voice_id, rate, volume }) =>
+    http.post(
+      '/api/voices/preview',
+      { text, voice_id, rate, volume },
+      { responseType: 'blob' },
+    ),
   getModels: () => http.get('/api/ai/models'),
   listProviders: () => http.get('/api/ai/models/providers'),
   saveProviderConfig: (payload) => http.put('/api/ai/models/providers/config', payload),

@@ -17,6 +17,12 @@ class AvatarService:
     def to_response(self, avatar: Avatar) -> AvatarResponse:
         storage = self.factory.get_storage_adapter()
         thumbnail_url = storage.get_url(avatar.thumbnail) if avatar.thumbnail else None
+        # 带背景参考图同样走 storage 转换为可访问的 URL(此前直接透传相对路径导致前端加载失败)
+        background_image_url = (
+            storage.get_url(avatar.background_image_url)
+            if avatar.background_image_url
+            else None
+        )
         return AvatarResponse(
             id=avatar.id,
             name=avatar.name,
@@ -27,6 +33,8 @@ class AvatarService:
             reference_image_url=avatar.reference_image_url,
             reference_video_url=avatar.reference_video_url,
             thumbnail_url=thumbnail_url,
+            background_prompt=avatar.background_prompt,
+            background_image_url=background_image_url,
             status=avatar.status,
             created_at=avatar.created_at,
             updated_at=avatar.updated_at,
@@ -50,6 +58,8 @@ class AvatarService:
             reference_images=data.reference_images,
             reference_image_url=data.reference_image_url,
             reference_video_url=data.reference_video_url,
+            background_prompt=data.background_prompt,
+            background_image_url=data.background_image_url,
             created_by=user_id,
         )
         self.db.add(avatar)

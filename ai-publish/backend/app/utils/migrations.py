@@ -10,6 +10,11 @@ def run_migrations() -> None:
 
     columns = {col["name"] for col in inspector.get_columns("materials")}
     statements: list[str] = []
+
+    if inspector.has_table("avatars"):
+        avatar_columns = {col["name"] for col in inspector.get_columns("avatars")}
+        if "subject_id" not in avatar_columns:
+            statements.append("ALTER TABLE avatars ADD COLUMN subject_id VARCHAR(128)")
     if "name" not in columns:
         statements.append("ALTER TABLE materials ADD COLUMN name VARCHAR(128)")
     if "category" not in columns:
@@ -163,6 +168,9 @@ def run_migrations() -> None:
             "reference_images TEXT, "
             "reference_image_url VARCHAR(1024), "
             "thumbnail VARCHAR(512), "
+            "background_prompt TEXT, "
+            "background_image_url VARCHAR(1024), "
+            "subject_id VARCHAR(128), "
             "status VARCHAR(20) DEFAULT 'active', "
             "created_by INTEGER, "
             "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
@@ -176,6 +184,12 @@ def run_migrations() -> None:
             statements.append("ALTER TABLE avatars ADD COLUMN reference_video_url VARCHAR(1024)")
         if "reference_image_url" not in avatar_columns:
             statements.append("ALTER TABLE avatars ADD COLUMN reference_image_url VARCHAR(1024)")
+        if "background_prompt" not in avatar_columns:
+            statements.append("ALTER TABLE avatars ADD COLUMN background_prompt TEXT")
+        if "background_image_url" not in avatar_columns:
+            statements.append("ALTER TABLE avatars ADD COLUMN background_image_url VARCHAR(1024)")
+        if "subject_id" not in avatar_columns:
+            statements.append("ALTER TABLE avatars ADD COLUMN subject_id VARCHAR(128)")
 
     if not inspector.has_table("creative_sessions"):
         statements.append(
@@ -218,6 +232,21 @@ def run_migrations() -> None:
             "completed_at DATETIME)"
         )
 
+    if not inspector.has_table("voice_clone_tasks"):
+        statements.append(
+            "CREATE TABLE voice_clone_tasks ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "name VARCHAR(128) NOT NULL, "
+            "task_id VARCHAR(128), "
+            "sample_url VARCHAR(1024), "
+            "voice_type INTEGER, "
+            "status VARCHAR(20) DEFAULT 'pending', "
+            "error_message TEXT, "
+            "created_by INTEGER, "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+
     if not statements:
         return
 
@@ -228,3 +257,25 @@ def run_migrations() -> None:
 
 def run_sqlite_migrations() -> None:
     run_migrations()
+
+
+def run_universal_migrations() -> None:
+    """跨数据库兼容的轻量迁移（仅用于基础列追加）。
+
+    不依赖 run_migrations 内的 SQLite 专属语法（AUTOINCREMENT 等），
+    适用于生产环境 MySQL。启动时由 main.py 调用。
+    """
+    inspector = inspect(engine)
+    if not inspector.has_table("avatars"):
+        return
+    avatar_columns = {col["name"] for col in inspector.get_columns("avatars")}
+    statements = []
+    if "background_prompt" not in avatar_columns:
+        statements.append("ALTER TABLE avatars ADD COLUMN background_prompt TEXT")
+    if "background_image_url" not in avatar_columns:
+        statements.append("ALTER TABLE avatars ADD COLUMN background_image_url VARCHAR(1024)")
+    if not statements:
+        return
+    with engine.begin() as conn:
+        for stmt in statements:
+            conn.execute(text(stmt))

@@ -43,8 +43,15 @@ def list_sessions(
 ):
     svc = CreateService(db)
     items, total = svc.get_sessions(current_user.id, page, page_size)
+    # model_validate 不会读取 ORM 运行时挂的动态属性，所以显式传 generation_count。
+    # 这样 UI 可以直接判断"这条草稿有没有生成任务"，决定恢复时跳到哪一步。
+    resp_items = []
+    for it in items:
+        data = CreativeSessionResponse.model_validate(it).model_dump()
+        data["generation_count"] = getattr(it, "generation_count", 0)
+        resp_items.append(CreativeSessionResponse(**data))
     return CreativeSessionListResponse(
-        items=[CreativeSessionResponse.model_validate(it) for it in items],
+        items=resp_items,
         total=total,
         page=page,
         page_size=page_size,

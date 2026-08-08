@@ -92,6 +92,12 @@ class CreateService:
         q = self.db.query(CreativeSession).filter(CreativeSession.user_id == user_id)
         total = q.count()
         items = q.order_by(CreativeSession.updated_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+        # 给每个 session 注入 generation_count 字段，供 UI 判断"该草稿是否有生成任务"
+        # 这样前端恢复草稿时能直接决定跳到哪一步，无需在 list 阶段就拉每个 session 的任务列表
+        for it in items:
+            it.generation_count = (
+                self.db.query(GenerationTask).filter(GenerationTask.session_id == it.id).count()
+            )
         return items, total
 
     def delete_session(self, session_id: int, user_id: int) -> bool:
@@ -393,7 +399,9 @@ class CreateService:
         final_copy = session_snapshot.get("final_copy") or {}
         description = data.description or ""
         if not description and final_copy:
-            description = f"{final_copy.get('title', '')} {final_copy.get('body', '')}"[:200]
+            # 不再截断：数字人视频时长由音频驱动，TTS 内部按句分段合成拼接，
+            # 完整文案都能被念出来（最长约 300s）。
+            description = f"{final_copy.get('title', '')} {final_copy.get('body', '')}".strip()
 
         result = await svc.generate_video(
             topic=description,
@@ -405,6 +413,8 @@ class CreateService:
             user_id=session_snapshot.get("user_id"),
             avatar_id=data.avatar_id,
             avatar_type=data.avatar_type,
+            voice_id=data.voice_id,
+            tts_text=data.tts_text,
         )
 
         task.provider = result.get("provider", "unknown")

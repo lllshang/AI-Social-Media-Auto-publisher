@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -377,6 +378,8 @@ class AiContentService:
         user_id: int | None = None,
         avatar_id: int | None = None,
         avatar_type: str | None = None,
+        voice_id: str | None = None,
+        tts_text: str | None = None,
     ) -> dict:
         """AI 视频生成核心逻辑"""
         # 数字人 / 仿真人 → 腾讯云 VOD AIGC (Kling)
@@ -384,7 +387,10 @@ class AiContentService:
         scene_type: str | None = None
         reference_image_url: str | None = None
         reference_video_url: str | None = None
+        reference_audio_url: str | None = None
         script_text: str | None = None
+        subject_image_url: str | None = None  # 用于腾讯云主体注册的干净原图（数字人）
+        avatar_subject_id: str | None = None   # 已缓存的腾讯云主体 ID（命中则跳过注册）
 
         if avatar_type in ("simulation_human", "digital_human") and avatar_id:
             avatar = self.db.query(Avatar).filter(Avatar.id == avatar_id, Avatar.status == "active").first()
@@ -393,14 +399,40 @@ class AiContentService:
             if avatar.type == "digital_human":
                 scene_type = "avatar_i2v"
                 # 数字人读取参考图 URL（avatar_i2v 场景必填，不能为空）
-                reference_image_url = avatar.reference_image_url
+                # 若已生成「带背景参考图」(background_image_url)，优先用作驱动图，让视频带背景
+                storage = self.factory.get_storage_adapter()
+                background_url = getattr(avatar, "background_image_url", None)
+                # 统一过 storage.get_url 规范化成 "/static/materials/xxx"，
+                # 兼容历史脏数据：DB 里可能存的是容器内绝对路径 (/data/materials/xxx)
+                # 或文件名，storage.get_url 都按 basename 归一，保证 FastAPI 的
+                # /static/materials 路由可访问、腾讯云能公网拉取。
+                if background_url:
+                    reference_image_url = storage.get_url(background_url)
+                else:
+                    reference_image_url = (
+                        storage.get_url(avatar.reference_image_url)
+                        if avatar.reference_image_url
+                        else None
+                    )
                 if not reference_image_url:
                     raise ValueError(
                         f"数字人 Avatar(id={avatar_id}) 未配置参考图（reference_image_url），无法生成。"
                     )
+                # 主体注册：用干净的数字人原图（reference_image_url，而非带背景杂物
+                # 的 background_image_url）作为主体，让 Kling 只驱动人脸、背景不漂移。
+                if avatar.reference_image_url:
+                    subject_image_url = storage.get_url(avatar.reference_image_url)
+                # 复用已缓存的主体 ID，避免重复注册
+                avatar_subject_id = getattr(avatar, "subject_id", None)
             elif avatar.type == "simulation_human":
                 scene_type = "lip_sync"
-                reference_video_url = avatar.reference_video_url
+                # 同样过 storage.get_url 规范化参考视频路径
+                storage = self.factory.get_storage_adapter()
+                reference_video_url = (
+                    storage.get_url(avatar.reference_video_url)
+                    if avatar.reference_video_url
+                    else None
+                )
                 if not reference_video_url:
                     raise ValueError(
                         f"仿真人 Avatar(id={avatar_id}) 未配置参考视频（reference_video_url），无法生成。"
@@ -411,6 +443,45 @@ class AiContentService:
             scene_type = "avatar_i2v"
         elif avatar_type == "simulation_human":
             scene_type = "lip_sync"
+
+        # ====== 数字人 / 仿真人：TTS 合成真实口播音频 ======
+        # 原 placeholder_silence.wav（440Hz 正弦波）会触发 Kling 自带乱码字幕
+        # + 口型无法对齐；改用 edge-tts 合成的真实普通话 mp3 喂给 Kling。
+        generated_audio_url: str | None = None
+        tts_voice_used: str | None = None
+        audio_duration: float = 0.0
+        audio_local_path: str | None = None
+        if scene_type in ("avatar_i2v", "lip_sync"):
+            try:
+                from app.utils.tts import synthesize_speech, resolve_voice_id
+
+                # 实际要念的文本：优先 tts_text > script_text > topic
+                speak_text = (tts_text or script_text or topic or "").strip()
+                if speak_text:
+                    # 不再截断：数字人视频时长 = 音频时长，
+                    # tts 内部会按句分段合成拼接，避免长文本卡顿且口播完整。
+                    effective_voice = resolve_voice_id(voice_id)
+                    tts_result = synthesize_speech(
+                        text=speak_text,
+                        voice_id=effective_voice,
+                        prefix="avatar",
+                    )
+                    generated_audio_url = tts_result.audio_url
+                    tts_voice_used = tts_result.voice_id
+                    reference_audio_url = tts_result.audio_url
+                    audio_duration = tts_result.duration_sec
+                    audio_local_path = tts_result.audio_path
+                    logger.info(
+                        "TTS 合成成功: voice=%s, bytes=%d, est_duration=%.2fs, text_len=%d, url=%s, abs_url=%s",
+                        tts_voice_used,
+                        tts_result.file_size,
+                        tts_result.duration_sec,
+                        len(speak_text),
+                        tts_result.audio_url,
+                        self._abs_audio_url(tts_result.audio_url),
+                    )
+            except Exception as e:  # TTS 失败时降级到 placeholder，不阻断流程
+                logger.warning("TTS 合成失败，降级为静音 wav: %s", e)
 
         # 仿真人/数字人统一走腾讯云 VOD AIGC（Kling）
         if scene_type:
@@ -430,7 +501,13 @@ class AiContentService:
             scene_type=scene_type,
             reference_image_url=reference_image_url,
             reference_video_url=reference_video_url,
+            reference_audio_url=reference_audio_url,
             script_text=script_text,
+            subject_image_url=subject_image_url,
+            avatar_subject_id=avatar_subject_id,
+            voice_id=tts_voice_used or voice_id,
+            tts_text=tts_text or script_text or topic,
+            audio_duration=audio_duration,
         )
 
         logger.info(
@@ -443,6 +520,14 @@ class AiContentService:
 
         # 调用适配器生成
         result = await adapter.generate(video_input)
+
+        # 把适配器新注册的主体 ID 缓存回 Avatar，避免后续重复注册
+        new_subject_id = (result.metadata or {}).get("subject_id") if result.metadata else None
+        if new_subject_id and avatar_id and avatar_type == "digital_human":
+            cached = self.db.query(Avatar).filter(Avatar.id == avatar_id).first()
+            if cached and not cached.subject_id:
+                cached.subject_id = new_subject_id
+                self.db.flush()
 
         logger.info(
             "AI 视频生成完成: videos=%s, thumbnails=%s, provider=%s, elapsed=%s",
@@ -479,21 +564,66 @@ class AiContentService:
         materials = []
         storage = self.factory.get_storage_adapter()
 
+        # 数字人 / 仿真人：把已知口播文本按音频时长烧录字幕（硬字幕，下载即带字幕）
+        burn_sub_enabled = avatar_type in ("digital_human", "simulation_human")
+        # 字幕文本来源需与 TTS 口播文本保持一致（tts_text > script_text > topic），
+        # 否则会出现「TTS 能念字、字幕却是空」的不一致（此前仅用 tts_text 导致缺字幕）。
+        subtitle_text = (tts_text or script_text or topic or "").strip()
+        subtitle_total_dur = audio_duration if audio_duration and audio_duration > 0 else (result.duration or 0.0)
+
         for idx, (video_path, thumb_path) in enumerate(zip(result.video_paths, result.thumbnail_paths)):
-            video_url = storage.get_url(video_path)
+            final_video_path = video_path
+            try:
+                if burn_sub_enabled and subtitle_text and os.path.exists(video_path):
+                    from app.utils.subtitle import burn_subtitles
+                    burned = burn_subtitles(
+                        video_path, subtitle_text, subtitle_total_dur, fontsize=28
+                    )
+                    if burned and os.path.exists(burned):
+                        final_video_path = burned
+                        logger.info(
+                            "[字幕] 烧录成功: %s -> %s", video_path, burned
+                        )
+                    else:
+                        logger.warning("[字幕] 烧录失败，保留原视频: %s", video_path)
+            except Exception as e:
+                logger.warning("[字幕] 烧录异常，保留原视频: %s", e)
+
+            video_url = storage.get_url(final_video_path)
 
             material = Material(
                 created_by=user_id,
                 name=_safe_material_name(f"{topic}_视频_{idx + 1}"),
                 type="video",
                 source="ai_generated",
-                file_path=video_path,
+                file_path=final_video_path,
                 url=video_url,
                 thumbnail=thumb_path,
                 ai_record_id=record.id,
             )
             self.db.add(material)
             materials.append(material)
+
+        # 保存 TTS 真实口播音频为素材，方便在素材库直接试听、确认音频质量
+        if audio_local_path and os.path.exists(audio_local_path):
+            try:
+                audio_material = Material(
+                    created_by=user_id,
+                    name=_safe_material_name(f"{topic}_口播音频"),
+                    type="audio",
+                    source="tts_generated",
+                    file_path=audio_local_path,
+                    url=storage.get_url(audio_local_path) if storage else None,
+                    ai_record_id=record.id,
+                )
+                self.db.add(audio_material)
+                logger.info(
+                    "口播音频素材已保存: path=%s, duration=%.2fs",
+                    audio_local_path,
+                    audio_duration,
+                )
+            except Exception as e:
+                logger.warning("保存口播音频素材失败(不影响视频生成): %s", e)
 
         self.db.commit()
 

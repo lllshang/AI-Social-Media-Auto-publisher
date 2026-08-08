@@ -21,3 +21,5 @@ redis==5.2.1
 apscheduler==3.10.4
 boto3==1.35.99
 tencentcloud-sdk-python>=3.0.0
+edge-tts==6.1.18
+pydub==0.25.1

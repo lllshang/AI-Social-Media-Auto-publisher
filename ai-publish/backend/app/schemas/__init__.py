@@ -109,7 +109,7 @@ class ImageGenerateRequest(BaseModel):
 class VideoGenerateRequest(BaseModel):
     topic: str
     platform: str = "douyin"
-    duration: int = Field(default=5, ge=5, le=10)
+    duration: int = Field(default=5, ge=1, le=60)
     resolution: str = "720p"
     fps: int = Field(default=24, ge=24, le=30)
     style: str = "default"
@@ -127,6 +127,8 @@ class AvatarCreate(BaseModel):
     reference_images: list[int] | None = None  # 旧字段，保留兼容
     reference_image_url: str | None = None  # 数字人参考图 URL
     reference_video_url: str | None = None  # 仿真人参考视频 URL
+    background_prompt: str | None = None  # 背景描述(图生图 prompt)
+    background_image_url: str | None = None  # 已生成的带背景参考图(后端生成后回填)
 
 
 class AvatarUpdate(BaseModel):
@@ -137,6 +139,8 @@ class AvatarUpdate(BaseModel):
     reference_image_url: str | None = None
     reference_video_url: str | None = None
     thumbnail: str | None = None
+    background_prompt: str | None = None
+    background_image_url: str | None = None
     status: str | None = None
 
 
@@ -150,6 +154,8 @@ class AvatarResponse(BaseModel):
     reference_image_url: str | None = None
     reference_video_url: str | None = None
     thumbnail_url: str | None = None
+    background_prompt: str | None = None
+    background_image_url: str | None = None
     status: str
     created_at: datetime
     updated_at: datetime
@@ -818,7 +824,7 @@ class CopyUpdateRequest(BaseModel):
 class GenerationRequest(BaseModel):
     gen_type: str  # text_to_video | image_to_video | simulation_human | digital_human | cover | images
     description: str | None = None  # 覆盖默认的视频描述
-    duration: int = Field(default=5, ge=5, le=10)
+    duration: int = Field(default=5, ge=1, le=60)
     resolution: str = "720p"
     fps: int = Field(default=24, ge=24, le=30)
     image_url: str | None = None  # 图生视频/仿真人参考图
@@ -829,6 +835,9 @@ class GenerationRequest(BaseModel):
     brand_color: str | None = None
     brand_hint: str | None = None
     count: int = Field(default=1, ge=1, le=9)  # 图文数量
+    # ====== TTS 语音（数字人/仿真人口播用）======
+    voice_id: str | None = None  # edge-tts 音色 ID（如 zh-CN-XiaoxiaoNeural）
+    tts_text: str | None = None  # 实际被念出来的口播文本（为空则回退到 description/topic）
 
 
 class GenerationTaskResponse(BaseModel):
@@ -866,6 +875,7 @@ class CreativeSessionResponse(BaseModel):
     polish_history: list | None = None
     output_material_ids: list[int] | None = None
     draft_data: dict | None = None
+    generation_count: int = 0  # 该 session 关联的素材生成记录数（草稿箱 UI 用）
     created_at: datetime
     updated_at: datetime
 

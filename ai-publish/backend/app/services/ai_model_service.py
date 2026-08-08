@@ -256,7 +256,7 @@ class AiModelService:
             "sub_app_id_field": "tencent_vod_sub_app_id",
             "cost_field": "tencent_vod_cost_per_image",
             "models": [
-                ("Hunyuan|3.0", "混元 Hunyuan 3.0"),
+                ("Hunyuan", "混元 Hunyuan 3.0"),
                 ("OG", "OG"),
                 ("GG", "GG"),
                 ("Qwen", "Qwen"),
@@ -566,12 +566,12 @@ class AiModelService:
                 if not self._config_value(sub_app_id_field):
                     ready = False
                     reason = reason or "未配置 SubAppId"
-            for _, model_name in spec["models"]:
+            for model_id, model_label in spec["models"]:
                 options.append(
                     ModelOption(
                         provider=spec["provider"],
-                        model=model_name,
-                        label=f"{spec['label']} / {model_name}",
+                        model=model_id,
+                        label=f"{spec['label']} / {model_label}",
                         source="remote",
                         kind="image",
                         ready=ready,
