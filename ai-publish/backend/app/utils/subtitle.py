@@ -163,19 +163,35 @@ def build_ass(
     # 目标:字幕文字在画面中约占画面高度的 4%（移动端竖屏口播黄金比例）
     # 高度归一到 1920 时字号 = 28，按比例缩放
     actual_fontsize = max(16, round(fontsize * play_h / 1920))
-    # MarginV 用画面高度的 2% 作为底部边距
-    margin_v = max(20, round(play_h * 0.025))
-    # 描边宽度同样按画面比例
-    outline_w = max(2, round(actual_fontsize * 0.07))
+    # 加大默认字号：实际显示时由于 ffmpeg re-encode 的 CRF20，
+    # 字号偏小会糊；这里把基准 28 提高到 36，配合更粗描边，肉眼观感 ≈ 5% 屏幕高。
+    actual_fontsize = int(actual_fontsize * (36 / 28))
+    # MarginV: 数字人底部常被遮挡，下移让字幕出现在背景区域中部偏下。
+    # 用画面高度的 4% 作为底部边距 + 适度往上抬一段让字不被嘴部覆盖。
+    margin_v = max(40, round(play_h * 0.06))
+    # 描边宽度加粗（按字号 1/8），避免 re-encode 后字边缘虚化
+    outline_w = max(3, round(actual_fontsize * 0.12))
+    # 控制行间距与字符缩放：强制宽度 100、高度 100（libass 默认），
+    # Spacing=0 让字符紧贴，避免竖向拉长错觉。
+    spacing = 0
+    scale_x = 100
+    scale_y = 100
 
     n = len(sentences)
     per = total_duration / n
 
     font_name = "Noto Sans CJK SC"
+    # ASS 颜色格式：&HAABBGGRR（自右向左 R, G, B, A）
+    # - PrimaryColour = &H00FFFFFF    白
+    # - SecondaryColour = &H00000000  黑（karaoke 用不到，但规格要写）
+    # - OutlineColour = &H00000000    黑（决定描边颜色）
+    # - BackColour = &H80000000       半透明黑（BorderStyle=1 时用不到）
+    # BorderStyle=1 表示"实心描边 + 阴影"风格（最常见、最稳的高对比白字黑边）。
     style_line = (
         f"Style: Default,{font_name},{actual_fontsize},"
-        f"&H00FFFFFF,&H000000FF,&H80000000,"
-        f"-1,0,0,0,100,100,0,0,1,{outline_w},0,40,20,{margin_v},0,1"
+        f"&H00FFFFFF,&H000000FF,&H00000000,&H80000000,"
+        f"-1,0,0,0,100,100,{spacing},0,1,{outline_w},2,"
+        f"40,20,{margin_v},2"
     )
     events: list[str] = ["[Events]", "Format: Layer, Start, End, Style, Text"]
     for idx, sent in enumerate(sentences):
@@ -242,8 +258,14 @@ def burn_subtitles(
         base, ext = os.path.splitext(video_path)
         output_path = f"{base}_sub{ext or '.mp4'}"
 
-    # 3. 烧字幕。libass 通过 .ass 内 Fontname + fontconfig 自动匹配中文字体
-    sub_filter = f"subtitles='{tmp_ass.name}'"
+    # 3. 烧字幕。libass 通过 .ass 内 Fontname + fontconfig 自动匹配中文字体。
+    #   注意：ass 文件已显式指定 FontName=Noto Sans CJK SC，且 Style 字段里颜色已正确设置。
+    #   如果服务器还装有 Noto Serif CJK，需要在 ffmpeg filter 里强制 fontsdir 让 libass
+    #   优先匹配 Sans 版本（避免 fallback 到衬线字）。
+    noto_dir = "/usr/share/fonts/opentype/noto"
+    sub_filter = (
+        f"subtitles='{tmp_ass.name}':fontsdir='{noto_dir}'"
+    )
 
     cmd = [
         "ffmpeg", "-y", "-i", video_path,
