@@ -860,9 +860,8 @@ async function loadVoices() {
 
 async function onCloneVoiceChange(file) {
   if (!file?.raw) return
-  // 前端先用 Web Audio API 测时长，腾讯云 VRS 一句话声音复刻硬性要求 5-15s，
-  // 超过 15s 必然被服务端拒（AudioDurationExceedsLimit）。
-  // 提前给用户清晰提示，避免无效请求。
+  // 前端先用 Web Audio API 测时长，腾讯云 VRS 一句话声音复刻硬性要求 5-15s。
+  // 超过 15s 不拦截，直接提交由后端自动截取到 15 秒内；这里仅给友好提示。
   let durationSec = 0
   try {
     durationSec = await readAudioDurationSec(file.raw)
@@ -871,11 +870,11 @@ async function onCloneVoiceChange(file) {
     console.warn('[clone-voice] 读取音频时长失败:', e)
   }
   if (durationSec > 0 && durationSec > 15) {
-    ElMessage.error(
-      `录音时长 ${durationSec.toFixed(1)}s，超过腾讯云 VRS 复刻上限 15 秒，请裁剪到 5-15 秒后重新上传。`,
+    // 超过 15s 不拦截：直接提交，后端会自动截取到 15 秒内再复刻，
+    // 这里只给个友好提示让用户知道录音被截断。
+    ElMessage.warning(
+      `录音时长 ${durationSec.toFixed(1)}s，超过腾讯云 VRS 复刻上限 15 秒，将自动截取前 15 秒用于复刻。`,
     )
-    uploadingVoice.value = false
-    return
   }
   if (durationSec > 0 && durationSec < 5) {
     ElMessage.warning(
