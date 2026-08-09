@@ -113,14 +113,38 @@ def _codec_of(audio_path: str) -> str:
     return {"wav": "wav", "mp3": "mp3", "m4a": "m4a", "aac": "aac"}.get(ext, "wav")
 
 
-def get_training_text() -> list[dict]:
-    """获取 VRS 标准训练文本（前端可展示，引导用户录制）。"""
+def get_training_text(task_type: int = VRS_TASK_TYPE_ONESHOT) -> list[dict]:
+    """获取 VRS 标准训练文本列表（前端可展示，引导用户录制）。
+
+    task_type 必须传 VRS_TASK_TYPE_ONESHOT(5)：一句话复刻模式。
+    注意：不传或传 1 时腾讯云会返回失效的固定 TextId（00001~00020，已过期 7 天），
+    导致 DetectEnvAndSoundQuality 报 'TextId expires 7 days'。传 5 时返回
+    UUID 格式的有效 TextId。
+    """
     client = _get_vrs_client()
     req = models.GetTrainingTextRequest()
+    req.TaskType = task_type
     resp = client.GetTrainingText(req)
     # resp 是 SDK 对象，统一转 dict 解析
     data = json.loads(resp.to_json_string()).get("Data") or {}
     return data.get("TrainingTextList") or []
+
+
+def get_training_text_pair() -> tuple[str, str]:
+    """取一个可用的训练文本对 (TextId, TextContent)。
+
+    腾讯云 VRS 一句话复刻（TaskType=5）要求：
+    - TextId 必须从 GetTrainingText 动态获取，不能硬编码
+    - 用户**必须照着该 TextId 对应的文本内容朗读**，否则音频检测失败
+    - TextId 7 天过期 / 使用一次后失效，所以每次复刻都要重新获取
+
+    返回第一个文本的 (TextId, TextContent)，供前端展示给用户跟读。
+    """
+    items = get_training_text()
+    if not items:
+        raise RuntimeError("腾讯云未返回任何训练文本，请稍后重试")
+    first = items[0]
+    return first.get("TextId"), first.get("Text", "")
 
 
 def create_clone_task(
@@ -140,13 +164,21 @@ def create_clone_task(
     audio_path, codec = _ensure_clone_audio_duration(audio_path, max_sec=15.0)
     audio_b64, _ = _read_audio_as_b64_with_codec(audio_path, codec)
 
+    # 动态获取 TextId：腾讯云 VRS 一句话复刻要求 TextId 必须从 GetTrainingText
+    # 取得，不能硬编码（7 天过期 / 用一次失效）。且该 TextId 对应的文本就是
+    # 用户需要朗读的内容（前端已展示给用户跟读）。
+    try:
+        text_id, _text_content = get_training_text_pair()
+    except Exception as e:
+        raise RuntimeError(f"获取 VRS 训练文本失败：{e}")
+
     # 1) 音频质量检测 -> AudioId
     det_req = models.DetectEnvAndSoundQualityRequest()
     det_req.AudioData = audio_b64
     det_req.Codec = codec
     det_req.SampleRate = 16000
     det_req.TaskType = VRS_TASK_TYPE_ONESHOT
-    det_req.TextId = "00001"
+    det_req.TextId = text_id
     det_req.TypeId = VRS_TYPE_ID_NORMAL
     try:
         det_resp = client.DetectEnvAndSoundQuality(det_req)

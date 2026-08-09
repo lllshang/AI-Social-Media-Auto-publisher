@@ -240,17 +240,16 @@
                   </el-option>
                 </el-option-group>
               </el-select>
-              <el-upload
-                :show-file-list="false"
-                :auto-upload="false"
-                accept="audio/mpeg,audio/mp3,audio/wav,audio/m4a,.m4a"
-                :on-change="onCloneVoiceChange"
-                style="display: inline-block; margin-left: 12px"
+              <el-button
+                :loading="uploadingVoice"
+                size="small"
+                type="primary"
+                plain
+                style="margin-left: 12px"
+                @click="openCloneGuide"
               >
-                <el-button :loading="uploadingVoice" size="small" type="primary" plain>
-                  {{ uploadingVoice ? '复刻中…' : '用我的声音复刻' }}
-                </el-button>
-              </el-upload>
+                {{ uploadingVoice ? '复刻中…' : '用我的声音复刻' }}
+              </el-button>
               <p class="muted">
                 选「我的声音（复刻）」即用你上传的录音合成任意口播；复刻需一段 10 秒左右清晰单人中文录音（wav/mp3/m4a）。未复刻时使用上方标准音色。
               </p>
@@ -336,17 +335,16 @@
                   </el-option>
                 </el-option-group>
               </el-select>
-              <el-upload
-                :show-file-list="false"
-                :auto-upload="false"
-                accept="audio/mpeg,audio/mp3,audio/wav,audio/m4a,.m4a"
-                :on-change="onCloneVoiceChange"
-                style="display: inline-block; margin-left: 12px"
+              <el-button
+                :loading="uploadingVoice"
+                size="small"
+                type="primary"
+                plain
+                style="margin-left: 12px"
+                @click="openCloneGuide"
               >
-                <el-button :loading="uploadingVoice" size="small" type="primary" plain>
-                  {{ uploadingVoice ? '复刻中…' : '用我的声音复刻' }}
-                </el-button>
-              </el-upload>
+                {{ uploadingVoice ? '复刻中…' : '用我的声音复刻' }}
+              </el-button>
               <p class="muted">
                 选「我的声音（复刻）」即用你上传的录音合成任意口播；复刻需一段 10 秒左右清晰单人中文录音（wav/mp3/m4a）。未复刻时使用上方标准音色。
               </p>
@@ -533,6 +531,41 @@
     </div>
     </template>
   </div>
+
+  <!-- ========== 复刻引导弹窗（VRS 一句话复刻流程） ========== -->
+  <el-dialog
+    v-model="cloneGuideVisible"
+    title="用我的声音复刻"
+    width="520px"
+    @closed="onCloneGuideClosed"
+  >
+    <div class="clone-guide">
+      <el-alert
+        type="info"
+        :closable="false"
+        title="腾讯云 VRS 一句话复刻：请先照着下面的训练文本朗读并录制/上传，否则音频检测会失败。"
+        style="margin-bottom: 12px"
+      />
+      <div class="clone-text-box">
+        <div class="clone-text-label">请朗读以下文本：</div>
+        <div class="clone-text-content">{{ cloneTrainingText || '（加载中…）' }}</div>
+      </div>
+      <el-upload
+        :show-file-list="false"
+        :auto-upload="false"
+        accept="audio/mpeg,audio/mp3,audio/wav,audio/m4a,.m4a"
+        :on-change="onCloneVoiceChange"
+        style="margin-top: 12px"
+      >
+        <el-button :loading="uploadingVoice" size="default" type="primary">
+          {{ uploadingVoice ? '复刻中…' : '选择录音文件上传' }}
+        </el-button>
+      </el-upload>
+      <p class="muted" style="margin-top: 8px">
+        录音要求：清晰单人中文、5–15 秒；超长将自动截取前 15 秒。录制时请朗读上方文本。
+      </p>
+    </div>
+  </el-dialog>
 </template>
 
 <script setup>
@@ -814,6 +847,10 @@ const playingVoiceId = ref('')                // 当前正在试听的音色 id�
 const previewAudio = new Audio()              // 复用的音频播放器
 const previewText = '这是一段用于试听音色效果的示例口播，希望声音清晰自然。'
 const uploadingVoice = ref(false)            // 复刻中
+// 复刻引导弹窗
+const cloneGuideVisible = ref(false)
+const cloneTrainingText = ref('')
+const cloneTrainingTextId = ref('')
 
 // 关键修复：用户是否手动选过音色（持久化）。
 // 用 localStorage 持久化，既跨刷新生效，也能避免 Vite/esbuild 把 set-only 的 ref 当死代码消除掉。
@@ -856,6 +893,30 @@ async function loadVoices() {
   } catch (e) {
     // 复刻音色列表加载失败不阻塞主流程
   }
+}
+
+// 打开复刻引导弹窗：先向腾讯云获取训练文本（含 TextId），展示给用户照读。
+async function openCloneGuide() {
+  cloneGuideVisible.value = true
+  cloneTrainingText.value = ''
+  cloneTrainingTextId.value = ''
+  try {
+    const res = await api.getVoiceCloneTrainingText()
+    const items = res?.items || []
+    const first = items[0]
+    if (first) {
+      cloneTrainingText.value = first.Text || first.TextContent || first.text_content || ''
+      cloneTrainingTextId.value = first.TextId || first.text_id || ''
+    }
+  } catch (e) {
+    ElMessage.error('获取训练文本失败：' + (e.response?.data?.detail || e.message || '未知错误'))
+  }
+}
+
+function onCloneGuideClosed() {
+  // 弹窗关闭时若未上传，重置引导状态
+  cloneTrainingText.value = ''
+  cloneTrainingTextId.value = ''
 }
 
 async function onCloneVoiceChange(file) {
