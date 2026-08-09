@@ -18,9 +18,12 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import uuid
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from tencentcloud.common import credential
 from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
@@ -59,6 +62,36 @@ def _read_audio_as_b64(audio_path: str) -> tuple[str, str]:
     return base64.b64encode(data).decode("ascii"), codec
 
 
+def _ensure_clone_audio_duration(audio_path: str, max_sec: float = 15.0) -> str:
+    """腾讯云 VRS 一句话声音复刻硬性要求 5-15s，超过会被拒 (AudioDurationExceedsLimit)。
+    这里做兜底：若 > 15s 则用 pydub 截到 15s 内，返回处理后的文件路径（原文件不动）。
+
+    解码失败（损坏/非音频）时不抛错，交给腾讯云返回更具体的错误信息。
+    """
+    try:
+        from pydub import AudioSegment  # pydub 已在 tts.py 使用，复用
+    except Exception:
+        return audio_path  # 缺依赖时跳过裁剪
+    try:
+        ext = os.path.splitext(audio_path)[1].lower().lstrip(".") or "wav"
+        audio = AudioSegment.from_file(audio_path, format=ext)
+        duration_sec = len(audio) / 1000.0
+        if duration_sec <= max_sec:
+            return audio_path
+        # 取中段（跳过头尾静音概率高一点的位置），但稳妥起见直接取前 max_sec
+        trimmed = audio[: int(max_sec * 1000)]
+        out_path = audio_path + f".trimmed.{ext}"
+        trimmed.export(out_path, format=ext)
+        logger.warning(
+            "[vrs] 上传音频 %.2fs 超过 %ss, 已自动截取前 %ss 提交",
+            duration_sec, max_sec, max_sec,
+        )
+        return out_path
+    except Exception as e:
+        logger.warning("[vrs] 音频时长检测/裁剪失败，原样提交: %s", e)
+        return audio_path
+
+
 def get_training_text() -> list[dict]:
     """获取 VRS 标准训练文本（前端可展示，引导用户录制）。"""
     client = _get_vrs_client()
@@ -80,6 +113,9 @@ def create_clone_task(
     voice_gender: 1-男 2-女
     """
     client = _get_vrs_client()
+    # 兜底：若上传音频 > 15s 自动截取前 15s，避免腾讯云 VRS 报
+    # InvalidParameterValue.AudioDurationExceedsLimit。
+    audio_path = _ensure_clone_audio_duration(audio_path, max_sec=15.0)
     audio_b64, codec = _read_audio_as_b64(audio_path)
 
     # 1) 音频质量检测 -> AudioId

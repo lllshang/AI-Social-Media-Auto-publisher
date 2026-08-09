@@ -860,6 +860,28 @@ async function loadVoices() {
 
 async function onCloneVoiceChange(file) {
   if (!file?.raw) return
+  // 前端先用 Web Audio API 测时长，腾讯云 VRS 一句话声音复刻硬性要求 5-15s，
+  // 超过 15s 必然被服务端拒（AudioDurationExceedsLimit）。
+  // 提前给用户清晰提示，避免无效请求。
+  let durationSec = 0
+  try {
+    durationSec = await readAudioDurationSec(file.raw)
+  } catch (e) {
+    // 浏览器解码失败时不强阻止，仍交给后端处理
+    console.warn('[clone-voice] 读取音频时长失败:', e)
+  }
+  if (durationSec > 0 && durationSec > 15) {
+    ElMessage.error(
+      `录音时长 ${durationSec.toFixed(1)}s，超过腾讯云 VRS 复刻上限 15 秒，请裁剪到 5-15 秒后重新上传。`,
+    )
+    uploadingVoice.value = false
+    return
+  }
+  if (durationSec > 0 && durationSec < 5) {
+    ElMessage.warning(
+      `录音时长仅 ${durationSec.toFixed(1)}s，建议 5-15 秒以获得更好效果。仍将继续提交。`,
+    )
+  }
   uploadingVoice.value = true
   try {
     // 用文件名推断性别：含"女"→女，含"男"→男，默认男
@@ -877,6 +899,28 @@ async function onCloneVoiceChange(file) {
   } finally {
     uploadingVoice.value = false
   }
+}
+
+// 用 Web Audio API 解码音频获取时长（秒），失败抛错
+function readAudioDurationSec(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const audio = new Audio()
+    audio.preload = 'metadata'
+    audio.onloadedmetadata = () => {
+      URL.revokeObjectURL(url)
+      if (!isFinite(audio.duration) || audio.duration <= 0) {
+        reject(new Error('invalid duration'))
+        return
+      }
+      resolve(audio.duration)
+    }
+    audio.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(audio.error || new Error('audio decode failed'))
+    }
+    audio.src = url
+  })
 }
 
 let _cloneTimer = null
