@@ -279,6 +279,9 @@ class TencentVodVideoAdapter:
             # 注意：实测 FileInfos 里加 Category=Audio 会被腾讯云拒（ErrCode:InternalError
             # image must not be blank），所以音频**只能**走 ExtInfo 通道。
             if data.reference_image_url:
+                # 数字人参考图：保持传 Url（与 id=70 成功链路一致）
+                # 此处不要走 _upload_url_to_vod 转 FileId，Kling avatar_i2v
+                # 场景下直接传 Url 才能成功（FileId 会被拒：image must not be blank）
                 url = self._absolutize_url(data.reference_image_url)
                 file_infos.append({
                     "Type": "Url",
@@ -471,6 +474,9 @@ class TencentVodVideoAdapter:
             if self.model_version in kling_valid_versions:
                 model_version = self.model_version
             else:
+                # 默认 2.6（id=70 成功链路用的就是 2.6）
+                # 之前曾临时改 2.0 想绕开硬字幕，但实测 2.0 同样会加中间乱码字幕，
+                # 真正决定是否加字幕的是 prompt 长度/音频时长，不在此处理。
                 model_version = "2.6"
         else:
             model_name = self.model_name

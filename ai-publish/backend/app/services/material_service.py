@@ -393,6 +393,10 @@ class AiContentService:
         avatar_subject_id: str | None = None   # 已缓存的腾讯云主体 ID（命中则跳过注册）
 
         if avatar_type in ("simulation_human", "digital_human") and avatar_id:
+            logger.info(
+                f"[material_service][DIAG] 数字人分支入口: avatar_id={avatar_id}, "
+                f"avatar_type={avatar_type!r}"
+            )
             avatar = self.db.query(Avatar).filter(Avatar.id == avatar_id, Avatar.status == "active").first()
             if not avatar:
                 raise ValueError(f"Avatar(id={avatar_id}) 不存在或已删除")
@@ -440,6 +444,10 @@ class AiContentService:
                 # 仿真人文案默认用 topic（前端已把 final_copy.body 作为 topic 传入）
                 script_text = topic
         elif avatar_type == "digital_human":
+            logger.warning(
+                f"[material_service][DIAG] 数字人走了 fallback 分支（没查到参考图）: "
+                f"avatar_id={avatar_id!r}, scene_type=avatar_i2v, reference_image_url=None"
+            )
             scene_type = "avatar_i2v"
         elif avatar_type == "simulation_human":
             scene_type = "lip_sync"
@@ -577,7 +585,7 @@ class AiContentService:
                 if burn_sub_enabled and subtitle_text and os.path.exists(video_path):
                     from app.utils.subtitle import burn_subtitles
                     burned = burn_subtitles(
-                        video_path, subtitle_text, subtitle_total_dur, fontsize=28
+                        video_path, subtitle_text, subtitle_total_dur, fontsize=56,
                     )
                     if burned and os.path.exists(burned):
                         final_video_path = burned

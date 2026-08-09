@@ -1157,21 +1157,30 @@ async function loadAvatars() {
 
 // 根据当前所选数字人的 gender 自动匹配默认音色:
 // 男→云希(沉稳, zh-CN-YunxiNeural), 女→晓晓(温柔, zh-CN-XiaoxiaoNeural)
-// 关键修复：只有用户"尚未手动选择"音色时才自动匹配，避免覆盖用户在下拉里的显式选择。
+// 关键修复:只有用户"尚未手动选择"音色时才自动匹配,避免覆盖用户在下拉里的显式选择。
 function autoPickVoiceByAvatar() {
-  // 关键修复：用户已手动选过音色（localStorage 持久化，跨刷新生效），则尊重其选择，不被数字人性别自动匹配覆盖。
-  if (isVoicePicked()) return
+  // 关键修复:用户已手动选过音色(localStorage 持久化,跨刷新生效),则尊重其选择,不被数字人性别自动匹配覆盖。
+  if (isVoicePicked()) {
+    console.log('[voice] autoPick skip: 用户已手动选过音色(picked=true), 尊重 voiceId=', voiceId.value)
+    return
+  }
   if (voiceId.value?.startsWith('clone:')) return  // 已选复刻音色时不覆盖
   const a = avatars.value.find(x => x.id === selectedAvatarId.value)
   if (!a) return
+  const before = voiceId.value
   if (a.gender === 'male') voiceId.value = 'zh-CN-YunxiNeural'
   else if (a.gender === 'female') voiceId.value = 'zh-CN-XiaoxiaoNeural'
+  if (before !== voiceId.value) {
+    console.log('[voice] autoPick OVERRIDE:', before, '->', voiceId.value, '(avatar=', a.name, 'gender=', a.gender, ')')
+  }
 }
 
-// 用户手动选了音色：同时写 localStorage（守卫标志 + 最后一次选择，便于下次刷新恢复）
+// 用户手动选了音色:同时写 localStorage(守卫标志 + 最后一次选择,便于下次刷新恢复)
 function onVoiceChange(val) {
+  console.log('[voice] 用户手动选音色:', val, '| 被覆盖前的守卫状态 picked=before:', isVoicePicked())
   markVoicePicked()
   if (val) savePickedVoice(val)
+  console.log('[voice] 守卫已 set, picked=after:', isVoicePicked())
 }
 
 // 当前选中的数字人（用于展示背景图提示）
@@ -1199,6 +1208,11 @@ async function startVideoGen() {
     // 数字人/仿真人：口播词优先作为视频描述（后端用作驱动文本）
     const isAvatar = videoGenType.value === 'simulation_human' || videoGenType.value === 'digital_human'
     const desc = isAvatar && avatarScript.value.trim() ? avatarScript.value.trim() : videoDesc.value
+    // 数字人/仿真人必须先选一个数字人，否则后端会因缺少参考图/主体而报错
+    if (isAvatar && !selectedAvatarId.value) {
+      ElMessage.warning('请先选择数字人（数字人/仿真人为必选项）')
+      return
+    }
     // 数字人/仿真人必须有口播词，否则 Kling 拿不到干净音频会自己"猜"出乱码字幕
     if (isAvatar && !(avatarScript.value.trim() || videoDesc.value.trim())) {
       ElMessage.warning('请先填写口播词（数字人/仿真人必须驱动口型）')

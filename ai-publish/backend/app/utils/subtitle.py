@@ -156,19 +156,16 @@ def build_ass(
         total_duration = len(sentences) * 3.0
 
     # ===== 关键:按视频高度自适应字号与画布 =====
-    # libass 以 PlayResX/PlayResY 为坐标系计算字号/MarginV，
-    # 当视频不是 1080x1920 时，若仍写死 1080x1920，字号 28 会被缩到极小看不见。
+    # libass 以 PlayResX/PlayResY 为坐标系计算字号/MarginV。
+    # 注意：之前的版本用 play_h/1920 缩放，导致 1104 高度视频上 56 号字被
+    # 缩到 32，肉眼看跟"没放大"一样。这次直接用传入的 fontsize 作为
+    # 实际字号（不缩放），并固定 MarginV 为 12% 屏幕高（最小 80px）。
     play_w = int(video_width)
     play_h = int(video_height)
-    # 目标:字幕文字在画面中约占画面高度的 4%（移动端竖屏口播黄金比例）
-    # 高度归一到 1920 时字号 = 28，按比例缩放
-    actual_fontsize = max(16, round(fontsize * play_h / 1920))
-    # 加大默认字号：实际显示时由于 ffmpeg re-encode 的 CRF20，
-    # 字号偏小会糊；这里把基准 28 提高到 36，配合更粗描边，肉眼观感 ≈ 5% 屏幕高。
-    actual_fontsize = int(actual_fontsize * (36 / 28))
-    # MarginV: 数字人底部常被遮挡，下移让字幕出现在背景区域中部偏下。
-    # 用画面高度的 4% 作为底部边距 + 适度往上抬一段让字不被嘴部覆盖。
-    margin_v = max(40, round(play_h * 0.06))
+    # 用户期望"放大一倍"：调用方传 56，这里直接用 56 作为 libass 字号
+    actual_fontsize = max(32, int(fontsize))
+    # 距离底部占屏幕高 12%（用户要求"两倍"，原 6%）。小屏也保证至少 80px
+    margin_v = max(80, round(play_h * 0.12))
     # 描边宽度加粗（按字号 1/8），避免 re-encode 后字边缘虚化
     outline_w = max(3, round(actual_fontsize * 0.12))
     # 控制行间距与字符缩放：强制宽度 100、高度 100（libass 默认），
