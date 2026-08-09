@@ -202,7 +202,20 @@
                     :key="v.id"
                     :value="v.id"
                     :label="`${v.name}（${v.tag}）`"
-                  />
+                  >
+                    <span style="float: left">{{ v.name }}（{{ v.tag }}）</span>
+                    <el-button
+                      link
+                      type="primary"
+                      size="small"
+                      style="float: right; margin-left: 12px; padding: 0"
+                      :loading="playingVoiceId === v.id"
+                      @click.stop="previewThisVoice(v)"
+                    >
+                      <el-icon style="vertical-align: middle"><Headset /></el-icon>
+                      {{ playingVoiceId === v.id ? '停止' : '试听' }}
+                    </el-button>
+                  </el-option>
                 </el-option-group>
                 <el-option-group v-if="myVoices.length" label="我的声音（复刻）">
                   <el-option
@@ -211,7 +224,20 @@
                     :value="v.id"
                     :label="v.status === 'succeeded' ? v.name : `${v.name}（训练中…）`"
                     :disabled="v.status !== 'succeeded'"
-                  />
+                  >
+                    <span style="float: left">{{ v.status === 'succeeded' ? v.name : `${v.name}（训练中…）` }}</span>
+                    <el-button
+                      link
+                      type="primary"
+                      size="small"
+                      style="float: right; margin-left: 12px; padding: 0"
+                      :loading="playingVoiceId === v.id"
+                      @click.stop="previewThisVoice(v)"
+                    >
+                      <el-icon style="vertical-align: middle"><Headset /></el-icon>
+                      {{ playingVoiceId === v.id ? '停止' : '试听' }}
+                    </el-button>
+                  </el-option>
                 </el-option-group>
               </el-select>
               <el-upload
@@ -272,7 +298,20 @@
                     :key="v.id"
                     :value="v.id"
                     :label="`${v.name}（${v.tag}）`"
-                  />
+                  >
+                    <span style="float: left">{{ v.name }}（{{ v.tag }}）</span>
+                    <el-button
+                      link
+                      type="primary"
+                      size="small"
+                      style="float: right; margin-left: 12px; padding: 0"
+                      :loading="playingVoiceId === v.id"
+                      @click.stop="previewThisVoice(v)"
+                    >
+                      <el-icon style="vertical-align: middle"><Headset /></el-icon>
+                      {{ playingVoiceId === v.id ? '停止' : '试听' }}
+                    </el-button>
+                  </el-option>
                 </el-option-group>
                 <el-option-group v-if="myVoices.length" label="我的声音（复刻）">
                   <el-option
@@ -281,7 +320,20 @@
                     :value="v.id"
                     :label="v.status === 'succeeded' ? v.name : `${v.name}（训练中…）`"
                     :disabled="v.status !== 'succeeded'"
-                  />
+                  >
+                    <span style="float: left">{{ v.status === 'succeeded' ? v.name : `${v.name}（训练中…）` }}</span>
+                    <el-button
+                      link
+                      type="primary"
+                      size="small"
+                      style="float: right; margin-left: 12px; padding: 0"
+                      :loading="playingVoiceId === v.id"
+                      @click.stop="previewThisVoice(v)"
+                    >
+                      <el-icon style="vertical-align: middle"><Headset /></el-icon>
+                      {{ playingVoiceId === v.id ? '停止' : '试听' }}
+                    </el-button>
+                  </el-option>
                 </el-option-group>
               </el-select>
               <el-upload
@@ -487,6 +539,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Headset } from '@element-plus/icons-vue'
 import { api } from '@/api'
 
 const route = useRoute()
@@ -757,6 +810,9 @@ const voiceId = ref(loadPickedVoice() || 'zh-CN-XiaoxiaoNeural') // 默认晓晓
 const voiceOptions = ref([])                  // 拉取到的标准音色下拉
 const myVoices = ref([])                       // 我的声音（复刻音色），id = clone:<voice_type>
 const uploadedVoice = ref(null)               // 兼容旧逻辑保留字段（不再使用）
+const playingVoiceId = ref('')                // 当前正在试听的音色 id（高亮用）
+const previewAudio = new Audio()              // 复用的音频播放器
+const previewText = '这是一段用于试听音色效果的示例口播，希望声音清晰自然。'
 const uploadingVoice = ref(false)            // 复刻中
 
 // 关键修复：用户是否手动选过音色（持久化）。
@@ -1150,20 +1206,24 @@ function onImageChange(file) {
 async function loadAvatars() {
   try {
     avatars.value = await api.listAvatars()
-    // 加载完成后,若已选了数字人,立刻按性别匹配默认音色
-    if (selectedAvatarId.value) autoPickVoiceByAvatar()
+    // 仅在「用户尚未手动选过音色」且「当前还没有有效音色」时，
+    // 按数字人性别匹配一次默认音色。绝不在每次加载时覆盖用户已选音色。
+    if (!isVoicePicked() && !voiceId.value) {
+      if (selectedAvatarId.value) autoPickVoiceByAvatar()
+    }
   } catch { /* ignore */ }
 }
 
 // 根据当前所选数字人的 gender 自动匹配默认音色:
 // 男→云希(沉稳, zh-CN-YunxiNeural), 女→晓晓(温柔, zh-CN-XiaoxiaoNeural)
-// 关键修复:只有用户"尚未手动选择"音色时才自动匹配,避免覆盖用户在下拉里的显式选择。
+// 只有在用户「从未手动选择」时才自动匹配，且调用方需保证 voiceId 为空。
 function autoPickVoiceByAvatar() {
-  // 关键修复:用户已手动选过音色(localStorage 持久化,跨刷新生效),则尊重其选择,不被数字人性别自动匹配覆盖。
+  // 双保险：用户已手动选过音色(localStorage 持久化)则一律不覆盖。
   if (isVoicePicked()) {
     console.log('[voice] autoPick skip: 用户已手动选过音色(picked=true), 尊重 voiceId=', voiceId.value)
     return
   }
+  if (voiceId.value) return  // voiceId 已有值（含用户选择或初始化）则不覆盖
   if (voiceId.value?.startsWith('clone:')) return  // 已选复刻音色时不覆盖
   const a = avatars.value.find(x => x.id === selectedAvatarId.value)
   if (!a) return
@@ -1181,6 +1241,46 @@ function onVoiceChange(val) {
   markVoicePicked()
   if (val) savePickedVoice(val)
   console.log('[voice] 守卫已 set, picked=after:', isVoicePicked())
+}
+
+// 试听某个音色：调用后端 /api/voices/preview 实时合成一段，浏览器直接播放。
+// 用于确认每个音色（尤其 85 号那种「和别的音色不一样」的情况）是不是本身就这么发声。
+async function previewThisVoice(v) {
+  const id = v?.id || v
+  if (!id) return
+  // 点同一个则停止
+  if (playingVoiceId.value === id) {
+    previewAudio.pause()
+    playingVoiceId.value = ''
+    return
+  }
+  playingVoiceId.value = id
+  try {
+    const res = await api.previewVoice({ text: previewText, voice_id: id })
+    // axios 响应拦截器已剥掉外层 (res) => res.data，所以 res 直接是 body Blob。
+    const data = res
+    const isAudio = data instanceof Blob && (data.type === '' || data.type.startsWith('audio/'))
+    if (!isAudio) {
+      let msg = `试听失败: 收到非音频响应 (Content-Type=${data?.type || 'unknown'}, size=${data?.size ?? 0})`
+      try {
+        const txt = data instanceof Blob ? await data.text() : JSON.stringify(data)
+        msg += ` | 服务端: ${txt.slice(0, 300)}`
+      } catch { /* ignore */ }
+      ElMessage.error(msg)
+      playingVoiceId.value = ''
+      return
+    }
+    const blobUrl = URL.createObjectURL(data)
+    previewAudio.src = blobUrl
+    previewAudio.play().catch(() => { /* autoplay 限制忽略 */ })
+    previewAudio.onended = () => {
+      playingVoiceId.value = ''
+      URL.revokeObjectURL(blobUrl)
+    }
+  } catch (e) {
+    ElMessage.error(e?.message || '试听失败')
+    playingVoiceId.value = ''
+  }
 }
 
 // 当前选中的数字人（用于展示背景图提示）

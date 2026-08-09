@@ -70,6 +70,9 @@
               class="thumb clickable"
               @click="openVideoPreview(row)"
             />
+            <el-button v-else-if="row.type === 'audio' && row.url" link type="primary" @click="openAudioPreview(row)">
+              <el-icon style="vertical-align: middle; margin-right: 2px"><Headset /></el-icon>试听
+            </el-button>
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -216,12 +219,23 @@
         style="width: 100%; max-height: 70vh; border-radius: 8px; display: block"
       />
     </el-dialog>
+
+    <el-dialog v-model="audioPreviewVisible" :title="audioPreviewTitle" width="480px" align-center destroy-on-close>
+      <audio
+        :src="audioPreviewUrl"
+        controls
+        autoplay
+        preload="auto"
+        style="width: 100%; display: block"
+      />
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Headset } from '@element-plus/icons-vue'
 import { api } from '@/api'
 import { PLATFORMS, platformCoverRatio } from '@/constants/platforms'
 import BrandColorSelect from '@/components/BrandColorSelect.vue'
@@ -251,6 +265,9 @@ const textPreviewLoading = ref(false)
 const videoPreviewVisible = ref(false)
 const videoPreviewUrl = ref('')
 const videoPreviewPoster = ref('')
+const audioPreviewVisible = ref(false)
+const audioPreviewUrl = ref('')
+const audioPreviewTitle = ref('')
 
 // AI 生成视频
 const showAiVideoGenerate = ref(false)
@@ -301,6 +318,28 @@ function openVideoPreview(row) {
   videoPreviewUrl.value = row.url
   videoPreviewPoster.value = row.thumbnail_url || ''
   videoPreviewVisible.value = true
+}
+
+function openAudioPreview(row) {
+  audioPreviewTitle.value = row.name || `音频 #${row.id}`
+  audioPreviewUrl.value = resolvePlayUrl(row)
+  if (!audioPreviewUrl.value) return ElMessage.warning('音频链接不存在')
+  audioPreviewVisible.value = true
+}
+
+// 兜底从 file_path 计算可播放的 /static/materials/xxx 路径。
+// 兼容历史脏数据：旧 storage.get_url 只取 basename，丢失 voices/ 子目录导致 404。
+function resolvePlayUrl(row) {
+  // 优先用 file_path 直接拼出带子目录的正确 URL（如 voices/avatar_xxx.mp3）
+  if (row.file_path) {
+    const fp = String(row.file_path)
+    const m = fp.match(/\/data\/materials\/(.+)$/)
+    if (m) return `/static/materials/${m[1]}`
+    const name = fp.split('/').pop()
+    if (name) return `/static/materials/${name}`
+  }
+  // 退化到后端返回的 url（新写入的 audio 应该是 /static/materials/voices/xxx.mp3）
+  return row.url || ''
 }
 
 const aiForm = reactive({

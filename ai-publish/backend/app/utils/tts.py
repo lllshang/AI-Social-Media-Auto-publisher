@@ -26,32 +26,31 @@ from pydub import AudioSegment
 
 from app.config import get_settings
 
-# 腾讯云 TTS 中文/粤语常用精品音色（VoiceType 为 int）。
-# 前端中文名保持不变，仅把底层 engine 从 edge-tts 换成腾讯云 TTS。
+# 腾讯云 TTS 中文精品音色（VoiceType 为 int）。
 # 字段：id 兼容旧前端、name 中文展示、voice_type 腾讯云数字音色、lang 语言。
+#
+# ⚠️ 重要：voice_type 必须指向腾讯云真实存在的精品音色，否则合成出来的
+# 声音性别/场景与预期不符（旧代码把 101001/101013/101020 等填错，导致
+# “标男声却听成女声”）。下面每个 id 都按“晓X=女声，云X=男声”且尽量贴近
+# 场景标签，映射到腾讯云官方精品音色表（智X 系列，见腾讯云 TTS 音色文档）。
 TENCENT_TTS_VOICES: list[dict] = [
     # === 普通话精品（女） ===
-    {"id": "zh-CN-XiaoxiaoNeural", "name": "晓晓（女·温柔）",    "voice_type": 101001, "lang": "zh", "gender": "female", "tag": "温柔"},
-    {"id": "zh-CN-XiaoyiNeural",   "name": "晓伊（女·活力）",    "voice_type": 101003, "lang": "zh", "gender": "female", "tag": "活力"},
-    {"id": "zh-CN-XiaomengNeural", "name": "晓梦（女·儿童）",    "voice_type": 101008, "lang": "zh", "gender": "female", "tag": "童声"},
-    {"id": "zh-CN-XiaomoNeural",   "name": "晓墨（女·情感）",    "voice_type": 101013, "lang": "zh", "gender": "female", "tag": "情感"},
-    {"id": "zh-CN-XiaoyanNeural",  "name": "晓颜（女·多情感）",  "voice_type": 101015, "lang": "zh", "gender": "female", "tag": "情感"},
-    {"id": "zh-CN-XiaozhenNeural", "name": "晓珍（女·多情感）",  "voice_type": 101019, "lang": "zh", "gender": "female", "tag": "情感"},
-    {"id": "zh-CN-XiaoxuanNeural", "name": "晓萱（女·甜美）",    "voice_type": 101021, "lang": "zh", "gender": "female", "tag": "甜美"},
+    {"id": "zh-CN-XiaoxiaoNeural", "name": "晓晓（女·温柔）",    "voice_type": 101001, "lang": "zh", "gender": "female", "tag": "温柔"},  # 智瑜·情感女声
+    {"id": "zh-CN-XiaoyiNeural",   "name": "晓伊（女·活力）",    "voice_type": 101003, "lang": "zh", "gender": "female", "tag": "活力"},  # 智美·女声
+    {"id": "zh-CN-XiaomengNeural", "name": "晓梦（女·儿童）",    "voice_type": 101016, "lang": "zh", "gender": "female", "tag": "童声"},  # 智甜·女童声
+    {"id": "zh-CN-XiaomoNeural",   "name": "晓墨（女·情感）",    "voice_type": 101002, "lang": "zh", "gender": "female", "tag": "情感"},  # 智聆·女声（已试听确认女声）
+    {"id": "zh-CN-XiaoyanNeural",  "name": "晓颜（女·多情感）",  "voice_type": 101005, "lang": "zh", "gender": "female", "tag": "情感"},  # 智莉·女声
+    {"id": "zh-CN-XiaozhenNeural", "name": "晓珍（女·多情感）",  "voice_type": 101008, "lang": "zh", "gender": "female", "tag": "情感"},  # 智琪·女声
+    {"id": "zh-CN-XiaoxuanNeural", "name": "晓萱（女·甜美）",    "voice_type": 101009, "lang": "zh", "gender": "female", "tag": "甜美"},  # 智芸·女声（已试听确认女声）
     # === 普通话精品（男） ===
-    {"id": "zh-CN-YunxiNeural",    "name": "云希（男·沉稳）",    "voice_type": 101002, "lang": "zh", "gender": "male", "tag": "沉稳"},
-    {"id": "zh-CN-YunjianNeural",  "name": "云健（男·新闻播报）","voice_type": 101004, "lang": "zh", "gender": "male", "tag": "新闻播报"},
-    {"id": "zh-CN-YunyangNeural",  "name": "云扬（男·专业解说）","voice_type": 101006, "lang": "zh", "gender": "male", "tag": "专业"},
-    {"id": "zh-CN-YunfengNeural",  "name": "云枫（男·阳光）",    "voice_type": 101011, "lang": "zh", "gender": "male", "tag": "阳光"},
-    {"id": "zh-CN-YunhaoNeural",   "name": "云皓（男·解说）",    "voice_type": 101014, "lang": "zh", "gender": "male", "tag": "解说"},
-    {"id": "zh-CN-YunxiaNeural",   "name": "云夏（男·温暖）",    "voice_type": 101017, "lang": "zh", "gender": "male", "tag": "温暖"},
-    {"id": "zh-CN-YunzeNeural",    "name": "云泽（男·新闻）",    "voice_type": 101020, "lang": "zh", "gender": "male", "tag": "新闻"},
-    {"id": "zh-CN-YunjieNeural",   "name": "云杰（男·叙事）",    "voice_type": 101022, "lang": "zh", "gender": "male", "tag": "叙事"},
-    # === 粤语 / 台湾 ===
-    {"id": "zh-HK-HiuMaanNeural",  "name": "晓曼粤语（女·粤语）", "voice_type": 101025, "lang": "zh-HK", "gender": "female", "tag": "粤语"},
-    {"id": "zh-HK-WanLungNeural",  "name": "云龙粤语（男·粤语）", "voice_type": 101026, "lang": "zh-HK", "gender": "male", "tag": "粤语"},
-    {"id": "zh-TW-HsiaoChenNeural","name": "晓臻台普（女·台湾）", "voice_type": 102000, "lang": "zh-TW", "gender": "female", "tag": "台湾"},
-    {"id": "zh-TW-YunJheNeural",   "name": "云哲台普（男·台湾）", "voice_type": 102001, "lang": "zh-TW", "gender": "male", "tag": "台湾"},
+    {"id": "zh-CN-YunxiNeural",    "name": "云希（男·沉稳）",    "voice_type": 101004, "lang": "zh", "gender": "male", "tag": "沉稳"},  # 智云·通用男声
+    {"id": "zh-CN-YunjianNeural",  "name": "云健（男·新闻播报）","voice_type": 101013, "lang": "zh", "gender": "male", "tag": "新闻播报"},  # 智辉·新闻男声（已试听确认男声）
+    {"id": "zh-CN-YunyangNeural",  "name": "云扬（男·专业解说）","voice_type": 101020, "lang": "zh", "gender": "male", "tag": "专业"},  # 智刚·新闻男声
+    {"id": "zh-CN-YunfengNeural",  "name": "云枫（男·阳光）",    "voice_type": 101010, "lang": "zh", "gender": "male", "tag": "阳光"},  # 智华·男声
+    {"id": "zh-CN-YunhaoNeural",   "name": "云皓（男·解说）",    "voice_type": 101024, "lang": "zh", "gender": "male", "tag": "解说"},  # 智皓·男声（已试听确认男声）
+    {"id": "zh-CN-YunxiaNeural",   "name": "云夏（男·温暖）",    "voice_type": 101018, "lang": "zh", "gender": "male", "tag": "温暖"},  # 智靖·男声
+    {"id": "zh-CN-YunzeNeural",    "name": "云泽（男·新闻）",    "voice_type": 101021, "lang": "zh", "gender": "male", "tag": "新闻"},  # 智瑞·新闻男声（已试听确认男声）
+    {"id": "zh-CN-YunjieNeural",   "name": "云杰（男·叙事）",    "voice_type": 101029, "lang": "zh", "gender": "male", "tag": "叙事"},  # 智凯·男声
 ]
 
 # 默认音色：晓晓（女·温柔）

@@ -461,17 +461,28 @@ class AiContentService:
         audio_local_path: str | None = None
         if scene_type in ("avatar_i2v", "lip_sync"):
             try:
-                from app.utils.tts import synthesize_speech, resolve_voice_id
+                from app.utils.tts import synthesize_speech
 
                 # 实际要念的文本：优先 tts_text > script_text > topic
                 speak_text = (tts_text or script_text or topic or "").strip()
                 if speak_text:
                     # 不再截断：数字人视频时长 = 音频时长，
                     # tts 内部会按句分段合成拼接，避免长文本卡顿且口播完整。
-                    effective_voice = resolve_voice_id(voice_id)
+                    # 注意：直接传原始 voice_id 字符串（如 zh-CN-YunxiNeural），
+                    # 由 synthesize_speech 内部 resolve_voice_id 处理。
+                    # 之前这里先 resolve_voice_id(voice_id) 得到 dict 后又当
+                    # voice_id 传给 synthesize_speech，导致第二次 resolve 失败
+                    # 回退默认女声（晓晓），表现为「怎么选都是女生声音」。
+                    # 复刻音色前端传 "clone:<voice_type>"，需拆给 voice_type。
+                    _voice_type = None
+                    _voice_id_arg = voice_id
+                    if isinstance(voice_id, str) and voice_id.startswith("clone:"):
+                        _voice_type = int(voice_id.split(":", 1)[1])
+                        _voice_id_arg = None
                     tts_result = synthesize_speech(
                         text=speak_text,
-                        voice_id=effective_voice,
+                        voice_id=_voice_id_arg,
+                        voice_type=_voice_type,
                         prefix="avatar",
                     )
                     generated_audio_url = tts_result.audio_url
