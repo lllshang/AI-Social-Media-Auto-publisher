@@ -238,12 +238,45 @@ def synthesize_speech(
                 return pool.submit(fn).result()
         return fn()
 
-    if segment and len(cleaned) > 150:
-        parts = _split_text(cleaned, max_len=150)
-        logger.info("[tts] 长文本分段合成: 共 %d 段", len(parts))
+    is_clone_voice = str(voice_cfg.get("id", "")).startswith("clone:") or voice_cfg.get("voice_source") == "clone"
+    # 复刻音色（VRS 训练）单次合成对音频时长有限制（约 20s），需拆得
+    # 更细；标准精品音色放宽到 150 字一段。
+    if is_clone_voice:
+        segment_max_len = 60
+    else:
+        segment_max_len = 150
+
+    if segment and len(cleaned) > segment_max_len:
+        parts = _split_text(cleaned, max_len=segment_max_len)
+        logger.info(
+            "[tts] 长文本分段合成: 共 %d 段 (max_len=%d, clone=%s)",
+            len(parts), segment_max_len, is_clone_voice,
+        )
         chunks: list[AudioSegment] = []
         for idx, part in enumerate(parts):
-            audio_b64 = _run_in_thread(lambda p=part: _synthesize_one(p, voice_type, lang))
+            try:
+                audio_b64 = _run_in_thread(lambda p=part: _synthesize_one(p, voice_type, lang))
+            except Exception as e:
+                # 段级合成失败（极有可能 = 单段音频时长超限）→ 再拆半重试一次
+                err_msg = str(e)
+                if "AudioDurationExceedsLimit" in err_msg or "exceeds the maximum" in err_msg:
+                    sub_parts = _split_text(part, max_len=max(20, len(part) // 2))
+                    logger.warning(
+                        "[tts] 段 %d 触发时长超限，自动拆为 %d 子段重试",
+                        idx + 1, len(sub_parts),
+                    )
+                    sub_audios: list[AudioSegment] = []
+                    for sp in sub_parts:
+                        sa = _run_in_thread(lambda p=sp: _synthesize_one(p, voice_type, lang))
+                        if not sa:
+                            raise RuntimeError(f"腾讯云 TTS 子段合成失败：段{idx + 1}")
+                        sub_audios.append(AudioSegment.from_file(io.BytesIO(sa), format="mp3"))
+                    seg = sub_audios[0]
+                    for c in sub_audios[1:]:
+                        seg += AudioSegment.silent(duration=150) + c
+                    chunks.append(seg)
+                    continue
+                raise
             if not audio_b64:
                 raise RuntimeError(f"腾讯云 TTS 分段合成失败：第 {idx + 1} 段")
             chunks.append(AudioSegment.from_file(io.BytesIO(audio_b64), format="mp3"))
@@ -255,9 +288,30 @@ def synthesize_speech(
         merged.export(buffer, format="mp3", bitrate="64k")
         audio_bytes = buffer.getvalue()
     else:
-        audio_bytes = _run_in_thread(
-            lambda: _synthesize_one(cleaned, voice_type, lang)
-        )
+        try:
+            audio_bytes = _run_in_thread(
+                lambda: _synthesize_one(cleaned, voice_type, lang)
+            )
+        except Exception as e:
+            # 单段也超长（未达分段阈值但实际合成超限）→ 强制拆成 2 段再试
+            err_msg = str(e)
+            if "AudioDurationExceedsLimit" in err_msg or "exceeds the maximum" in err_msg:
+                logger.warning("[tts] 单段时长超限，强制拆为 2 段重试")
+                parts = _split_text(cleaned, max_len=max(30, len(cleaned) // 2))
+                sub_audios: list[AudioSegment] = []
+                for sp in parts:
+                    sa = _run_in_thread(lambda p=sp: _synthesize_one(p, voice_type, lang))
+                    if not sa:
+                        raise RuntimeError("腾讯云 TTS 单段重试合成失败")
+                    sub_audios.append(AudioSegment.from_file(io.BytesIO(sa), format="mp3"))
+                merged = sub_audios[0]
+                for c in sub_audios[1:]:
+                    merged += AudioSegment.silent(duration=150) + c
+                buf = io.BytesIO()
+                merged.export(buf, format="mp3", bitrate="64k")
+                audio_bytes = buf.getvalue()
+            else:
+                raise
 
     if not audio_bytes:
         raise RuntimeError(f"腾讯云 TTS 合成失败：voice={voice_cfg['id']}, text={cleaned[:60]!r}")
