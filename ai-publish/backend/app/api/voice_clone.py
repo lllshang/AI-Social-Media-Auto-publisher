@@ -60,10 +60,14 @@ async def create_clone(
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"复刻任务创建失败：{e}")
     finally:
-        try:
-            os.unlink(tmp.name)
-        except Exception:
-            pass
+        # 清理原始上传临时文件 + 裁剪后可能产生的 .trimmed.* 文件
+        for p in (tmp.name, tmp.name + ".trimmed.wav"):
+            try:
+                os.unlink(p)
+            except FileNotFoundError:
+                pass
+            except Exception:
+                pass
 
     return {
         "id": rec.id,

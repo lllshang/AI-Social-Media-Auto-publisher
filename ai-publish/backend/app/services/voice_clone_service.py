@@ -52,6 +52,13 @@ def _get_vrs_client() -> vrs_client.VrsClient:
     return vrs_client.VrsClient(cred, "ap-guangzhou")
 
 
+def _read_audio_as_b64_with_codec(audio_path: str, codec: str) -> tuple[str, str]:
+    """读取音频文件为 base64，使用指定 codec（用于裁剪后已被转换为 wav 的文件）。"""
+    with open(audio_path, "rb") as f:
+        data = f.read()
+    return base64.b64encode(data).decode("ascii"), codec
+
+
 def _read_audio_as_b64(audio_path: str) -> tuple[str, str]:
     """读取音频文件为 base64，并猜测 codec（wav/mp3/m4a）。"""
     ext = os.path.splitext(audio_path)[1].lower().lstrip(".")
@@ -62,34 +69,48 @@ def _read_audio_as_b64(audio_path: str) -> tuple[str, str]:
     return base64.b64encode(data).decode("ascii"), codec
 
 
-def _ensure_clone_audio_duration(audio_path: str, max_sec: float = 15.0) -> str:
+def _ensure_clone_audio_duration(audio_path: str, max_sec: float = 15.0) -> tuple[str, str]:
     """腾讯云 VRS 一句话声音复刻硬性要求 5-15s，超过会被拒 (AudioDurationExceedsLimit)。
-    这里做兜底：若 > 15s 则用 pydub 截到 15s 内，返回处理后的文件路径（原文件不动）。
+    这里做兜底：若 > 15s 则用 pydub 截到 15s 内，返回 (处理后文件路径, codec)。
+
+    关键修正：pydub 写 m4a/aac 在某些 ffmpeg 编译版本下 moov atom 写不完整，
+    会留下 0 字节损坏文件导致后续 ffmpeg 读取再次失败。这里统一把裁剪后的音频
+    导出为 wav 16k mono 并返回 codec='wav'，腾讯云 VRS 完全支持 wav 格式。
+
+    返回 (path, codec)；若无需裁剪，codec 维持原格式。
 
     解码失败（损坏/非音频）时不抛错，交给腾讯云返回更具体的错误信息。
     """
     try:
         from pydub import AudioSegment  # pydub 已在 tts.py 使用，复用
     except Exception:
-        return audio_path  # 缺依赖时跳过裁剪
+        # 缺 pydub 时不裁剪也不改 codec，按原样返回
+        return audio_path, _codec_of(audio_path)
     try:
         ext = os.path.splitext(audio_path)[1].lower().lstrip(".") or "wav"
         audio = AudioSegment.from_file(audio_path, format=ext)
         duration_sec = len(audio) / 1000.0
         if duration_sec <= max_sec:
-            return audio_path
-        # 取中段（跳过头尾静音概率高一点的位置），但稳妥起见直接取前 max_sec
+            return audio_path, _codec_of(audio_path)
+        # 取前 max_sec
         trimmed = audio[: int(max_sec * 1000)]
-        out_path = audio_path + f".trimmed.{ext}"
-        trimmed.export(out_path, format=ext)
+        # 统一重采样为 16kHz mono（VRS 推荐规格），并统一写 wav 避免 m4a 兼容性问题
+        trimmed = trimmed.set_channels(1).set_frame_rate(16000)
+        out_path = audio_path + ".trimmed.wav"
+        trimmed.export(out_path, format="wav")
         logger.warning(
-            "[vrs] 上传音频 %.2fs 超过 %ss, 已自动截取前 %ss 提交",
+            "[vrs] 上传音频 %.2fs 超过 %ss, 已自动截取前 %ss 并转 wav 16k mono 提交",
             duration_sec, max_sec, max_sec,
         )
-        return out_path
+        return out_path, "wav"
     except Exception as e:
         logger.warning("[vrs] 音频时长检测/裁剪失败，原样提交: %s", e)
-        return audio_path
+        return audio_path, _codec_of(audio_path)
+
+
+def _codec_of(audio_path: str) -> str:
+    ext = os.path.splitext(audio_path)[1].lower().lstrip(".")
+    return {"wav": "wav", "mp3": "mp3", "m4a": "m4a", "aac": "aac"}.get(ext, "wav")
 
 
 def get_training_text() -> list[dict]:
@@ -113,10 +134,11 @@ def create_clone_task(
     voice_gender: 1-男 2-女
     """
     client = _get_vrs_client()
-    # 兜底：若上传音频 > 15s 自动截取前 15s，避免腾讯云 VRS 报
-    # InvalidParameterValue.AudioDurationExceedsLimit。
-    audio_path = _ensure_clone_audio_duration(audio_path, max_sec=15.0)
-    audio_b64, codec = _read_audio_as_b64(audio_path)
+    # 兜底：若上传音频 > 15s 自动截取前 15s 并转 wav，避免腾讯云 VRS 报
+    # InvalidParameterValue.AudioDurationExceedsLimit 同时规避 pydub 写 m4a
+    # 损坏文件 (moov atom not found) 的问题。
+    audio_path, codec = _ensure_clone_audio_duration(audio_path, max_sec=15.0)
+    audio_b64, _ = _read_audio_as_b64_with_codec(audio_path, codec)
 
     # 1) 音频质量检测 -> AudioId
     det_req = models.DetectEnvAndSoundQualityRequest()
