@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import require_permission
 from app.models import User
+from app.services.ai_provider_config_service import AiProviderConfigService
 from app.utils.permissions import PERM_MODELS_READ, PERM_MODELS_WRITE
 from app.services.ai_model_service import AiModelService
 
@@ -140,3 +141,33 @@ async def select_models(data: AiModelSelectRequest, _: User = Depends(require_pe
     result = await service.detect_all()
     result.runtime = runtime.to_dict()
     return result.to_dict()
+
+
+# -------------------- 腾讯云 VRS 声音复刻模式 --------------------
+
+
+class VrsTaskTypeRequest(BaseModel):
+    value: int = Field(..., description="1=基础版，5=一句话声音复刻")
+
+
+@router.get("/vrs-task-type")
+def get_vrs_task_type(_: User = Depends(require_permission(PERM_MODELS_READ))):
+    """获取当前 VRS 复刻模式（基础版 / 一句话复刻）。
+
+    该值保存在 ``ai_provider_config.json`` 顶层明文字段 ``vrs_task_type``。
+    """
+    return AiProviderConfigService().get_vrs_task_type()
+
+
+@router.post("/vrs-task-type")
+def set_vrs_task_type(
+    data: VrsTaskTypeRequest,
+    _: User = Depends(require_permission(PERM_MODELS_WRITE)),
+):
+    """切换 VRS 复刻模式（基础版 / 一句话复刻），立即生效。"""
+    try:
+        return AiProviderConfigService().set_vrs_task_type(data.value)
+    except ValueError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

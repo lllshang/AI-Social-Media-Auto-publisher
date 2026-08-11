@@ -168,6 +168,44 @@
       </el-table>
     </div>
 
+    <!-- 腾讯云 VRS 声音复刻模式 -->
+    <div class="card" style="margin-top:16px">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <span>🎙️ 腾讯云 VRS 声音复刻模式</span>
+        <el-tag v-if="vrsSource === 'env'" type="warning" size="small">环境变量已覆盖</el-tag>
+        <el-tag v-else-if="vrsSource === 'json'" type="success" size="small">配置生效中</el-tag>
+        <el-tag v-else type="info" size="small">默认值</el-tag>
+      </div>
+      <div style="padding:8px 4px 16px;color:#64748b;font-size:13px;line-height:1.7">
+        声音复刻（TTS）支持两种模式；切换后立即对前端生效（创建复刻任务时使用）。
+        <br />充值资源包开通 <b>一句话声音复刻</b> 后切换到该模式，否则用基础版（默认）即可。
+      </div>
+      <el-radio-group v-model="vrsTaskType" :disabled="!canWrite || vrsSaving">
+        <el-radio-button :value="1">
+          基础版
+          <span style="color:#94a3b8;font-size:12px;margin-left:4px">免费额度 / 默认</span>
+        </el-radio-button>
+        <el-radio-button :value="5">
+          一句话复刻
+          <span style="color:#f59e0b;font-size:12px;margin-left:4px">需充值</span>
+        </el-radio-button>
+      </el-radio-group>
+      <div style="margin-top:16px;display:flex;gap:12px;align-items:center">
+        <el-button
+          type="primary"
+          :loading="vrsSaving"
+          :disabled="!canWrite || vrsTaskType === vrsOriginal"
+          @click="saveVrsTaskType"
+        >
+          保存切换
+        </el-button>
+        <el-button @click="refreshVrsTaskType">刷新</el-button>
+        <span v-if="vrsStored" style="color:#94a3b8;font-size:12px">
+          已保存值：{{ vrsStored }} ｜ 优先级：环境变量 VRS_TASK_TYPE &gt; 此配置 &gt; 默认(基础版)
+        </span>
+      </div>
+    </div>
+
     <el-dialog v-model="providerVisible" :title="`配置 ${providerForm.label}`" width="520px">
       <el-form label-width="90px">
         <el-form-item v-if="providerForm.key_field" label="SecretId">
@@ -264,6 +302,12 @@ const generatingVideo = ref(false)
 const loading = ref(false)
 const providerVisible = ref(false)
 const addVisible = ref(false)
+// VRS 复刻模式（基础版=1 / 一句话复刻=5）
+const vrsTaskType = ref(1)
+const vrsOriginal = ref(1)
+const vrsSaving = ref(false)
+const vrsStored = ref('')
+const vrsSource = ref('default')
 const providerForm = reactive({
   provider: '',
   label: '',
@@ -359,10 +403,43 @@ async function loadModels() {
   }
 }
 
+async function refreshVrsTaskType() {
+  try {
+    const data = await api.getVrsTaskType()
+    const v = Number(data?.value) || 1
+    vrsTaskType.value = v
+    vrsOriginal.value = v
+    vrsStored.value = data?.stored || ''
+    vrsSource.value = data?.source || 'default'
+  } catch (e) {
+    console.warn('[vrs-task-type] 读取失败：', e?.message || e)
+  }
+}
+
+async function saveVrsTaskType() {
+  if (vrsTaskType.value === vrsOriginal.value) return
+  vrsSaving.value = true
+  try {
+    const data = await api.setVrsTaskType(vrsTaskType.value)
+    const v = Number(data?.value) || 1
+    vrsTaskType.value = v
+    vrsOriginal.value = v
+    vrsStored.value = data?.stored || ''
+    vrsSource.value = data?.source || 'default'
+    ElMessage.success(
+      v === 5 ? '已切换到一句话复刻模式（需充值额度）' : '已切换到基础版（默认）',
+    )
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || e?.message || '保存失败')
+  } finally {
+    vrsSaving.value = false
+  }
+}
+
 async function load() {
   loading.value = true
   try {
-    await Promise.all([loadProviders(), loadModels()])
+    await Promise.all([loadProviders(), loadModels(), refreshVrsTaskType()])
   } catch (e) {
     try {
       await loadProviders()

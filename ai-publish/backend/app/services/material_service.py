@@ -462,6 +462,7 @@ class AiContentService:
         if scene_type in ("avatar_i2v", "lip_sync"):
             try:
                 from app.utils.tts import synthesize_speech
+                from app.services.voice_clone_service import find_voice_clone_by_tag
 
                 # 实际要念的文本：优先 tts_text > script_text > topic
                 speak_text = (tts_text or script_text or topic or "").strip()
@@ -473,18 +474,43 @@ class AiContentService:
                     # 之前这里先 resolve_voice_id(voice_id) 得到 dict 后又当
                     # voice_id 传给 synthesize_speech，导致第二次 resolve 失败
                     # 回退默认女声（晓晓），表现为「怎么选都是女生声音」。
-                    # 复刻音色前端传 "clone:<voice_type>"，需拆给 voice_type。
-                    _voice_type = None
+                    #
+                    # 复刻音色前端传 "clone:<fast_voice_type>" 或
+                    # "clone:<voice_type>"：需要在 DB 里反查 voice_type + fast_voice_type，
+                    # 一起给 TTS（腾讯云一句话复刻必须 FastVoiceType 才精确选声；只传
+                    # voice_type=200000000 时 TTS 表现是默认音色，会出现「滴的长音」）。
+                    _voice_type: int | None = None
                     _voice_id_arg = voice_id
+                    _fast_voice_type: str | None = None
                     if isinstance(voice_id, str) and voice_id.startswith("clone:"):
-                        _voice_type = int(voice_id.split(":", 1)[1])
-                        _voice_id_arg = None
-                    tts_result = synthesize_speech(
+                        tag = voice_id.split(":", 1)[1]
+                        clone_lookup = find_voice_clone_by_tag(tag)
+                        if clone_lookup:
+                            _voice_type = clone_lookup.get("voice_type")
+                            _fast_voice_type = clone_lookup.get("fast_voice_type")
+                            logger.info(
+                                "[clone-tts] 命中复刻任务 tag=%s -> voice_type=%s fast_voice_type=%s",
+                                tag, _voice_type, _fast_voice_type,
+                            )
+                        else:
+                            logger.warning(
+                                "[clone-tts] 没找到 tag=%s 对应的复刻任务，回退标准音色",
+                                tag,
+                            )
+                            # 把 clone:<x> 降级传给 synthesize_speech，
+                            # synthesize_speech 内 resolve_voice_id 会回到默认女声
+                            # 兜底（推荐拒绝执行，因为题目要求明确要用户声音）。
+                        _voice_id_arg = voice_id  # 仍传原始值走统一 resolve
+
+                    tts_kwargs = dict(
                         text=speak_text,
                         voice_id=_voice_id_arg,
                         voice_type=_voice_type,
                         prefix="avatar",
                     )
+                    if _fast_voice_type:
+                        tts_kwargs["fast_voice_type"] = _fast_voice_type
+                    tts_result = synthesize_speech(**tts_kwargs)
                     generated_audio_url = tts_result.audio_url
                     tts_voice_used = tts_result.voice_id
                     reference_audio_url = tts_result.audio_url

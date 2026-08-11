@@ -240,12 +240,24 @@ def run_migrations() -> None:
             "task_id VARCHAR(128), "
             "sample_url VARCHAR(1024), "
             "voice_type INTEGER, "
+            "fast_voice_type VARCHAR(128), "
             "status VARCHAR(20) DEFAULT 'pending', "
             "error_message TEXT, "
             "created_by INTEGER, "
             "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
             "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
+    else:
+        # 老库升级：分两阶段补 fast_voice_type 列与状态列
+        vc_cols = {c["name"] for c in inspector.get_columns("voice_clone_tasks")}
+        if "fast_voice_type" not in vc_cols:
+            statements.append("ALTER TABLE voice_clone_tasks ADD COLUMN fast_voice_type VARCHAR(128)")
+        if "status" not in vc_cols:
+            statements.append("ALTER TABLE voice_clone_tasks ADD COLUMN status VARCHAR(20) DEFAULT 'pending'")
+        if "created_at" not in vc_cols:
+            statements.append("ALTER TABLE voice_clone_tasks ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP")
+        if "updated_at" not in vc_cols:
+            statements.append("ALTER TABLE voice_clone_tasks ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP")
 
     if not statements:
         return

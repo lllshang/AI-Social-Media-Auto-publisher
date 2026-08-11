@@ -31,6 +31,32 @@ http.interceptors.response.use(
 
     if (status === 401 && !err.config?.url?.includes('/api/auth/login')) {
       const auth = useAuthStore()
+      // 同一回合内多次 401（如数字人页面同时发 /me 与 /avatars）只跳一次 login，
+      // 否则浏览器在 router.replace 期间会把跟在后面的请求都报 NetworkErr。
+      // 注意：这里**清掉所有状态并把目标路由改成 login**，不能只清 token 不跳页，
+      // 否则 refreshSession / 路由 beforeEach 会被静默吞了：token 空、isLoggedIn
+      // false，但 beforeEach 收到 reject 不再走到"未登录→跳 login"分支，
+      // 整个页面会卡在路由守卫里、router-view 永远不渲染（白屏）。
+      const now = Date.now()
+      const lastJump = Number(sessionStorage.getItem('__last_401_jump') || 0)
+      if (now - lastJump < 4000) {
+        // 静默清 token，但仍然触发一次 replace，避免上面的"无限白屏"陷阱
+        auth.token = ''
+        auth.username = ''
+        auth.roleName = ''
+        auth.permissions = []
+        localStorage.removeItem('ai_publish_token')
+        localStorage.removeItem('ai_publish_user')
+        localStorage.removeItem('ai_publish_role')
+        localStorage.removeItem('ai_publish_permissions')
+        const current = router.currentRoute.value
+        if (current.name !== 'login') {
+          router.replace({ name: 'login', query: { redirect: current.fullPath, reason: 'expired' } })
+        }
+        return Promise.reject(new Error(message))
+      }
+      sessionStorage.setItem('__last_401_jump', String(now))
+
       auth.logout()
       const current = router.currentRoute.value
       if (current.name !== 'login') {
@@ -140,11 +166,16 @@ export const api = {
   listVoices: () => http.get('/api/voices'),
   // === 声音复刻（VRS）===
   listVoiceClones: () => http.get('/api/voice-clone'),
-  createVoiceClone: (file, { name, voice_gender }) => {
+  createVoiceClone: (file, { name, voice_gender, text_id, task_type }) => {
     const form = new FormData()
     form.append('audio', file)
     if (name) form.append('name', name)
     if (voice_gender != null) form.append('voice_gender', String(voice_gender))
+    // 仅一句话复刻(oneshot)模式需要：前端展示的训练文本对应的 TextId 必须传给后端，
+    // 否则 ASR 比对的"参照文本"跟用户实际朗读的不一致，整段被判定漏读。
+    if (text_id) form.append('text_id', text_id)
+    // task_type 不传则后端读配置表默认（基础版=1）。充值开通一句话版额度后改配置即可。
+    if (task_type != null) form.append('task_type', String(task_type))
     return http.post('/api/voice-clone', form)
   },
   getVoiceCloneStatus: (taskId) => http.get(`/api/voice-clone/${taskId}/status`),
@@ -162,6 +193,9 @@ export const api = {
   deleteCustomProvider: (provider) => http.delete(`/api/ai/models/providers/custom/${provider}`),
   detectModels: () => http.post('/api/ai/models/detect'),
   selectModel: (payload) => http.post('/api/ai/models/select', payload),
+  // === 腾讯云 VRS 复刻模式（基础版=1 / 一句话复刻=5）===
+  getVrsTaskType: () => http.get('/api/ai/models/vrs-task-type'),
+  setVrsTaskType: (value) => http.post('/api/ai/models/vrs-task-type', { value }),
   listTasks: (params) => http.get('/api/publish-tasks', { params }),
   listPendingReviews: (params) => http.get('/api/reviews/pending', { params }),
   listReviewHistory: (params) => http.get('/api/reviews/history', { params }),

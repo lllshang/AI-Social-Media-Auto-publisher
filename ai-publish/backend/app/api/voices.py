@@ -40,11 +40,32 @@ class VoicePreviewRequest(BaseModel):
 
 @router.post("/api/voices/preview")
 def preview_voice(req: VoicePreviewRequest) -> StreamingResponse:
-    """实时合成试听片段，浏览器直接播放。"""
+    """实时合成试听片段，浏览器直接播放。
+
+    对复刻音色（voice_id = "clone:<tag>"）会从复刻库中找出对应的 fast_voice_type
+    并同步传给 TTS，避免腾讯云 TTS 报"check FastVoiceType"。
+    """
+    voice_id = req.voice_id
+    fast_voice_type = None
+    voice_type_int = None
+    if voice_id and voice_id.startswith("clone:"):
+        tag = voice_id[len("clone:"):]
+        try:
+            from app.services.voice_clone_service import find_voice_clone_by_tag
+            hit = find_voice_clone_by_tag(tag)
+            if hit:
+                fast_voice_type = hit.get("fast_voice_type")
+                voice_type_int = hit.get("voice_type")
+        except Exception:
+            # 查不到不影响标准路径，回退走整数 voice_type
+            pass
+
     try:
         result = synthesize_speech(
             text=req.text,
-            voice_id=req.voice_id,
+            voice_id=voice_id,
+            voice_type=voice_type_int,
+            fast_voice_type=fast_voice_type,
             rate=req.rate,
             volume=req.volume,
             prefix="preview",

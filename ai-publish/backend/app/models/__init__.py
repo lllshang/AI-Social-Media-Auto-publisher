@@ -302,7 +302,8 @@ class VoiceCloneTask(Base):
     name: Mapped[str] = mapped_column(String(128), nullable=False)  # 用户给复刻音色的命名
     task_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)  # 腾讯云返回的 TaskId
     sample_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)  # 训练样本音频 URL
-    voice_type: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 训练成功后腾讯云分配的复刻音色 ID
+    voice_type: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 训练成功后腾讯云分配的复刻音色 ID（一句话复刻固定为 200000000）
+    fast_voice_type: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)  # TTS 调用时用于指定具体哪个复刻音色（字符串 ID）
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|training|succeeded|failed
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_by: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     app_name: str = "ai-publish"
     debug: bool = True
     secret_key: str = "change-me"
-    access_token_expire_minutes: int = 1440
+    # 30 天：避免长时间未访问后被打到登录页，体验更顺；如需撤销后让用户重新登录，
+    # 仍只需调用 auth.logout() 或修改 SECRET_KEY 让所有 token 失效。
+    access_token_expire_minutes: int = 30 * 24 * 60
 
     admin_username: str = "admin"
     admin_password: str = "admin123"

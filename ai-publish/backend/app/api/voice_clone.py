@@ -22,9 +22,16 @@ _ALLOWED_EXT = {".wav", ".mp3", ".m4a", ".aac"}
 
 @router.get("/training-text")
 def training_text():
-    """获取 VRS 标准训练文本，前端可展示引导用户录制。"""
+    """获取 VRS 标准训练文本，前端可展示引导用户录制。
+
+    基础版（TaskType=1）不需要训练文本，返回空列表 + mode 标记；
+    一句话复刻（TaskType=5）返回训练文本列表。
+    """
     try:
-        return {"items": svc.get_training_text()}
+        mode = svc.get_current_task_type()
+        if mode == svc.VRS_TASK_TYPE_ONESHOT:
+            return {"mode": "oneshot", "items": svc.get_training_text()}
+        return {"mode": "basic", "items": []}
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"获取训练文本失败：{e}")
 
@@ -34,13 +41,22 @@ async def create_clone(
     name: str = Form(...),
     voice_gender: int = Form(1),
     audio: UploadFile = File(...),
+    text_id: str | None = Form(None),  # 仅一句话复刻（TaskType=5）需要：前端展示的训练文本对应的 TextId
+    task_type: int | None = Form(None),  # 复刻模式：1=基础版(默认) 5=一句话复刻(充值后切)
 ):
     """上传样本音频，创建声音复刻任务。
 
     - name: 复刻音色命名
     - voice_gender: 1-男 2-女
     - audio: wav/mp3/m4a/aac，建议 10s 左右清晰单人录音
+    - text_id: 仅一句话复刻模式需要（前端展示的训练文本对应的 TextId）
+    - task_type: 复刻模式；不传则读配置表默认（基础版）
     """
+    from loguru import logger
+    logger.info(
+        f"[voice-clone POST] name={name!r} gender={voice_gender} task_type={task_type!r} text_id={text_id!r} "
+        f"audio.filename={audio.filename!r} audio.content_type={audio.content_type!r}"
+    )
     ext = os.path.splitext(audio.filename or "")[1].lower()
     if ext not in _ALLOWED_EXT:
         raise HTTPException(status_code=400, detail=f"不支持的音频格式：{ext}，仅支持 wav/mp3/m4a/aac")
@@ -54,10 +70,15 @@ async def create_clone(
             raise HTTPException(status_code=400, detail="音频文件为空")
         tmp.write(content)
         tmp.close()
-        rec = svc.create_clone_task(name=name, audio_path=tmp.name, voice_gender=voice_gender)
+        rec = svc.create_clone_task(
+            name=name, audio_path=tmp.name, voice_gender=voice_gender,
+            text_id=text_id, task_type=task_type,
+        )
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001
+        from loguru import logger
+        logger.exception(f"[voice-clone POST] 复刻失败 name={name!r} ext={ext!r} size={len(content) if 'content' in locals() else 0}: {e}")
         raise HTTPException(status_code=502, detail=f"复刻任务创建失败：{e}")
     finally:
         # 清理原始上传临时文件 + 裁剪后可能产生的 .trimmed.* 文件

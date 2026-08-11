@@ -433,3 +433,52 @@ class AiProviderConfigService:
         if len(value) <= 8:
             return "*" * len(value)
         return f"{value[:4]}****{value[-4:]}"
+
+    # -------- 腾讯云 VRS 声音复刻模式 --------
+    # 明文字段，写在 ai_provider_config.json 顶层，不走 encrypt。
+    # 切换值：1 = 基础版（无独立计费，腾讯云控制台关闭前默认免费），
+    #         5 = 一句话声音复刻（独立计费，需充值资源包）
+    VRS_TASK_TYPE_BASIC = 1
+    VRS_TASK_TYPE_ONESHOT = 5
+    VRS_TASK_TYPE_FIELD = "vrs_task_type"
+
+    def get_vrs_task_type(self) -> dict[str, Any]:
+        """读取当前 VRS 复刻模式（明文字段，存储于 ai_provider_config.json）。"""
+        import os
+
+        env_val = (os.environ.get("VRS_TASK_TYPE") or "").strip()
+        raw = self._load_raw()
+        stored_val = str(raw.get(self.VRS_TASK_TYPE_FIELD, "")).strip()
+
+        # 解析优先级：环境变量 > JSON > 默认基础版
+        def _coerce(v: str) -> int:
+            v = (v or "").strip()
+            if v in ("1", "5"):
+                return int(v)
+            return self.VRS_TASK_TYPE_BASIC
+
+        current = _coerce(env_val) if env_val else _coerce(stored_val)
+        return {
+            "value": current,
+            "options": [
+                {"value": self.VRS_TASK_TYPE_BASIC, "label": "基础版（免费额度/默认）"},
+                {"value": self.VRS_TASK_TYPE_ONESHOT, "label": "一句话声音复刻（需充值资源包）"},
+            ],
+            "stored": stored_val,
+            "env_override": bool(env_val),
+            "source": "env" if env_val else ("json" if stored_val else "default"),
+        }
+
+    def set_vrs_task_type(self, value: int) -> dict[str, Any]:
+        """保存 VRS 复刻模式到 ai_provider_config.json（明文字段）。"""
+        try:
+            ivalue = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("vrs_task_type 必须为 1 或 5") from exc
+        if ivalue not in (self.VRS_TASK_TYPE_BASIC, self.VRS_TASK_TYPE_ONESHOT):
+            raise ValueError("vrs_task_type 必须为 1 或 5")
+
+        raw = self._load_raw()
+        raw[self.VRS_TASK_TYPE_FIELD] = str(ivalue)
+        self._save_raw(raw)
+        return self.get_vrs_task_type()

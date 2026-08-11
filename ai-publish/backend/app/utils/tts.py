@@ -142,13 +142,21 @@ def _sanitize_for_tts(text: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
-def _synthesize_one(text: str, voice_type: int, lang: str) -> bytes:
-    """调用腾讯云 TTS 合成单段 mp3 二进制（同步，在线程内跑）。"""
+def _synthesize_one(text: str, voice_type: int, lang: str, fast_voice_type: str | None = None) -> bytes:
+    """调用腾讯云 TTS 合成单段 mp3 二进制（同步，在线程内跑）。
+
+    复刻音色场景：
+      - 一句话复刻（VRS）固定传 VoiceType=200000000，并且必须传 FastVoiceType 指定具体音色。
+      - 极速复刻也可只传 FastVoiceType，但保持 VoiceType 字段更兼容。
+    """
     from tencentcloud.tts.v20190823 import models
 
     client = _get_tts_client()
     req = models.TextToVoiceRequest()
     req.VoiceType = voice_type
+    if fast_voice_type:
+        # 复刻音色场景必须 FastVoiceType 串起来才精确指向具体音色
+        req.FastVoiceType = fast_voice_type
     req.Codec = "mp3"
     req.SampleRate = 16000
     req.Text = text
@@ -198,6 +206,7 @@ def synthesize_speech(
     voice_id: Optional[str] = None,
     *,
     voice_type: Optional[int] = None,
+    fast_voice_type: Optional[str] = None,
     rate: str = "+0%",
     volume: str = "+0%",
     prefix: str = "tts",
@@ -208,16 +217,25 @@ def synthesize_speech(
 
     - voice_id: 标准音色 id（查 TENCENT_TTS_VOICES 表）
     - voice_type: 复刻音色整数 ID（腾讯云 VRS 训练后得到），优先级高于 voice_id
+    - fast_voice_type: 一句话复刻（VRS=5）填这个字符串，会和 voice_type=200000000 一起传 TTS；
+      不传时 TTS 不知道具体哪个复刻音色，会报"check FastVoiceType"。
 
     长文本（>150 字）按句分段合成后用 pydub 拼接成一个完整 mp3，
     这样数字人口播不会被截断，Kling 也能按完整音频时长生成对口型视频。
     """
     # 复刻音色（VRS 训练得到的整数 voice_type）优先级最高
     if voice_type is not None:
-        voice_cfg = {"id": f"clone:{voice_type}", "voice_type": int(voice_type), "lang": "zh"}
+        voice_cfg = {
+            "id": f"clone:{voice_type}",
+            "voice_type": int(voice_type),
+            "lang": "zh",
+        }
+        if fast_voice_type:
+            voice_cfg["fast_voice_type"] = fast_voice_type
     else:
         voice_cfg = resolve_voice_id(voice_id)
     voice_type = voice_cfg["voice_type"]
+    fast_voice_type = voice_cfg.get("fast_voice_type")  # 复刻音色专用：精确指向具体哪个音色
     lang = voice_cfg.get("lang", "zh")
     cleaned = _sanitize_for_tts(text)
     if not cleaned:
@@ -255,7 +273,7 @@ def synthesize_speech(
         chunks: list[AudioSegment] = []
         for idx, part in enumerate(parts):
             try:
-                audio_b64 = _run_in_thread(lambda p=part: _synthesize_one(p, voice_type, lang))
+                audio_b64 = _run_in_thread(lambda p=part: _synthesize_one(p, voice_type, lang, fast_voice_type))
             except Exception as e:
                 # 段级合成失败（极有可能 = 单段音频时长超限）→ 再拆半重试一次
                 err_msg = str(e)
@@ -267,7 +285,7 @@ def synthesize_speech(
                     )
                     sub_audios: list[AudioSegment] = []
                     for sp in sub_parts:
-                        sa = _run_in_thread(lambda p=sp: _synthesize_one(p, voice_type, lang))
+                        sa = _run_in_thread(lambda p=sp: _synthesize_one(p, voice_type, lang, fast_voice_type))
                         if not sa:
                             raise RuntimeError(f"腾讯云 TTS 子段合成失败：段{idx + 1}")
                         sub_audios.append(AudioSegment.from_file(io.BytesIO(sa), format="mp3"))
@@ -290,7 +308,7 @@ def synthesize_speech(
     else:
         try:
             audio_bytes = _run_in_thread(
-                lambda: _synthesize_one(cleaned, voice_type, lang)
+                lambda: _synthesize_one(cleaned, voice_type, lang, fast_voice_type)
             )
         except Exception as e:
             # 单段也超长（未达分段阈值但实际合成超限）→ 强制拆成 2 段再试
@@ -300,7 +318,7 @@ def synthesize_speech(
                 parts = _split_text(cleaned, max_len=max(30, len(cleaned) // 2))
                 sub_audios: list[AudioSegment] = []
                 for sp in parts:
-                    sa = _run_in_thread(lambda p=sp: _synthesize_one(p, voice_type, lang))
+                    sa = _run_in_thread(lambda p=sp: _synthesize_one(p, voice_type, lang, fast_voice_type))
                     if not sa:
                         raise RuntimeError("腾讯云 TTS 单段重试合成失败")
                     sub_audios.append(AudioSegment.from_file(io.BytesIO(sa), format="mp3"))

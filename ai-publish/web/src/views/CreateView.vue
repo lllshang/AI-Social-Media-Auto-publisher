@@ -219,19 +219,28 @@
                 </el-option-group>
                 <el-option-group v-if="myVoices.length" label="我的声音（复刻）">
                   <el-option
-                    v-for="v in myVoices"
+                    v-for="v in displayMyVoices"
                     :key="v.id"
                     :value="v.id"
-                    :label="v.status === 'succeeded' ? v.name : `${v.name}（训练中…）`"
+                    :label="v._label"
                     :disabled="v.status !== 'succeeded'"
                   >
-                    <span style="float: left">{{ v.status === 'succeeded' ? v.name : `${v.name}（训练中…）` }}</span>
+                    <span style="float: left; display: flex; align-items: center; gap: 6px">
+                      <el-tag
+                        size="small"
+                        :type="v._statusType"
+                        effect="dark"
+                        style="height: 18px; line-height: 18px; padding: 0 6px"
+                      >{{ v._statusText }}</el-tag>
+                      <span>{{ v._label }}</span>
+                    </span>
                     <el-button
                       link
                       type="primary"
                       size="small"
                       style="float: right; margin-left: 12px; padding: 0"
                       :loading="playingVoiceId === v.id"
+                      :disabled="v.status !== 'succeeded'"
                       @click.stop="previewThisVoice(v)"
                     >
                       <el-icon style="vertical-align: middle"><Headset /></el-icon>
@@ -314,19 +323,28 @@
                 </el-option-group>
                 <el-option-group v-if="myVoices.length" label="我的声音（复刻）">
                   <el-option
-                    v-for="v in myVoices"
+                    v-for="v in displayMyVoices"
                     :key="v.id"
                     :value="v.id"
-                    :label="v.status === 'succeeded' ? v.name : `${v.name}（训练中…）`"
+                    :label="v._label"
                     :disabled="v.status !== 'succeeded'"
                   >
-                    <span style="float: left">{{ v.status === 'succeeded' ? v.name : `${v.name}（训练中…）` }}</span>
+                    <span style="float: left; display: flex; align-items: center; gap: 6px">
+                      <el-tag
+                        size="small"
+                        :type="v._statusType"
+                        effect="dark"
+                        style="height: 18px; line-height: 18px; padding: 0 6px"
+                      >{{ v._statusText }}</el-tag>
+                      <span>{{ v._label }}</span>
+                    </span>
                     <el-button
                       link
                       type="primary"
                       size="small"
                       style="float: right; margin-left: 12px; padding: 0"
                       :loading="playingVoiceId === v.id"
+                      :disabled="v.status !== 'succeeded'"
                       @click.stop="previewThisVoice(v)"
                     >
                       <el-icon style="vertical-align: middle"><Headset /></el-icon>
@@ -541,15 +559,60 @@
   >
     <div class="clone-guide">
       <el-alert
+        v-if="cloneMode === 'oneshot'"
         type="info"
         :closable="false"
         title="腾讯云 VRS 一句话复刻：请先照着下面的训练文本朗读并录制/上传，否则音频检测会失败。"
         style="margin-bottom: 12px"
       />
-      <div class="clone-text-box">
+      <el-alert
+        v-else
+        type="success"
+        :closable="false"
+        title="腾讯云 VRS 基础版复刻：直接朗读任意清晰中文句子录制/上传即可，无需对照指定文本。"
+        style="margin-bottom: 12px"
+      />
+      <div v-if="cloneMode === 'oneshot'" class="clone-text-box">
         <div class="clone-text-label">请朗读以下文本：</div>
         <div class="clone-text-content">{{ cloneTrainingText || '（加载中…）' }}</div>
+        <div v-if="cloneTrainingText" class="clone-text-tip">
+          共 <b>{{ cloneTrainingText.length }}</b> 个字，建议录制
+          <b>7–12</b> 秒，<span style="color:#e6a23c">过短或过赶都可能被腾讯云识别失败</span>
+        </div>
       </div>
+
+      <!-- 浏览器内录音 -->
+      <div class="clone-record">
+        <div class="clone-record-row">
+          <el-button
+            size="default"
+            :type="isRecording ? 'danger' : 'success'"
+            :loading="requestingMic"
+            @click="isRecording ? stopRecording() : startRecording()"
+          >
+            {{ isRecording ? '■ 停止录音' : '● 开始录音' }}
+          </el-button>
+          <span v-if="isRecording" class="rec-dot" />
+          <span v-if="isRecording" class="rec-time">{{ recordSec }}s</span>
+          <span v-if="recordSec > 15" class="rec-warn">已超 15s，将自动截取前 15 秒</span>
+        </div>
+        <div v-if="recordedUrl" class="clone-playback">
+          <span class="muted">试听录音：</span>
+          <audio :src="recordedUrl" controls style="width: 100%; margin-top: 6px" />
+          <el-button
+            size="small"
+            type="primary"
+            :loading="uploadingVoice"
+            style="margin-top: 8px"
+            @click="submitRecordedAudio"
+          >
+            {{ uploadingVoice ? '复刻中…' : '用这段录音复刻' }}
+          </el-button>
+        </div>
+      </div>
+
+      <el-divider>或</el-divider>
+
       <el-upload
         :show-file-list="false"
         :auto-upload="false"
@@ -562,7 +625,10 @@
         </el-button>
       </el-upload>
       <p class="muted" style="margin-top: 8px">
-        录音要求：清晰单人中文、5–15 秒；超长将自动截取前 15 秒。录制时请朗读上方文本。
+        录音要求：清晰单人中文、5–15 秒；超长将自动截取前 15 秒。
+      </p>
+      <p class="muted" style="margin-top: 4px; color: #e6a23c">
+        浏览器内录音要求页面为 HTTPS 或 localhost；若当前页面是 http://IP 直接访问，请改用「选择录音文件上传」。
       </p>
     </div>
   </el-dialog>
@@ -842,6 +908,65 @@ const useCustomScript = ref(false) // 是否使用自定义口播词（否则用
 const voiceId = ref(loadPickedVoice() || 'zh-CN-XiaoxiaoNeural') // 默认晓晓（女·温柔）；若用户曾手动选过，恢复用户的偏好
 const voiceOptions = ref([])                  // 拉取到的标准音色下拉
 const myVoices = ref([])                       // 我的声音（复刻音色），id = clone:<voice_type>
+
+// 我的声音（复刻）下拉专用展示数据：自动处理同名（recording.wav 等） + 训练状态色块
+// 状态颜色规范：
+//   succeeded = success（绿）
+//   training  = warning（橙）
+//   queue     = info（蓝）
+//   failed    = danger（红）
+// 其它视为 unknown/info
+function _cloneStatusInfo(status) {
+  switch ((status || '').toLowerCase()) {
+    case 'succeeded':
+      return { text: '已就绪', type: 'success' }
+    case 'training':
+      return { text: '训练中', type: 'warning' }
+    case 'queue':
+      return { text: '排队中', type: 'info' }
+    case 'failed':
+      return { text: '失败', type: 'danger' }
+    default:
+      return { text: status || '未知', type: 'info' }
+  }
+}
+
+const displayMyVoices = computed(() => {
+  const items = (myVoices.value || []).slice()
+  // 1) 同名去重 / 补后缀：
+  // 浏览器/手机录音默认文件名都是 recording.wav / recording.m4a，导致大量同名条目。
+  // 这里保持 id 不变（仍能精确选到目标条目），只是在 label 上加可区分的后缀：
+  // succeeded → 短 hash（fast_voice_type 后 6 位），其余 → 训练状态/编号。
+  const nameCount = new Map()
+  items.forEach((it) => {
+    const n = (it.name || '未命名').toString()
+    nameCount.set(n, (nameCount.get(n) || 0) + 1)
+  })
+  const indexed = new Map()
+  return items.map((v) => {
+    const baseName = (v.name || '未命名').toString()
+    const info = _cloneStatusInfo(v.status)
+    // 同名命中：补一个可识别后缀
+    let labelName = baseName
+    if ((nameCount.get(baseName) || 0) > 1) {
+      const idx = (indexed.get(baseName) || 0) + 1
+      indexed.set(baseName, idx)
+      if (v.status === 'succeeded' && v.fast_voice_type) {
+        const tag = String(v.fast_voice_type)
+        labelName = `${baseName}·${tag.slice(-6)}`
+      } else {
+        labelName = `${baseName}·${v.status || 'init'}#${idx}`
+      }
+    }
+    const ok = v.status === 'succeeded'
+    return {
+      ...v,
+      _label: ok ? labelName : `${labelName}（${info.text}）`,
+      _statusText: info.text,
+      _statusType: info.type,
+    }
+  })
+})
 const uploadedVoice = ref(null)               // 兼容旧逻辑保留字段（不再使用）
 const playingVoiceId = ref('')                // 当前正在试听的音色 id（高亮用）
 const previewAudio = new Audio()              // 复用的音频播放器
@@ -849,8 +974,19 @@ const previewText = '这是一段用于试听音色效果的示例口播，希�
 const uploadingVoice = ref(false)            // 复刻中
 // 复刻引导弹窗
 const cloneGuideVisible = ref(false)
+const cloneMode = ref('basic')  // 'basic'=基础版(默认,无需训练文本) / 'oneshot'=一句话复刻(需跟读)
 const cloneTrainingText = ref('')
 const cloneTrainingTextId = ref('')
+// 浏览器内录音
+const isRecording = ref(false)
+const requestingMic = ref(false)
+const recordSec = ref(0)
+const recordedUrl = ref('')        // 录音试听地址
+const recordedBlob = ref(null)     // 录音原始 Blob
+let mediaRecorder = null
+let mediaStream = null
+let recordChunks = []
+let recordTimer = null
 
 // 关键修复：用户是否手动选过音色（持久化）。
 // 用 localStorage 持久化，既跨刷新生效，也能避免 Vite/esbuild 把 set-only 的 ref 当死代码消除掉。
@@ -886,22 +1022,63 @@ async function loadVoices() {
     const res = await api.listVoiceClones()
     const items = res?.items || []
     myVoices.value = items.map(v => ({
-      id: `clone:${v.voice_type}`,
+      // 一句话复刻(vrs_task_type=5)必须有 fast_voice_type 才能精确指向 TTS 某个具体音色；
+      // 否则会因为只传 voice_type=200000000 而腾讯云 TTS 找不到具体音色报错。
+      id: v.fast_voice_type
+        ? `clone:${v.fast_voice_type}`
+        : `clone:${v.voice_type}`,
       name: v.name,
       status: v.status,
+      voice_type: v.voice_type,
+      fast_voice_type: v.fast_voice_type,
+      created_at: v.created_at,
     }))
   } catch (e) {
     // 复刻音色列表加载失败不阻塞主流程
   }
+  scheduleCloneStatusPolling()
 }
 
-// 打开复刻引导弹窗：先向腾讯云获取训练文本（含 TextId），展示给用户照读。
+// 我的声音里有非终态（training/queue）时，每 15s 自动刷一次列表；
+// 全部进入终态（succeeded/failed）就停掉轮询，避免无效请求。
+function scheduleCloneStatusPolling() {
+  if (cloneStatusTimer) {
+    clearInterval(cloneStatusTimer)
+    cloneStatusTimer = null
+  }
+  const pending = (myVoices.value || []).some(
+    (v) => v.status === 'training' || v.status === 'queue' || v.status === 'init',
+  )
+  if (!pending) return
+  cloneStatusTimer = setInterval(async () => {
+    try {
+      const res = await api.listVoiceClones()
+      const items = res?.items || []
+      myVoices.value = items.map((v) => ({
+        id: v.fast_voice_type ? `clone:${v.fast_voice_type}` : `clone:${v.voice_type}`,
+        name: v.name,
+        status: v.status,
+        voice_type: v.voice_type,
+        fast_voice_type: v.fast_voice_type,
+        created_at: v.created_at,
+      }))
+      scheduleCloneStatusPolling()
+    } catch (e) {
+      // 静默：下次轮询再试
+    }
+  }, 15000)
+}
+
+// 打开复刻引导弹窗：先向腾讯云查询当前复刻模式。
+// 基础版(basic)直接录音即可，无需训练文本；一句话复刻(oneshot)才拉训练文本让用户跟读。
 async function openCloneGuide() {
   cloneGuideVisible.value = true
+  cloneMode.value = 'basic'
   cloneTrainingText.value = ''
   cloneTrainingTextId.value = ''
   try {
     const res = await api.getVoiceCloneTrainingText()
+    cloneMode.value = res?.mode === 'oneshot' ? 'oneshot' : 'basic'
     const items = res?.items || []
     const first = items[0]
     if (first) {
@@ -914,9 +1091,240 @@ async function openCloneGuide() {
 }
 
 function onCloneGuideClosed() {
+  stopRecording(true)
+  if (recordedUrl.value) {
+    URL.revokeObjectURL(recordedUrl.value)
+    recordedUrl.value = ''
+  }
+  recordedBlob.value = null
   // 弹窗关闭时若未上传，重置引导状态
   cloneTrainingText.value = ''
   cloneTrainingTextId.value = ''
+}
+
+// ---------- 浏览器内录音 ----------
+function startRecording() {
+  // 录音能力检测：必须满足"安全上下文 + 浏览器支持 getUserMedia"
+  if (!window.isSecureContext) {
+    ElMessage.error('当前页面不是 HTTPS / 本地环境，浏览器禁止录音，请改用「选择录音文件上传」')
+    return
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    ElMessage.error('当前浏览器不支持录音 API，请改用「选择录音文件上传」')
+    return
+  }
+  requestingMic.value = true
+  navigator.mediaDevices
+    .getUserMedia({
+      audio: {
+        channelCount: 1,                  // 强制单声道
+        // 关掉自动降噪/增益/回声消除：这些处理会破坏人声特征，
+        // 导致腾讯云 ASR 难以识别，进而把"哲学/物质"听成"功能/手表"等完全无关的词。
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        sampleRate: 48000,                // 浏览器原生高采样率，后续重采样到 24k 更保真
+      },
+    })
+    .then((stream) => {
+      requestingMic.value = false
+      mediaStream = stream
+      recordChunks = []
+      recordedBlob.value = null
+      if (recordedUrl.value) URL.revokeObjectURL(recordedUrl.value)
+      recordedUrl.value = ''
+      // 优先用 PCM 编码录制（无压缩，避免 opus 在某些浏览器 decodeAudioData
+      // 时长估算 bug 导致转码后音频为空/静音）。不支持再回退 opus/webm。
+      let mrOptions = {}
+      const preferTypes = ['audio/webm;codecs=pcm', 'audio/webm', 'audio/ogg;codecs=opus']
+      for (const t of preferTypes) {
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) {
+          mrOptions = { mimeType: t }
+          break
+        }
+      }
+      try {
+        mediaRecorder = new MediaRecorder(stream, mrOptions)
+      } catch (e) {
+        mediaRecorder = new MediaRecorder(stream)
+      }
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recordChunks.push(e.data)
+      }
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordChunks, {
+          type: mediaRecorder.mimeType || 'audio/webm',
+        })
+        recordedBlob.value = blob
+        recordedUrl.value = URL.createObjectURL(blob)
+        stopStreamTracks()
+      }
+      mediaRecorder.start()
+      isRecording.value = true
+      recordSec.value = 0
+      recordTimer = setInterval(() => {
+        recordSec.value += 1
+      }, 1000)
+    })
+    .catch((err) => {
+      requestingMic.value = false
+      console.error('获取麦克风失败', err)
+      const name = err && err.name
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        ElMessage.error('麦克风权限被拒绝，请在浏览器地址栏左侧允许麦克风后重试')
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        ElMessage.error('未检测到可用麦克风设备，请连接麦克风后重试')
+      } else if (name === 'NotReadableError') {
+        ElMessage.error('麦克风被其它程序占用，请关闭后重试')
+      } else {
+        ElMessage.error('无法访问麦克风：' + (err?.message || '未知错误') + '，可改用「选择录音文件上传」')
+      }
+    })
+}
+
+function stopRecording(silent = false) {
+  if (recordTimer) {
+    clearInterval(recordTimer)
+    recordTimer = null
+  }
+  if (mediaRecorder && isRecording.value) {
+    try {
+      mediaRecorder.stop()
+    } catch (e) {
+      // ignore
+    }
+  }
+  isRecording.value = false
+  if (!silent && recordSec.value > 0 && recordSec.value < 3) {
+    ElMessage.warning('录音太短（少于 3 秒），请重新录制')
+  }
+}
+
+function stopStreamTracks() {
+  if (mediaStream) {
+    mediaStream.getTracks().forEach((t) => t.stop())
+    mediaStream = null
+  }
+}
+
+// 将录音 Blob 提交到复刻接口
+async function submitRecordedAudio() {
+  if (!recordedBlob.value) {
+    ElMessage.warning('请先录音')
+    return
+  }
+  if (recordSec.value < 7) {
+    ElMessage.warning(
+      `录音仅 ${recordSec.value} 秒，过短容易被腾讯云识别失败，建议录 7–12 秒（与训练文本字数匹配），请重新录制`,
+    )
+    return
+  }
+  if (recordSec.value > 15) {
+    ElMessage.warning(`录音 ${recordSec.value} 秒超过 15 秒，提交时会自动截取前 15 秒`)
+  }
+  uploadingVoice.value = true
+  try {
+    // 浏览器录音多为 webm/ogg(opus)，后端仅收 wav/mp3/m4a/aac。
+    // 这里在前端用 Web Audio 解码并重新编码为 16k 单声道 WAV，确保后端可直接处理。
+    const wavFile = await blobToWavFile(recordedBlob.value, 'recording.wav')
+    await doCloneUpload(wavFile, recordedUrl.value)
+  } catch (e) {
+    console.error('录音转码失败', e)
+    ElMessage.error('录音处理失败，请改用文件上传')
+  } finally {
+    uploadingVoice.value = false
+  }
+}
+
+// 解码 Blob 音频并重新编码为 16k 单声道 WAV（16bit PCM）
+function blobToWavFile(blob, filename) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob)
+    const AudioCtx = window.AudioContext || window.webkitAudioContext
+    if (!AudioCtx) {
+      URL.revokeObjectURL(url)
+      reject(new Error('AudioContext 不可用'))
+      return
+    }
+    const audioCtx = new AudioCtx()
+    const req = new XMLHttpRequest()
+    req.open('GET', url, true)
+    req.responseType = 'arraybuffer'
+    req.onload = () => {
+      audioCtx.decodeAudioData(
+        req.response,
+        (buffer) => {
+          try {
+            const targetRate = 24000
+            // 重采样到 24k（实测 24k wav 比 16k wav 腾讯云 ASR 识别率更高，
+            // 因为 16k 对人声高频损失较大，会让 ASR 把"哲学/物质"听成"功能/手表"等无关词）
+            const offline = new OfflineAudioContext(1, Math.ceil(buffer.duration * targetRate), targetRate)
+            const src = offline.createBufferSource()
+            src.buffer = buffer
+            src.connect(offline.destination)
+            src.start()
+            offline.startRendering().then((rendered) => {
+              const wav = encodeWav(rendered, targetRate)
+              const file = new File([wav], filename, { type: 'audio/wav' })
+              URL.revokeObjectURL(url)
+              resolve(file)
+            }).catch((err) => {
+              URL.revokeObjectURL(url)
+              reject(err)
+            })
+          } catch (err) {
+            URL.revokeObjectURL(url)
+            reject(err)
+          }
+        },
+        (err) => {
+          URL.revokeObjectURL(url)
+          reject(err || new Error('解码失败'))
+        },
+      )
+    }
+    req.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('读取录音失败'))
+    }
+    req.send()
+  })
+}
+
+// 将 AudioBuffer 编码为 16bit PCM WAV（单声道）
+function encodeWav(buffer, sampleRate) {
+  const numCh = 1
+  const samples = buffer.getChannelData(0)
+  const bytesPerSample = 2
+  const blockAlign = numCh * bytesPerSample
+  const dataSize = samples.length * bytesPerSample
+  const bufferLen = 44 + dataSize
+  const ab = new ArrayBuffer(bufferLen)
+  const view = new DataView(ab)
+  let offset = 0
+  const writeStr = (s) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i))
+    offset += s.length
+  }
+  writeStr('RIFF')
+  view.setUint32(offset, 36 + dataSize, true); offset += 4
+  writeStr('WAVE')
+  writeStr('fmt ')
+  view.setUint32(offset, 16, true); offset += 4
+  view.setUint16(offset, 1, true); offset += 2          // PCM
+  view.setUint16(offset, numCh, true); offset += 2
+  view.setUint32(offset, sampleRate, true); offset += 4
+  view.setUint32(offset, sampleRate * blockAlign, true); offset += 4
+  view.setUint16(offset, blockAlign, true); offset += 2
+  view.setUint16(offset, 8 * bytesPerSample, true); offset += 2
+  writeStr('data')
+  view.setUint32(offset, dataSize, true); offset += 4
+  for (let i = 0; i < samples.length; i++) {
+    let s = Math.max(-1, Math.min(1, samples[i]))
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+    offset += 2
+  }
+  return ab
 }
 
 async function onCloneVoiceChange(file) {
@@ -942,18 +1350,32 @@ async function onCloneVoiceChange(file) {
       `录音时长仅 ${durationSec.toFixed(1)}s，建议 5-15 秒以获得更好效果。仍将继续提交。`,
     )
   }
+  await doCloneUpload(file.raw, null)
+}
+
+// 复用的实际上传逻辑：file 为 Blob/File，previewUrl 为需清理的临时 URL（可选）
+async function doCloneUpload(file, previewUrl) {
   uploadingVoice.value = true
   try {
-    // 用文件名推断性别：含"女"→女，含"男"→男，默认男
     const fname = (file.name || '').toLowerCase()
     const gender = fname.includes('女') ? 2 : fname.includes('男') ? 1 : 1
-    const res = await api.createVoiceClone(file.raw, {
+    const res = await api.createVoiceClone(file, {
       name: file.name?.replace(/\.[^.]+$/, '') || '我的声音',
       voice_gender: gender,
+      // 仅一句话复刻(oneshot)模式需要把"展示给用户跟读的训练文本"对应的 TextId 传给后端，
+      // 否则后端会重新拉一次训练文本池，腾讯云可能返回不同顺序的池子，
+      // 导致 ASR 比对的"参照文本"跟用户实际朗读的不一致，整段被判定漏读。
+      // 基础版(basic)不依赖训练文本，不传 text_id。
+      text_id: cloneMode.value === 'oneshot' ? (cloneTrainingTextId.value || undefined) : undefined,
     })
     ElMessage.success('已创建复刻任务，训练通常需几分钟，完成后在「我的声音」中可选（下拉可刷新状态）。')
     loadVoices()
     if (res?.id) pollCloneStatus(res.id)
+    // 上传成功后清理弹窗内录音/试听资源
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    recordedUrl.value = ''
+    recordedBlob.value = null
+    cloneGuideVisible.value = false
   } catch (e) {
     ElMessage.error('复刻失败：' + (e.response?.data?.detail || e.message || '未知错误'))
   } finally {
@@ -1016,6 +1438,7 @@ const multiImageCostEstimate = computed(() => (imageCount.value * 0.02).toFixed(
 const generationTasks = ref([])
 const selectedGenIds = ref([])
 let pollTimer = null
+let cloneStatusTimer = null
 
 // ── 计算属性 ──────────────────────────────────────────────────
 const canStart = computed(() => form.keywords.trim())
@@ -1555,6 +1978,7 @@ function startPolling() {
 function stopPolling() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
   if (progressTicker) { clearInterval(progressTicker); progressTicker = null }
+  if (cloneStatusTimer) { clearInterval(cloneStatusTimer); cloneStatusTimer = null }
 }
 
 function goBackToGen() {
@@ -1787,4 +2211,27 @@ onBeforeUnmount(() => {
   border: 1px solid #faecd8;
   border-radius: 4px;
 }
+
+/* 复刻引导弹窗 */
+.clone-guide { padding: 4px 0; }
+.clone-text-box {
+  background: #f7f8fa;
+  border: 1px solid #ebedf0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.clone-text-label { font-size: 13px; color: #888; margin-bottom: 6px; }
+.clone-text-content { font-size: 16px; line-height: 1.6; color: #222; font-weight: 500; }
+.clone-text-tip { font-size: 12px; color: #888; margin-top: 10px; }
+.clone-record { margin-top: 4px; }
+.clone-record-row { display: flex; align-items: center; gap: 10px; }
+.rec-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #f56c6c; animation: rec-blink 1s infinite;
+}
+@keyframes rec-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+.rec-time { font-size: 14px; color: #f56c6c; font-weight: 600; }
+.rec-warn { font-size: 12px; color: #e6a23c; }
+.clone-playback { margin-top: 12px; }
 </style>
