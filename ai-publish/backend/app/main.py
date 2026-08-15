@@ -12,8 +12,10 @@ from loguru import logger
 
 from app.api.account_groups import router as account_groups_router
 from app.api.ai_models import router as ai_models_router
+from app.api.avatars import router as avatars_router
 from app.api.auth import router as auth_router
 from app.api.content_templates import router as content_templates_router
+from app.api.create import router as create_router
 from app.api.dashboard import router as dashboard_router
 from app.api.logs import router as logs_router
 from app.api.materials import router as materials_router
@@ -24,7 +26,10 @@ from app.api.reviews import router as reviews_router
 from app.api.risk import router as risk_router
 from app.api.roles import router as roles_router
 from app.api.system import router as system_router
+from app.api.voices import router as voices_router
+from app.api.voice_clone import router as voice_clone_router
 from app.api.system_configs import router as system_configs_router
+from app.api.trending import router as trending_router
 from app.api.users import router as users_router
 from app.config import BACKEND_DIR, get_settings
 from app.database import SessionLocal, engine, get_db
@@ -37,12 +42,27 @@ from app.workers.schedule_worker import schedule_worker
 
 
 def setup_logging() -> None:
+    import logging
+
     logger.remove()
     logger.add(
         sys.stderr,
         format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}",
         level="DEBUG" if get_settings().debug else "INFO",
     )
+
+    class _LoguruBridge(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            try:
+                level = logger.level(record.levelname).name
+            except ValueError:
+                level = "INFO"
+            logger.opt(depth=6, exception=record.exc_info).log(level, record.getMessage())
+
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.addHandler(_LoguruBridge())
+    root.setLevel(logging.DEBUG if get_settings().debug else logging.INFO)
 
 
 @asynccontextmanager
@@ -52,9 +72,10 @@ async def lifespan(app: FastAPI):
     settings.storage_path.mkdir(parents=True, exist_ok=True)
     settings.cookie_path.mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
-    from app.utils.migrations import run_sqlite_migrations
+    from app.utils.migrations import run_sqlite_migrations, run_universal_migrations
 
     run_sqlite_migrations()
+    run_universal_migrations()
     db = SessionLocal()
     try:
         ensure_admin_user(db)
@@ -104,6 +125,9 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:8765",
         "http://localhost:8765",
+        # 生产环境：腾讯云 CVM 自签 HTTPS
+        "https://150.158.23.10",
+        "http://150.158.23.10",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -112,8 +136,10 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(content_templates_router)
+app.include_router(create_router)
 app.include_router(account_groups_router)
 app.include_router(ai_models_router)
+app.include_router(avatars_router)
 app.include_router(platform_accounts_router)
 app.include_router(publish_workers_router)
 app.include_router(materials_router)
@@ -124,7 +150,10 @@ app.include_router(logs_router)
 app.include_router(system_router)
 app.include_router(system_configs_router)
 app.include_router(roles_router)
+app.include_router(trending_router)
 app.include_router(users_router)
+app.include_router(voices_router)
+app.include_router(voice_clone_router)
 
 settings = get_settings()
 static_dir = settings.storage_path

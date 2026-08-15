@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+import shutil
 
 from sqlalchemy.orm import Session
 
@@ -8,6 +9,7 @@ from app.adapters.factory import get_adapter_factory
 from app.config import get_settings
 from app.models import AccountCookie, PlatformAccount, PublishWorker
 from app.services.log_service import LogService
+from app.utils.bilibili_guard import assert_bilibili_enabled
 from app.utils.crypto import decrypt_text, encrypt_text
 from app.utils.proxy_utils import mask_proxy_url, validate_proxy_url
 from app.utils.vendor_proxy import use_account_proxy
@@ -32,6 +34,8 @@ class PlatformAccountService:
         return query.order_by(PlatformAccount.id.desc()).all()
 
     def create_account(self, platform: str, account_name: str, user_id: int | None = None) -> PlatformAccount:
+        if platform == "bilibili":
+            assert_bilibili_enabled()
         exists = (
             self.db.query(PlatformAccount)
             .filter(PlatformAccount.platform == platform, PlatformAccount.account_name == account_name)
@@ -156,27 +160,55 @@ class PlatformAccountService:
             raise ValueError("账号不存在")
         adapter = self.factory.get_platform_adapter(account.platform)
         cookie_file = self.cookie_file_path(account)
+        backup_path: Path | None = None
+        if account.platform == "bilibili":
+            cookie_path = Path(cookie_file)
+            if cookie_path.exists():
+                backup_path = cookie_path.with_suffix(cookie_path.suffix + ".loginbak")
+                shutil.copy2(cookie_path, backup_path)
+                cookie_path.unlink()
         # B 站扫码在服务端通过 biliup 完成，不走 Playwright；账号「网络线路」仅用于本机 Worker 发布，
         # 若误传给 biliup 可能导致无法连 GitHub/B 站、二维码一直不出现。
-        if account.platform == "bilibili":
-            result = await adapter.login(
-                account.id,
-                account.account_name,
-                cookie_file,
-                qrcode_callback=qrcode_callback,
-                progress_callback=progress_callback,
-                publish_proxy=None,
-            )
-        else:
-            proxy_url = self.resolve_publish_proxy(account)
-            with use_account_proxy(proxy_url):
+        result: LoginResult | None = None
+        try:
+            if account.platform == "bilibili":
                 result = await adapter.login(
                     account.id,
                     account.account_name,
                     cookie_file,
                     qrcode_callback=qrcode_callback,
-                    publish_proxy=proxy_url,
+                    progress_callback=progress_callback,
+                    publish_proxy=None,
                 )
+            elif account.platform == "channels":
+                # 视频号扫码在服务器 Playwright 完成；发布代理仅用于 Worker 发布，登录走直连
+                result = await adapter.login(
+                    account.id,
+                    account.account_name,
+                    cookie_file,
+                    qrcode_callback=qrcode_callback,
+                    progress_callback=progress_callback,
+                    publish_proxy=None,
+                )
+            else:
+                proxy_url = self.resolve_publish_proxy(account)
+                with use_account_proxy(proxy_url):
+                    result = await adapter.login(
+                        account.id,
+                        account.account_name,
+                        cookie_file,
+                        qrcode_callback=qrcode_callback,
+                        publish_proxy=proxy_url,
+                    )
+        finally:
+            if backup_path and backup_path.exists():
+                cookie_path = Path(cookie_file)
+                should_restore = result is None or not result.success
+                if should_restore and (not cookie_path.exists() or cookie_path.stat().st_size < 8):
+                    shutil.copy2(backup_path, cookie_file)
+                backup_path.unlink(missing_ok=True)
+        if result is None:
+            raise RuntimeError("登录未返回结果")
         if result.success and Path(cookie_file).exists():
             cookie_plain = Path(cookie_file).read_text(encoding="utf-8")
             self.save_cookie(account, cookie_plain)
@@ -200,9 +232,14 @@ class PlatformAccountService:
             self.db.commit()
             return {"valid": False, "status": account.status}
         adapter = self.factory.get_platform_adapter(account.platform)
-        proxy_url = self.resolve_publish_proxy(account)
-        with use_account_proxy(proxy_url):
-            valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=proxy_url)
+        if account.platform == "bilibili":
+            valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=None)
+        elif account.platform == "channels":
+            valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=None)
+        else:
+            proxy_url = self.resolve_publish_proxy(account)
+            with use_account_proxy(proxy_url):
+                valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=proxy_url)
         account.status = "active" if valid else "expired"
         if not valid:
             self._log_account_expired(account, prev_status, user_id, ip)

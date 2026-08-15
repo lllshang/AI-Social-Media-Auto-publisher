@@ -40,6 +40,11 @@ fi
 
 echo "[worker] SAU_VENDOR_PATH=$SAU_VENDOR_PATH"
 
+BILIUP_BIN="$("$VENV_PYTHON" -c "import sys; sys.path.insert(0, '$SAU_VENDOR'); from uploader.bilibili_uploader.runtime import build_biliup_runtime_path; print(build_biliup_runtime_path())" 2>/dev/null || true)"
+if [[ -n "${BILIUP_BIN:-}" && ! -x "$BILIUP_BIN" ]]; then
+  echo "[worker] 警告: 本机未安装 biliup，B 站发布前请执行: bash worker/install-biliup-local.sh" >&2
+fi
+
 POLL_TIMEOUT="${AI_PUBLISH_WORKER_POLL_TIMEOUT:-30}"
 API_BASE="${AI_PUBLISH_API_BASE:-http://127.0.0.1:8765}"
 

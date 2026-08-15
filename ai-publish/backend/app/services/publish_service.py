@@ -12,6 +12,7 @@ from app.services.platform_account_service import PlatformAccountService
 from app.services.rate_limit_service import RateLimitService
 from app.services.sensitive_word_service import SensitiveWordService
 from app.services.system_config_service import SystemConfigService
+from app.utils.bilibili_guard import BILIBILI_DISABLED_MESSAGE, assert_bilibili_enabled
 from app.workers.upload_worker import UploadWorker
 
 
@@ -110,6 +111,7 @@ class PublishService:
         if not account:
             raise ValueError("账号不存在")
         if platform == "bilibili":
+            assert_bilibili_enabled()
             if content_type != "video":
                 raise ValueError("B站仅支持视频发布")
             if bilibili_tid is None:
@@ -200,6 +202,10 @@ class PublishService:
             task.publish_time = publish_time
         if bilibili_tid is not None:
             task.bilibili_tid = bilibili_tid
+        if task.platform == "bilibili":
+            assert_bilibili_enabled()
+            if task.content_type != "video":
+                raise ValueError("B站仅支持视频发布")
 
         self._enforce_sensitive_words(task)
         self.db.commit()
@@ -251,6 +257,13 @@ class PublishService:
                 self.material_service.validate_material_ids(task.material_ids, task.content_type)
             except ValueError as exc:
                 return str(exc)
+        if task.platform == "bilibili":
+            if not self.settings.bilibili_enabled:
+                return BILIBILI_DISABLED_MESSAGE
+            if task.content_type != "video":
+                return "B站仅支持视频发布"
+            if not task.bilibili_tid:
+                return "请设置 B站分区 tid"
         return None
 
     def assert_can_execute(self, task: PublishTask) -> None:
@@ -330,7 +343,68 @@ class PublishService:
         self.db.add(log)
         self.db.commit()
 
+    def _latest_dispatch_log(self, task_id: int) -> PublishTaskLog | None:
+        return (
+            self.db.query(PublishTaskLog)
+            .filter(PublishTaskLog.task_id == task_id, PublishTaskLog.step == "dispatch")
+            .order_by(PublishTaskLog.id.desc())
+            .first()
+        )
+
+    def _has_claim_after_dispatch(self, task_id: int, dispatch_log: PublishTaskLog | None) -> bool:
+        query = self.db.query(PublishTaskLog.id).filter(
+            PublishTaskLog.task_id == task_id,
+            PublishTaskLog.step == "worker_claim",
+        )
+        if dispatch_log and dispatch_log.id:
+            query = query.filter(PublishTaskLog.id > dispatch_log.id)
+        return query.first() is not None
+
+    def _latest_worker_claim_log(self, task_id: int) -> PublishTaskLog | None:
+        return (
+            self.db.query(PublishTaskLog)
+            .filter(PublishTaskLog.task_id == task_id, PublishTaskLog.step == "worker_claim")
+            .order_by(PublishTaskLog.id.desc())
+            .first()
+        )
+
+    def _has_finish_after_claim(self, task_id: int, claim_log: PublishTaskLog | None) -> bool:
+        query = self.db.query(PublishTaskLog.id).filter(
+            PublishTaskLog.task_id == task_id,
+            PublishTaskLog.step == "finish",
+        )
+        if claim_log and claim_log.id:
+            query = query.filter(PublishTaskLog.id > claim_log.id)
+        return query.first() is not None
+
+    def _dispatching_since(self, task_id: int) -> datetime:
+        latest_dispatch = self._latest_dispatch_log(task_id)
+        if latest_dispatch and latest_dispatch.created_at:
+            return latest_dispatch.created_at
+        return datetime.utcnow()
+
+    def _running_since(self, task_id: int) -> datetime:
+        latest_claim = self._latest_worker_claim_log(task_id)
+        if latest_claim and latest_claim.created_at:
+            return latest_claim.created_at
+        latest_start = (
+            self.db.query(PublishTaskLog)
+            .filter(PublishTaskLog.task_id == task_id, PublishTaskLog.step == "start")
+            .order_by(PublishTaskLog.id.desc())
+            .first()
+        )
+        if latest_start and latest_start.created_at:
+            return latest_start.created_at
+        return self._dispatching_since(task_id)
+
     def _task_running_since(self, task: PublishTask) -> datetime:
+        if task.status == "dispatching":
+            return self._dispatching_since(task.id)
+        if task.status == "running":
+            return self._running_since(task.id)
+        latest_dispatch = self._latest_dispatch_log(task.id)
+        if latest_dispatch and latest_dispatch.created_at:
+            return latest_dispatch.created_at
         marker = (
             self.db.query(PublishTaskLog)
             .filter(
@@ -353,14 +427,10 @@ class PublishService:
         expired: list[int] = []
         dispatching_tasks = self.db.query(PublishTask).filter(PublishTask.status == "dispatching").all()
         for task in dispatching_tasks:
-            has_claim = (
-                self.db.query(PublishTaskLog.id)
-                .filter(PublishTaskLog.task_id == task.id, PublishTaskLog.step == "worker_claim")
-                .first()
-            )
-            if has_claim:
+            latest_dispatch = self._latest_dispatch_log(task.id)
+            if self._has_claim_after_dispatch(task.id, latest_dispatch):
                 continue
-            ref_time = self._task_running_since(task)
+            ref_time = self._dispatching_since(task.id)
             if ref_time > cutoff:
                 continue
             message = (
@@ -384,14 +454,10 @@ class PublishService:
         expired: list[int] = []
         running_tasks = self.db.query(PublishTask).filter(PublishTask.status == "running").all()
         for task in running_tasks:
-            has_finish = (
-                self.db.query(PublishTaskLog.id)
-                .filter(PublishTaskLog.task_id == task.id, PublishTaskLog.step == "finish")
-                .first()
-            )
-            if has_finish:
+            latest_claim = self._latest_worker_claim_log(task.id)
+            if self._has_finish_after_claim(task.id, latest_claim):
                 continue
-            ref_time = self._task_running_since(task)
+            ref_time = self._running_since(task.id)
             if ref_time > cutoff:
                 continue
             message = (
@@ -415,18 +481,16 @@ class PublishService:
         task = self.get_task(task_id)
         if not task:
             raise ValueError("任务不存在")
-        if task.status != "running":
-            raise ValueError("仅执行中任务可解除卡住")
-        has_finish = (
-            self.db.query(PublishTaskLog.id)
-            .filter(PublishTaskLog.task_id == task.id, PublishTaskLog.step == "finish")
-            .first()
-        )
-        if has_finish:
-            raise ValueError("任务已有完成记录，请刷新列表")
-        task.status = "failed"
-        task.error_message = "已手动解除卡住并标记失败，可点「重试」后重新执行"
-        self.add_log(task.id, "recover", "failed", task.error_message)
+        if task.status not in {"running", "dispatching"}:
+            raise ValueError("仅执行中或派发中任务可解除卡住")
+        if task.status == "dispatching":
+            task.status = "failed"
+            task.error_message = "已手动解除派发卡住并标记失败，可点「重试」后重新执行"
+            self.add_log(task.id, "recover", "failed", task.error_message)
+        else:
+            task.status = "failed"
+            task.error_message = "已手动解除卡住并标记失败，可点「重试」后重新执行"
+            self.add_log(task.id, "recover", "failed", task.error_message)
         self.db.commit()
         self.db.refresh(task)
         return task

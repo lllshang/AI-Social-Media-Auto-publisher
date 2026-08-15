@@ -1,4 +1,4 @@
-from app.adapters.base import AiImageAdapter, AiTextAdapter, PlatformAdapter, StorageAdapter
+from app.adapters.base import AiImageAdapter, AiTextAdapter, AiVideoAdapter, PlatformAdapter, StorageAdapter
 from app.adapters.platform.bilibili import BilibiliPlatformAdapter
 from app.adapters.platform.channels import ChannelsPlatformAdapter
 from app.adapters.platform.douyin import DouyinPlatformAdapter
@@ -7,15 +7,16 @@ from app.adapters.platform.xhs import XhsPlatformAdapter
 from app.adapters.storage.local import LocalStorageAdapter
 from app.adapters.storage.stub import StubStorageAdapter
 from app.config import get_settings
+from app.utils.bilibili_guard import BILIBILI_DISABLED_MESSAGE
 
 
 class AdapterFactory:
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    def get_platform_adapter(self, platform: str) -> PlatformAdapter:
-        if platform == "bilibili" and not self.settings.bilibili_enabled:
-            raise ValueError("B 站功能暂未开放，请使用小红书/抖音/快手等平台")
+    def get_platform_adapter(self, platform: str, *, trust_server: bool = False) -> PlatformAdapter:
+        if platform == "bilibili" and not self.settings.bilibili_enabled and not trust_server:
+            raise ValueError(BILIBILI_DISABLED_MESSAGE)
         registry: dict[str, type[PlatformAdapter]] = {
             "xhs": XhsPlatformAdapter,
             "douyin": DouyinPlatformAdapter,
@@ -37,6 +38,16 @@ class AdapterFactory:
         from app.services.ai_model_service import AiModelService
 
         return AiModelService().get_image_adapter()
+
+    def get_ai_video_adapter(self) -> AiVideoAdapter:
+        from app.services.ai_model_service import AiModelService
+
+        return AiModelService().get_video_adapter()
+
+    def get_digital_human_video_adapter(self) -> AiVideoAdapter:
+        from app.services.ai_model_service import AiModelService
+
+        return AiModelService().get_digital_human_video_adapter()
 
     def get_storage_adapter(self) -> StorageAdapter:
         storage = self.settings.storage.lower()

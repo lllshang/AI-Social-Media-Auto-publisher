@@ -747,6 +747,9 @@ bash scripts/upgrade.sh
 | OLLAMA_BASE_URL | `http://127.0.0.1:11434` | `http://host.docker.internal:11434` |
 | PLAYWRIGHT_HEADLESS | `false`（本机弹窗扫码） | `true`（无头，网页展示二维码） |
 | PLAYWRIGHT_CHROMIUM_EXECUTABLE | 留空（自动检测） | `/usr/bin/chromium` |
+| BILIBILI_ENABLED | `false`（默认隐藏 B 站） | `false`；需 B 站时设为 `true` 并重启 API |
+
+**B 站说明：** `BILIBILI_ENABLED=true` 后前台出现 B 站入口；登录走 biliup（不依赖 Playwright），发布为视频 + 分区 tid。默认关闭，不影响小红书/抖音/快手。建议在独立分支 `feature/bilibili-isolated-publish` 验证后再于生产开启。
 
 AI Key 也可在管理页 **AI 模型 → 厂商配置** 中填写（加密存于 `backend/data/ai_provider_config.json`）。
 

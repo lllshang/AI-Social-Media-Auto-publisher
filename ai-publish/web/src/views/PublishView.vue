@@ -35,7 +35,7 @@
         <el-form-item label="发布平台">
           <el-select v-model="form.platform" style="width: 100%" @change="onPlatformChange">
             <el-option
-              v-for="p in PLATFORMS"
+              v-for="p in availablePlatforms"
               :key="p.value"
               :label="p.experimental ? `${p.label}（实验）` : p.label"
               :value="p.value"
@@ -64,7 +64,12 @@
         <p v-if="isVideo" class="muted">{{ platformVideoHint(form.platform) }}</p>
         <p v-if="isBilibili" class="muted">{{ platformLoginHint(form.platform) }}</p>
       </el-form>
-      <el-button type="primary" :disabled="!canGoStep1" @click="step = 1">下一步：生成文案</el-button>
+      <div style="display:flex;gap:12px;align-items:center">
+        <el-button type="primary" :disabled="!canGoStep1" @click="step = 1">下一步：生成文案</el-button>
+      </div>
+      <p class="muted" style="margin-top: 8px">
+        如需先由 AI 做更专业的图片 / 视频 / 数字人创作，可在「AI 封面」环节点击「AI 创作新视频」或「AI 创作视频」跳转到内容创作。
+      </p>
     </div>
 
     <!-- Step 1 -->
@@ -72,7 +77,7 @@
       <el-form label-width="100px">
         <el-form-item label="主题">
           <el-input v-model="form.topic" disabled />
-          <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap">
+          <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center">
             <el-button :loading="generating" @click="generateText">AI 生成文案</el-button>
             <el-button
               v-if="can('materials:write')"
@@ -82,6 +87,38 @@
             >
               保存到素材库
             </el-button>
+            <el-button
+              type="primary"
+              plain
+              :disabled="!form.title && !form.content"
+              @click="showPolishPanel = !showPolishPanel"
+            >
+              AI 按指令优化
+            </el-button>
+          </div>
+          <!-- 按指令优化：快捷风格 + 自由指令，无需跳转内容创作 -->
+          <div v-if="showPolishPanel" style="margin-top: 10px; padding: 12px; border: 1px dashed var(--el-border-color); border-radius: 8px">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px">
+              <el-button
+                v-for="qa in QUICK_ACTIONS_LIST"
+                :key="qa.key"
+                size="small"
+                :loading="polishing && polishAction === qa.key"
+                @click="quickPolish(qa.key)"
+              >{{ qa.label }}</el-button>
+            </div>
+            <div style="display: flex; gap: 8px">
+              <el-input
+                v-model="polishInstruction"
+                placeholder="输入优化指令，如：缩短到100字 / 第一句改抓人 / 换成活泼语气"
+                :disabled="polishing"
+                @keyup.enter="doPolish"
+              />
+              <el-button type="primary" :loading="polishing" :disabled="!polishInstruction.trim()" @click="doPolish">优化</el-button>
+            </div>
+            <p class="upload-hint" style="margin-top: 8px">
+              基于当前标题/正文按你的指令改写，不触发随机生成，也不会跳转到内容创作。
+            </p>
           </div>
         </el-form-item>
         <el-form-item label="标题">
@@ -103,38 +140,81 @@
           <el-input v-model="form.comment_guide" type="textarea" :rows="2" />
         </el-form-item>
       </el-form>
-      <el-button @click="step = 0">上一步</el-button>
-      <el-button :loading="saving" @click="saveDraft">保存草稿</el-button>
-      <el-button type="primary" :disabled="!form.title" @click="goAfterText">下一步</el-button>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <el-button @click="step = 0">上一步</el-button>
+        <el-button :loading="saving" @click="saveDraft">保存草稿</el-button>
+        <el-button type="primary" :disabled="!form.title" @click="goAfterText">下一步</el-button>
+      </div>
+      <el-alert v-if="publishError" type="error" :closable="true" :title="publishError" @close="publishError = ''" show-icon style="margin-top: 12px" />
+      <el-alert v-if="draftError" type="error" :closable="true" :title="draftError" @close="draftError = ''" show-icon style="margin-top: 8px" />
     </div>
 
     <!-- Step 2 -->
     <div v-show="step === 2" class="page-card">
       <template v-if="needsVideoCover">
+        <!-- 视频号/小红书视频流程：这一步生成或选择视频封面图（图片素材） -->
         <p class="muted">
-          {{ platformLabel(form.platform) }}视频可设置 {{ videoCoverRatio }} 封面（可选）。未设置时由平台自动截取；也可跳过，稍后上传。
+          视频封面是从视频内容里抽出的画面，可使用 AI 生成封面图，也可从素材库选择/上传现有图片。
         </p>
-        <el-button type="primary" :loading="generatingImage" @click="generateVideoCover">AI 生成视频封面</el-button>
-        <el-button v-if="coverPreview" @click="generateVideoCover">重新生成</el-button>
-        <el-upload :show-file-list="false" :http-request="uploadCoverImage" accept="image/*" style="display: inline-block; margin-left: 8px">
-          <el-button>上传封面图</el-button>
-        </el-upload>
-        <el-button @click="skipVideoCover">跳过封面</el-button>
+        <el-form label-width="90px" style="max-width: 520px; margin-bottom: 12px">
+          <el-form-item label="风格">
+            <el-select v-model="form.image_style" style="width: 100%">
+              <el-option v-for="s in IMAGE_STYLES" :key="s.value" :label="s.label" :value="s.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="品牌色">
+            <BrandColorSelect v-model="form.brand_color" />
+          </el-form-item>
+          <el-form-item label="品牌说明">
+            <el-input v-model="form.brand_hint" placeholder="可选" />
+          </el-form-item>
+        </el-form>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <el-button size="small" :loading="previewingPrompt" @click="previewCoverPrompt">预览 Prompt</el-button>
+          <el-button type="primary" :loading="generatingImage" @click="generateCover">生成封面图</el-button>
+          <el-button v-if="coverPreview" @click="generateCover">重新生成</el-button>
+          <el-upload
+            :show-file-list="false"
+            :http-request="uploadCoverImage"
+            accept="image/*"
+          >
+            <el-button>上传封面图</el-button>
+          </el-upload>
+          <el-button @click="skipCover">跳过，稍后选手动素材</el-button>
+        </div>
+        <div v-if="promptPreview.prompt_zh" class="prompt-preview">
+          <p><strong>中文：</strong></p>
+          <pre>{{ promptPreview.prompt_zh }}</pre>
+          <p v-if="promptPreview.prompt_en"><strong>英文：</strong></p>
+          <pre v-if="promptPreview.prompt_en">{{ promptPreview.prompt_en }}</pre>
+          <p v-if="promptPreview.negative_prompt"><strong>负面：</strong></p>
+          <pre v-if="promptPreview.negative_prompt">{{ promptPreview.negative_prompt }}</pre>
+        </div>
         <div v-if="coverPreview" class="cover-preview">
           <div class="cover-preview-frame" :style="coverPreviewFrameStyle">
             <img :src="coverPreview" class="cover-preview-img" alt="封面预览" />
           </div>
         </div>
-        <div style="margin-top: 16px">
+        <div style="margin-top: 16px; display:flex;gap:12px;align-items:center">
           <el-button @click="step = 1">上一步</el-button>
           <el-button :loading="saving" @click="saveDraft">保存草稿</el-button>
           <el-button type="primary" @click="step = 3">下一步：选择视频</el-button>
         </div>
       </template>
       <template v-else-if="isVideo">
-        <p class="muted">当前平台视频发布无需单独封面，可直接选择视频素材。</p>
-        <el-button @click="step = 1">上一步</el-button>
-        <el-button type="primary" @click="step = 3">下一步：选择视频</el-button>
+        <!-- 其它视频平台（无视频封面需求）：跳过封面步骤，step=2 实际为视频素材预览 -->
+        <p class="muted">
+          视频素材可以从素材库选择已有视频、上传本地视频，或前往「内容创作」AI生成。
+        </p>
+        <div style="display:flex;gap:12px;align-items:center">
+          <el-button @click="step = 1">上一步</el-button>
+          <el-button :loading="saving" @click="saveDraft">保存草稿</el-button>
+          <el-button type="primary" @click="step = 3">下一步：选择视频</el-button>
+          <el-button type="primary" plain @click="goToCreate">AI 创作新视频 →</el-button>
+        </div>
+        <div v-if="videoPreview" class="video-preview" style="margin-top: 16px">
+          <video :src="videoPreview" controls style="max-width: 600px; max-height: 400px"></video>
+        </div>
       </template>
       <template v-else>
         <p class="muted">将根据主题与封面文案生成 {{ coverRatio }} {{ platformLabel(form.platform) }}封面图。Key 未配置时可跳过，改用手动上传。</p>
@@ -174,6 +254,7 @@
           <el-button type="primary" @click="step = 3">下一步：确认素材</el-button>
         </div>
       </template>
+      <el-alert v-if="publishError" type="error" :closable="true" :title="publishError" @close="publishError = ''" show-icon style="margin-top: 12px" />
     </div>
 
     <!-- Step 3 -->
@@ -181,10 +262,13 @@
       <el-form label-width="100px">
         <el-form-item :label="isVideo ? '视频素材' : '图片素材'">
           <el-select
-            v-model="form.material_ids"
+            v-model="materialPickerValue"
             :multiple="!isVideo"
             :placeholder="isVideo ? '选择视频' : '选择图片'"
             style="width: 100%"
+            clearable
+            @change="onMaterialPickerChange"
+            @clear="onMaterialClear"
           >
             <el-option
               v-for="m in selectableMaterials"
@@ -193,6 +277,13 @@
               :value="m.id"
             />
           </el-select>
+          <el-button
+            v-if="hasMaterialSelected"
+            style="margin-top: 8px"
+            type="danger"
+            plain
+            @click="clearMaterialSelection"
+          >删除当前素材（可重新选择/上传）</el-button>
           <el-upload
             v-if="!isVideo"
             :show-file-list="false"
@@ -202,6 +293,7 @@
           >
             <el-button>上传新图片</el-button>
           </el-upload>
+          <el-button v-if="!isVideo" style="margin-top: 8px" :loading="generatingImageInStep3" @click="showStep3ImageGen = true">AI 生成图片</el-button>
           <el-upload
             v-else
             :show-file-list="false"
@@ -211,6 +303,7 @@
           >
             <el-button>上传新视频</el-button>
           </el-upload>
+          <el-button v-if="isVideo" type="primary" plain style="margin-top: 8px" @click="goToCreate">AI 创作视频 →</el-button>
           <div v-if="videoPreviewUrl" class="cover-preview">
             <video :src="videoPreviewUrl" controls style="max-width: 100%; max-height: 280px" />
           </div>
@@ -224,7 +317,8 @@
       </el-form>
       <el-button @click="step = isVideo ? (needsVideoCover ? 2 : 1) : 2">上一步</el-button>
       <el-button :loading="saving" @click="saveDraft">保存草稿</el-button>
-      <el-button type="primary" :disabled="!form.material_ids.length" @click="step = 4">下一步：排期提交</el-button>
+      <el-button type="primary" :disabled="!hasMaterialSelected" @click="step = 4">下一步：排期提交</el-button>
+      <el-alert v-if="publishError" type="error" :closable="true" :title="publishError" @close="publishError = ''" show-icon style="margin-top: 12px" />
     </div>
 
     <!-- Step 4 -->
@@ -262,7 +356,35 @@
       <el-button type="primary" :loading="saving" @click="submitPending">
         {{ requireReview ? '提交审核' : '提交待发布' }}
       </el-button>
+      <el-alert v-if="publishError" type="error" :closable="true" :title="publishError" @close="publishError = ''" show-icon style="margin-top: 12px" />
+      <el-alert v-if="draftError" type="error" :closable="true" :title="draftError" @close="draftError = ''" show-icon style="margin-top: 8px" />
     </div>
+
+    <!-- Step 3: AI 生成图片 Dialog -->
+    <el-dialog v-model="showStep3ImageGen" title="AI 生成图片" width="480px">
+      <el-form label-width="90px">
+        <el-form-item label="风格">
+          <el-select v-model="step3ImageStyle" style="width: 100%">
+            <el-option v-for="s in IMAGE_STYLES" :key="s.value" :label="s.label" :value="s.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="品牌色">
+          <BrandColorSelect v-model="step3ImageBrandColor" />
+        </el-form-item>
+        <el-form-item label="品牌说明">
+          <el-input v-model="step3ImageBrandHint" placeholder="可选" />
+        </el-form-item>
+        <el-form-item label="数量">
+          <el-input-number v-model="step3ImageCount" :min="1" :max="4" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="cost-tag" style="margin-right: auto">预估 ¥{{ step3ImageCostEstimate }}</span>
+        <el-button @click="showStep3ImageGen = false">取消</el-button>
+        <el-button type="primary" :loading="generatingImageInStep3" @click="generateImageInStep3">生成</el-button>
+      </template>
+    </el-dialog>
+
   </div>
 </template>
 
@@ -272,7 +394,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
 import {
-  PLATFORMS,
+  platformsForRuntime,
   platformCoverRatio,
   platformLabel,
   platformLoginHint,
@@ -296,14 +418,34 @@ const step = ref(0)
 const draftId = ref(null)
 const generating = ref(false)
 const generatingImage = ref(false)
+const publishError = ref('')
+const draftError = ref('')
+
+// 切换步骤时清除错误
+watch(step, () => {
+  publishError.value = ''
+  draftError.value = ''
+})
 const savingTextMaterial = ref(false)
 const lastTextRecordId = ref(null)
 const previewingPrompt = ref(false)
 const saving = ref(false)
 const promptPreview = reactive({ prompt_zh: '', prompt_en: '', negative_prompt: '' })
 const requireReview = ref(false)
+const runtime = ref({ bilibili_enabled: false })
+const availablePlatforms = computed(() => platformsForRuntime(runtime.value))
 const coverPreview = ref('')
+const videoPreview = ref('')
 const videoPreviewUrl = ref('')
+
+// Step 3 inline AI 生成
+const showStep3ImageGen = ref(false)
+const generatingImageInStep3 = ref(false)
+const step3ImageStyle = ref('default')
+const step3ImageBrandColor = ref('')
+const step3ImageBrandHint = ref('')
+const step3ImageCount = ref(1)
+const step3ImageCostEstimate = computed(() => (step3ImageCount.value * 0.02).toFixed(2))
 
 const form = reactive({
   platform: 'xhs',
@@ -334,7 +476,7 @@ const videoCoverStepTitle = computed(() => {
   if (!isVideo.value) return 'AI 封面'
   return needsVideoCover.value ? '视频封面（可选）' : '封面（可跳过）'
 })
-const currentPlatform = computed(() => PLATFORMS.find((p) => p.value === form.platform))
+const currentPlatform = computed(() => availablePlatforms.value.find((p) => p.value === form.platform))
 const currentContentTypes = computed(() => currentPlatform.value?.contentTypes || [])
 const coverRatio = computed(() => platformCoverRatio(form.platform))
 const activeCoverRatio = computed(() => (needsVideoCover.value ? videoCoverRatio.value : coverRatio.value))
@@ -377,6 +519,64 @@ const materialSummary = computed(() => {
 })
 
 const canGoStep1 = computed(() => Boolean(form.account_id && form.topic.trim()))
+
+// 单选视频 / 多选图片 共用一个 v-model：
+// - isVideo=true 时，下拉期望单值；数据内部仍用数组 form.material_ids
+// - isVideo=false 时，直接是数组
+// 是否已选素材：视频看 form.material_ids 数组首元素；图文看长度
+const hasMaterialSelected = computed(() => {
+  if (isVideo.value) {
+    const arr = Array.isArray(form.material_ids) ? form.material_ids : []
+    return Boolean(arr[0])
+  }
+  return Array.isArray(form.material_ids) && form.material_ids.length > 0
+})
+
+const materialPickerValue = computed({
+  get() {
+    if (isVideo.value) {
+      const arr = Array.isArray(form.material_ids) ? form.material_ids : []
+      return arr[0] ?? null
+    }
+    return Array.isArray(form.material_ids) ? form.material_ids : []
+  },
+  set(val) {
+    if (isVideo.value) {
+      form.material_ids = val ? [val] : []
+    } else if (Array.isArray(val)) {
+      form.material_ids = val
+    } else if (val == null) {
+      form.material_ids = []
+    } else {
+      form.material_ids = [val]
+    }
+  },
+})
+
+function onMaterialPickerChange(val) {
+  // 兜底：某些 element-plus 版本写回 v-model 时只更新 set，跳过 get，
+  // 这里再强制把 form.material_ids 与 picker 一致，确保"下一步"按钮可用。
+  if (isVideo.value) {
+    form.material_ids = val ? [val] : []
+  }
+}
+
+// 用户点下拉框自带的清空（X）按钮时触发
+function onMaterialClear() {
+  form.material_ids = []
+  videoPreviewUrl.value = ''
+  coverPreview.value = ''
+  form.cover_material_id = null
+}
+
+// 显式"删除"按钮：清空已选素材，便于重新选择 / 上传 / 创作
+function clearMaterialSelection() {
+  form.material_ids = []
+  videoPreviewUrl.value = ''
+  coverPreview.value = ''
+  form.cover_material_id = null
+  ElMessage.info('已清空当前素材，可重新选择 / 上传 / AI 创作')
+}
 
 function normalizeMaterialIds() {
   if (isVideo.value) {
@@ -486,6 +686,7 @@ function applyTemplate(templateId) {
 }
 
 async function loadBase() {
+  runtime.value = await api.getRuntimeInfo()
   const mats = await api.listMaterials()
   materials.value = mats
   await Promise.all([loadAccounts(), loadTemplates()])
@@ -493,6 +694,12 @@ async function loadBase() {
 
 async function onPlatformChange() {
   form.account_id = null
+  if (form.platform === 'bilibili') {
+    form.content_type = 'video'
+    if (!form.bilibili_tid) {
+      form.bilibili_tid = 21
+    }
+  }
   const types = currentContentTypes.value
   if (types.length && !types.find((t) => t.value === form.content_type)) {
     form.content_type = types[0].value
@@ -557,7 +764,7 @@ async function saveTextToMaterial() {
     })
     ElMessage.success('文案已保存到素材库')
   } catch (e) {
-    ElMessage.error(e.message)
+    draftError.value = e.message || '保存失败'
   } finally {
     savingTextMaterial.value = false
   }
@@ -565,6 +772,7 @@ async function saveTextToMaterial() {
 
 async function generateText() {
   generating.value = true
+  publishError.value = ''
   try {
     const res = await api.generateText(form.topic, form.platform, form.content_type)
     form.title = res.title
@@ -575,10 +783,81 @@ async function generateText() {
     lastTextRecordId.value = res.record_id || null
     ElMessage.success(`文案已生成 (${res.provider}/${res.model || '-'})`)
   } catch (e) {
-    ElMessage.error(e.message)
+    publishError.value = e.message || '文案生成失败'
   } finally {
     generating.value = false
   }
+}
+
+// ── AI 按指令优化（不跳转内容创作）─────────────────────────────
+const QUICK_ACTIONS_LIST = [
+  { key: 'shorten', label: '缩短' },
+  { key: 'expand', label: '扩写' },
+  { key: 'humorous', label: '变幽默' },
+  { key: 'add_emoji', label: '加 Emoji' },
+  { key: 'formal', label: '变正式' },
+  { key: 'bilibili_style', label: 'B站风格' },
+  { key: 'xiaohongshu_style', label: '小红书风格' },
+  { key: 'douyin_style', label: '抖音风格' },
+  {
+    key: 'detox',
+    label: '去 AI 味',
+    // 反 AI 腔：固化成 instruction 走后端自由指令通道（后端 QUICK_ACTIONS 无 detox 键）
+    instruction:
+      '请去掉这篇文案的"AI 腔"，改写成真人博主自然口播/分享的感觉。具体要求：' +
+      '1）删掉并禁止出现套话和空话，如"首先/其次/总而言之/在这个XX的时代/值得一提的是/不容忽视/解锁/赋能/震撼/深度/搭建/利器/一站式/全方位/综上所述"等；' +
+      '2）禁止"三段式排比+总结句"的模板结构，不要每段的最后一句都来一句升华；' +
+      '3）多用口语短句、第一人称（我/咱们）、真实细节和具体场景，允许适度口语化甚至小瑕疵；' +
+      '4）保留原意、核心信息和平台风格，不要加 emoji 除非原本就有；' +
+      '5）读起来要像一个有经验的人在跟朋友聊，而不是机器生成的营销稿。',
+  },
+]
+const showPolishPanel = ref(false)
+const polishInstruction = ref('')
+const polishing = ref(false)
+const polishAction = ref('')
+
+async function _runPolish(payload, actionKey = '') {
+  if (!form.title && !form.content) return ElMessage.warning('请先生成或填写文案')
+  polishing.value = true
+  polishAction.value = actionKey
+  publishError.value = ''
+  try {
+    const res = await api.polishText({
+      title: form.title,
+      body: form.content,
+      tags: form.tagsText ? form.tagsText.split(/[,，]/).map((t) => t.trim()).filter(Boolean) : [],
+      platform: form.platform,
+      content_type: form.content_type,
+      ...payload,
+    })
+    form.title = res.title || form.title
+    form.content = res.body || form.content
+    form.tagsText = (res.tags || []).join(',')
+    ElMessage.success('已按指令优化文案')
+  } catch (e) {
+    publishError.value = e.message || '文案优化失败'
+  } finally {
+    polishing.value = false
+    polishAction.value = ''
+  }
+}
+
+function quickPolish(key) {
+  const item = QUICK_ACTIONS_LIST.find((q) => q.key === key)
+  polishInstruction.value = ''
+  // 带 instruction 的项（如"去 AI 味"）走自由指令通道，否则走 quick_action 快捷键
+  if (item && item.instruction) {
+    _runPolish({ instruction: item.instruction }, key)
+  } else {
+    _runPolish({ quick_action: key }, key)
+  }
+}
+
+function doPolish() {
+  const instruction = polishInstruction.value.trim()
+  if (!instruction) return
+  _runPolish({ instruction })
 }
 
 function imageGeneratePayload(ratio, count = 1) {
@@ -612,7 +891,7 @@ async function previewCoverPrompt() {
     promptPreview.prompt_en = res.prompt_en || ''
     promptPreview.negative_prompt = res.negative_prompt || ''
   } catch (e) {
-    ElMessage.error(e.message)
+    publishError.value = e.message || '预览失败'
   } finally {
     previewingPrompt.value = false
   }
@@ -629,7 +908,7 @@ async function generateVideoCover() {
     coverPreview.value = mat.url
     ElMessage.success('视频封面已生成')
   } catch (e) {
-    ElMessage.error(e.message)
+    publishError.value = e.message || '封面生成失败'
   } finally {
     generatingImage.value = false
   }
@@ -667,7 +946,7 @@ async function generateCover() {
     form.material_ids = [mat.id]
     coverPreview.value = mat.url
   } catch (e) {
-    ElMessage.error(e.message)
+    publishError.value = e.message || '封面生成失败'
   } finally {
     generatingImage.value = false
   }
@@ -675,6 +954,22 @@ async function generateCover() {
 
 function skipCover() {
   step.value = 3
+}
+
+function goToCreate() {
+  // 把当前已选的平台/账号带给创作视图，创作完成后可原样带回来，避免账号被重置
+  const q = { ref: 'publish', platform: form.platform }
+  if (form.account_id) q.account = form.account_id
+  router.push({ path: '/create', query: q })
+}
+
+async function onVideoGenResult(res) {
+  const mat = res.materials?.[0]
+  if (!mat) return
+  await loadBase()
+  form.material_ids = [mat.id]
+  videoPreview.value = mat.url || ''
+  videoPreviewUrl.value = mat.url || ''
 }
 
 async function uploadImage({ file }) {
@@ -697,6 +992,31 @@ async function uploadVideo({ file }) {
   form.material_ids = [res.id]
   videoPreviewUrl.value = res.url || ''
   ElMessage.success('视频已上传')
+}
+
+async function generateImageInStep3() {
+  generatingImageInStep3.value = true
+  showStep3ImageGen.value = false
+  try {
+    const res = await api.generateImage({
+      topic: form.topic,
+      platform: form.platform,
+      ratio: coverRatio.value,
+      count: step3ImageCount.value,
+      style: step3ImageStyle.value,
+      brand_color: step3ImageBrandColor.value || null,
+      brand_hint: step3ImageBrandHint.value || null,
+    })
+    const mats = res.materials || []
+    if (!mats.length) throw new Error('未返回图片素材')
+    await loadBase()
+    form.material_ids = mats.map((m) => m.id)
+    ElMessage.success(`已生成 ${mats.length} 张图片`)
+  } catch (e) {
+    publishError.value = e.message || '图片生成失败'
+  } finally {
+    generatingImageInStep3.value = false
+  }
 }
 
 async function persistTask(submit) {
@@ -740,7 +1060,7 @@ async function persistTask(submit) {
       router.replace({ path: '/publish', query: { id: task.id } })
     }
   } catch (e) {
-    ElMessage.error(e.message)
+    draftError.value = e.message || '保存失败'
   } finally {
     saving.value = false
   }
@@ -766,7 +1086,7 @@ async function removeDraft() {
     ElMessage.success('草稿已删除')
     router.push('/tasks')
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error(e.message || '删除失败')
+    if (e !== 'cancel') draftError.value = e.message || '删除失败'
   }
 }
 
@@ -791,14 +1111,32 @@ watch(
   { deep: true }
 )
 
-function applyRouteDefaults() {
+async function applyRouteDefaults() {
   const platform = route.query.platform
   const contentType = route.query.content_type
-  if (platform && PLATFORMS.some((p) => p.value === platform)) {
-    form.platform = platform
+  const topic = route.query.topic
+  // route 上原始期望的 account id(用于最后兜底, 不被 onPlatformChange 清空)
+  const wantedAccountId = route.query.account ? Number(route.query.account) : null
+  // 注意: PLATFORMS 是 computed(availablePlatforms), 在 onMounted 早期 runtime 还没加载时
+  // 仍然是空数组, 不能用它做白名单校验。直接信任 route.query 值, 留给 onPlatformChange
+  // 与后续 listAccounts 自动校验即可。
+  if (platform) {
+    if (form.platform !== platform) {
+      form.platform = platform
+      // 平台切换会清空 form.account_id 并重载 accounts 列表
+      await onPlatformChange()
+    }
   }
   if (contentType === 'video' || contentType === 'note') {
     form.content_type = contentType
+  }
+  if (typeof topic === 'string' && topic.trim()) {
+    form.topic = topic.trim()
+  }
+  // 兜底: route 上带的 account 必须被读取, 否则从创作视图回来会被重置。
+  // 必须放在 onPlatformChange() 之后(它会清空 form.account_id)。
+  if (wantedAccountId) {
+    form.account_id = wantedAccountId
   }
 }
 
@@ -825,11 +1163,58 @@ async function applyTemplateFromRoute() {
   }
 }
 
+async function loadFromSession() {
+  const sessionId = route.query.withSession
+  if (!sessionId) return
+  try {
+    const session = await api.getSession(Number(sessionId))
+    if (session.final_copy) {
+      form.title = session.final_copy.title || ''
+      form.content = session.final_copy.body || ''
+      form.tagsText = (session.final_copy.tags || []).join(' ')
+    }
+    // session.output_material_ids 是混合 ID 列表：可能包括文案、封面、数字人口播图、视频等，
+    // 不能整组赋给 form.material_ids（视频是单选，会把文案/封面也当成视频保存）。
+    // 按当前已加载的 materials 拆分类别，分别填到视频或封面字段。
+    const rawIds = session.output_material_ids || []
+    const byId = Object.fromEntries(materials.value.map((m) => [m.id, m]))
+    const videos = rawIds.filter((id) => byId[id]?.type === 'video')
+    const images = rawIds.filter((id) => byId[id]?.type === 'image')
+    if (videos.length) {
+      // 视频流程是单选，先取第一个作为预选；其余的素材依然在素材库里可手动切换。
+      form.material_ids = [videos[0]]
+      const firstVideo = byId[videos[0]]
+      if (firstVideo?.url) videoPreviewUrl.value = firstVideo.url
+    }
+    if (images.length && !form.cover_material_id) {
+      form.cover_material_id = images[0]
+      const cover = byId[images[0]]
+      if (cover?.url && !coverPreview.value) coverPreview.value = cover.url
+    }
+    // 平台/账号已由 applyRouteDefaults 处理（避免重复调用 onPlatformChange 二次清空 account）
+    // 创作视图回来后直接跳到「素材确认」步骤（视频流程是 step=3，图文是 step=2），
+    // 让用户看到刚生成的视频，而不是又落到 step=0「主题账号」。
+    if (videos.length || images.length) {
+      step.value = isVideo.value ? 3 : 2
+    }
+    const totalMats = videos.length + images.length
+    const videoLabel = videos.length ? `${videos.length} 个视频` : ''
+    const imageLabel = images.length ? `${images.length} 张图` : ''
+    const detail = [videoLabel, imageLabel].filter(Boolean).join(' + ')
+    ElMessage.success(
+      detail
+        ? `已从创作结果加载文案和 ${detail}`
+        : `已从创作结果加载文案`,
+    )
+  } catch { /* ignore */ }
+}
+
 onMounted(async () => {
   await loadFeatures()
-  applyRouteDefaults()
+  await applyRouteDefaults()
   await loadBase()
   await applyTemplateFromRoute()
+  await loadFromSession()
   const id = route.query.id
   if (id) await loadDraft(Number(id))
 })
@@ -889,5 +1274,14 @@ onMounted(async () => {
 }
 .summary p {
   margin: 4px 0;
+}
+.cost-tag {
+  font-size: 12px;
+  color: #e6a23c;
+  white-space: nowrap;
+  padding: 2px 8px;
+  background: #fdf6ec;
+  border: 1px solid #faecd8;
+  border-radius: 4px;
 }
 </style>

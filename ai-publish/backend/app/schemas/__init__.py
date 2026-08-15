@@ -95,6 +95,17 @@ class TextGenerateRequest(BaseModel):
     style: str = "default"
 
 
+class TextPolishRequest(BaseModel):
+    """按指令润色：基于已有文案 + 用户指令改写，不依赖创作 session。"""
+    title: str = ""
+    body: str = ""
+    tags: list[str] = []
+    platform: str = "xhs"
+    content_type: str = "note"
+    instruction: str | None = None  # 用户自然语言指令（如"缩短到100字""第一句改抓人"）
+    quick_action: str | None = None  # shorten | expand | humorous | add_emoji | formal | bilibili_style | xiaohongshu_style | douyin_style
+
+
 class ImageGenerateRequest(BaseModel):
     topic: str
     platform: str = "xhs"
@@ -104,6 +115,71 @@ class ImageGenerateRequest(BaseModel):
     cover_text: str | None = None
     brand_color: str | None = None
     brand_hint: str | None = None
+
+
+class VideoGenerateRequest(BaseModel):
+    topic: str
+    platform: str = "douyin"
+    duration: int = Field(default=5, ge=1, le=60)
+    resolution: str = "720p"
+    fps: int = Field(default=24, ge=24, le=30)
+    style: str = "default"
+    image_url: str | None = None
+    count: int = 1
+    avatar_id: int | None = None
+    avatar_type: str | None = None  # digital_human | simulation_human
+    # ====== 腾讯云 VOD AIGC 模型选择 ======
+    video_model: str | None = None  # 纯视频(文生/图生)模型: Hailuo|Kling|Vidu|Mingmou|GV|OS|PixVerse
+    kling_version: str | None = None  # 数字人/对口型 Kling 版本: 1.6|2.0|2.1|2.5|2.6|O1|3.0|3.0-Omni
+
+
+class AvatarCreate(BaseModel):
+    name: str
+    type: str  # digital_human | simulation_human
+    gender: str | None = None
+    config: dict | None = None
+    reference_images: list[int] | None = None  # 旧字段，保留兼容
+    reference_image_url: str | None = None  # 数字人参考图 URL
+    reference_video_url: str | None = None  # 仿真人参考视频 URL
+    background_prompt: str | None = None  # 背景描述(图生图 prompt)
+    background_image_url: str | None = None  # 已生成的带背景参考图(后端生成后回填)
+
+
+class AvatarUpdate(BaseModel):
+    name: str | None = None
+    gender: str | None = None
+    config: dict | None = None
+    reference_images: list[int] | None = None
+    reference_image_url: str | None = None
+    reference_video_url: str | None = None
+    thumbnail: str | None = None
+    background_prompt: str | None = None
+    background_image_url: str | None = None
+    status: str | None = None
+
+
+class AvatarResponse(BaseModel):
+    id: int
+    name: str
+    type: str
+    gender: str | None = None
+    config: dict | None = None
+    reference_images: list | None = None
+    reference_image_url: str | None = None
+    reference_video_url: str | None = None
+    thumbnail_url: str | None = None
+    background_prompt: str | None = None
+    background_image_url: str | None = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetime(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+    class Config:
+        from_attributes = True
 
 
 class TextMaterialCreate(BaseModel):
@@ -645,3 +721,196 @@ class OperationLogResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TrendingItemResponse(BaseModel):
+    id: int
+    platform: str
+    title: str
+    tags: list[str] = []
+    source_url: str | None = None
+    cover_url: str | None = None
+    video_url: str | None = None
+    heat_score: float = 0
+    rank: int | None = None
+    appear_days: int = 1
+    first_seen_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    snapshot_date: str | None = None
+
+
+class TrendingStatusResponse(BaseModel):
+    enabled: bool
+    fetch_mode: str
+    paid_api_enabled: bool
+    last_item_at: str | None = None
+    last_fetch_at: str | None = None
+    last_fetch_source: str | None = None
+    last_fetch_status: str | None = None
+    stale: bool = False
+
+
+class TrendingFetchResponse(BaseModel):
+    id: int
+    source: str
+    mode: str
+    status: str
+    item_count: int
+    error_message: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+    @field_serializer("started_at", "finished_at")
+    def serialize_dt(self, value: datetime | None) -> str | None:
+        return format_utc_datetime(value) if value else None
+
+
+class TrendingAiRecommendRequest(BaseModel):
+    period: str = "daily"
+    platform: str | None = None
+    category: str | None = None
+    limit: int = 5
+
+
+class TrendingRecommendation(BaseModel):
+    topic: str
+    platform: str
+    content_type: str = "video"
+    reason: str = ""
+    reference_trend_ids: list[int] = []
+
+
+class TrendingAiRecommendResponse(BaseModel):
+    recommendations: list[TrendingRecommendation]
+    provider: str | None = None
+    message: str | None = None
+
+
+class TrendingWorkerIngestItem(BaseModel):
+    platform: str
+    rank: int = 0
+    title: str
+    heat_score: float = 0
+    source_url: str | None = None
+    cover_url: str | None = None
+    video_url: str | None = None
+    tags: list[str] = []
+
+
+class TrendingWorkerIngestRequest(BaseModel):
+    items: list[TrendingWorkerIngestItem]
+
+
+# ── Creative Session (内容创作) ───────────────────────────────
+
+class CreativeSessionCreate(BaseModel):
+    content_type: str  # video | note
+    keywords: str
+    background: str | None = None
+    theme_style: str | None = None
+    scene_desc: str | None = None
+    platforms: list[str] | None = None
+
+
+class PolishRequest(BaseModel):
+    message: str | None = None  # 用户自然语言指令
+    quick_action: str | None = None  # shorten | expand | humorous | add_emoji | formal | bilibili_style | xiaohongshu_style | douyin_style
+
+
+class PolishResponse(BaseModel):
+    title: str
+    body: str
+    tags: list[str] = []
+
+
+class CopyResponse(BaseModel):
+    title: str
+    body: str
+    tags: list[str] = []
+
+
+class CopyUpdateRequest(BaseModel):
+    title: str | None = None
+    body: str | None = None
+    tags: list[str] | None = None
+
+
+class GenerationRequest(BaseModel):
+    gen_type: str  # text_to_video | image_to_video | simulation_human | digital_human | cover | images
+    description: str | None = None  # 覆盖默认的视频描述
+    duration: int = Field(default=5, ge=1, le=60)
+    resolution: str = "720p"
+    fps: int = Field(default=24, ge=24, le=30)
+    image_url: str | None = None  # 图生视频/仿真人参考图
+    avatar_id: int | None = None
+    avatar_type: str | None = None
+    style: str = "default"  # 图文风格
+    cover_text: str | None = None
+    brand_color: str | None = None
+    brand_hint: str | None = None
+    count: int = Field(default=1, ge=1, le=9)  # 图文数量
+    # ====== TTS 语音（数字人/仿真人口播用）======
+    voice_id: str | None = None  # edge-tts 音色 ID（如 zh-CN-XiaoxiaoNeural）
+    tts_text: str | None = None  # 实际被念出来的口播文本（为空则回退到 description/topic）
+
+
+class GenerationTaskResponse(BaseModel):
+    id: int
+    session_id: int
+    gen_type: str
+    provider: str
+    status: str
+    progress: int
+    input_params: dict | None = None
+    result: dict | None = None
+    error_message: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+    @field_serializer("created_at", "completed_at")
+    def serialize_dt(self, value: datetime | None) -> str | None:
+        return format_utc_datetime(value)
+
+    class Config:
+        from_attributes = True
+
+
+class CreativeSessionResponse(BaseModel):
+    id: int
+    user_id: int
+    content_type: str
+    keywords: str
+    background: str | None = None
+    theme_style: str | None = None
+    scene_desc: str | None = None
+    platforms: list[str] | None = None
+    status: str
+    final_copy: dict | None = None
+    polish_history: list | None = None
+    output_material_ids: list[int] | None = None
+    draft_data: dict | None = None
+    generation_count: int = 0  # 该 session 关联的素材生成记录数（草稿箱 UI 用）
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_dt(self, value: datetime) -> str:
+        return format_utc_datetime(value) or ""
+
+    class Config:
+        from_attributes = True
+
+
+class SaveDraftRequest(BaseModel):
+    step: int = 0
+    form: dict | None = None
+    copy_data: dict | None = None  # 避免与 BaseModel.copy() 冲突
+    video_params: dict | None = None
+    image_params: dict | None = None
+
+
+class CreativeSessionListResponse(BaseModel):
+    items: list[CreativeSessionResponse]
+    total: int
+    page: int
+    page_size: int

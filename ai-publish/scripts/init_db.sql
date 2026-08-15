@@ -172,6 +172,37 @@ CREATE TABLE IF NOT EXISTS content_templates (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS trending_fetch_runs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    source VARCHAR(32) NOT NULL,
+    mode VARCHAR(32) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    item_count INT NOT NULL DEFAULT 0,
+    error_message TEXT NULL,
+    started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at DATETIME NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS trending_items (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    platform VARCHAR(32) NOT NULL,
+    snapshot_date VARCHAR(10) NOT NULL,
+    rank INT NOT NULL DEFAULT 0,
+    title VARCHAR(512) NOT NULL,
+    tags JSON NULL,
+    heat_score DECIMAL(12, 4) NOT NULL DEFAULT 0,
+    source_url VARCHAR(1024) NULL,
+    cover_url VARCHAR(1024) NULL,
+    video_url VARCHAR(1024) NULL,
+    duration_seconds INT NULL,
+    aspect_ratio VARCHAR(16) NULL,
+    ref_material_id BIGINT NULL,
+    first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_trending_platform_date (platform, snapshot_date)
+) ENGINE=InnoDB;
+
 INSERT INTO roles (role_name, permissions)
 SELECT 'admin', JSON_ARRAY('*')
 WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'admin');
@@ -180,7 +211,7 @@ INSERT INTO roles (role_name, permissions)
 SELECT 'operator', JSON_ARRAY(
     'dashboard:read','accounts:read','accounts:write','materials:read','materials:write',
     'tasks:read','tasks:write','tasks:execute','publish:write','models:read','models:write','logs:read',
-    'templates:read','templates:write'
+    'templates:read','templates:write','trending:read','trending:write'
 )
 WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'operator');
 

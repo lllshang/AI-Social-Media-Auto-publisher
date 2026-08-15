@@ -22,4 +22,5 @@ def system_features(db: Session = Depends(get_db), _: User = Depends(get_current
     return {
         "require_content_review": config.require_content_review(),
         "scheduler_enabled": config.scheduler_enabled(),
+        "trending_enabled": config.trending_enabled(),
     }

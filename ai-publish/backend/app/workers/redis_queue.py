@@ -104,6 +104,15 @@ class RedisTaskQueue:
             return None
         return int(item[1])
 
+    def re_enqueue_worker(self, queue_key: str, task_id: int) -> None:
+        if not self.settings.task_queue_enabled:
+            return
+        try:
+            self._get_client().lpush(queue_key, str(task_id))
+            logger.info("任务 #{} 已重新入队 {}", task_id, queue_key)
+        except Exception as exc:
+            logger.warning("Worker 重新入队失败: {}", exc)
+
     def dequeue_worker_blocking(self, queue_key: str, timeout: int = 30) -> int | None:
         if not self.settings.task_queue_enabled:
             return None

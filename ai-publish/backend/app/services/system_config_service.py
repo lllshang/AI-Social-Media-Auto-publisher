@@ -110,8 +110,13 @@ class SystemConfigService:
         raw = (self.get_value("image_moderation_provider") or "stub").strip().lower()
         return raw if raw in {"stub", "tencent", "alibaba"} else "stub"
 
+    def trending_enabled(self) -> bool:
+        return self.get_bool("trending_enabled", False)
+
 
 def ensure_default_system_configs(db: Session) -> None:
+    from app.services.trending_config_service import DEFAULT_MINI_GAME_KEYWORDS, LEGACY_MINI_GAME_KEYWORDS
+
     defaults = [
         ("require_content_review", "false", "提交后是否进入待审核"),
         ("scheduler_enabled", "true", "是否启用定时发布调度"),
@@ -143,8 +148,24 @@ def ensure_default_system_configs(db: Session) -> None:
         ("image_moderation_alibaba_access_key_id", "", "阿里云 Green AccessKeyId（按量计费）"),
         ("image_moderation_alibaba_access_key_secret", "", "阿里云 Green AccessKeySecret"),
         ("image_moderation_alibaba_region", "cn-shanghai", "阿里云 Green 地域"),
+        ("trending_enabled", "false", "是否启用热点灵感模块"),
+        ("trending_fetch_mode", "auto", "热点抓取模式：server / local_worker / auto"),
+        ("trending_fetch_cron_hour", "8", "每日热点抓取小时（0-23）"),
+        ("trending_dailyhot_base_url", "https://api-hot.imsyy.top", "DailyHotApi 基址（可改为自建）"),
+        ("trending_mini_game_keywords", DEFAULT_MINI_GAME_KEYWORDS, "小游戏筛选关键词（逗号分隔）"),
+        ("trending_paid_api_enabled", "false", "是否启用付费热点 API 兜底（默认关闭）"),
+        ("trending_paid_provider", "tikhub", "付费热点服务商：tikhub"),
+        ("trending_paid_api_key", "", "付费热点 API Key（按次计费）"),
     ]
     service = SystemConfigService(db)
     for key, value, remark in defaults:
         if service.get_value(key) is None:
             service.set_value(key, value, remark)
+
+    current_keywords = service.get_value("trending_mini_game_keywords")
+    if current_keywords == LEGACY_MINI_GAME_KEYWORDS:
+        service.set_value(
+            "trending_mini_game_keywords",
+            DEFAULT_MINI_GAME_KEYWORDS,
+            "小游戏筛选关键词（逗号分隔）",
+        )

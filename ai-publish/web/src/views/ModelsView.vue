@@ -17,6 +17,15 @@
       description="当前账号仅可查看模型配置，无法修改或切换模型。"
       style="margin-bottom: 16px"
     />
+    <el-alert
+      v-if="pageError"
+      type="error"
+      :closable="true"
+      show-icon
+      :title="pageError"
+      style="margin-bottom: 16px"
+      @close="pageError = ''"
+    />
 
     <el-row :gutter="16">
       <el-col :span="canWrite ? 12 : 24">
@@ -24,6 +33,7 @@
           <h3>当前配置</h3>
           <p>文案：{{ current.text }}</p>
           <p>文生图：{{ current.image }}</p>
+          <p>文生视频：{{ current.video }}</p>
         </div>
       </el-col>
       <el-col v-if="canWrite" :span="12">
@@ -32,6 +42,61 @@
           <el-input v-model="topic" placeholder="输入主题" />
           <el-button type="primary" style="margin-top: 12px" :loading="generating" @click="testText">生成</el-button>
           <pre v-if="textResult" class="result">{{ textResult }}</pre>
+          <el-alert v-if="textError" type="error" :closable="true" :title="textError" @close="textError = ''" show-icon style="margin-top: 12px" />
+        </div>
+      </el-col>
+    </el-row>
+
+    <el-row v-if="canWrite" :gutter="16" style="margin-top: 16px">
+      <el-col :span="12">
+        <div class="page-card">
+          <h3>测试图片生成</h3>
+          <el-input v-model="imageTopic" placeholder="输入主题" />
+          <el-select v-model="imageRatio" style="width: 100%; margin-top: 8px">
+            <el-option label="3:4（竖版）" value="3:4" />
+            <el-option label="1:1（方版）" value="1:1" />
+            <el-option label="16:9（横版）" value="16:9" />
+          </el-select>
+          <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px">
+            <el-button type="primary" :loading="generatingImage" @click="testImage">生成图片</el-button>
+            <span class="cost-tag">预估 ¥{{ imageCostEstimate }}</span>
+          </div>
+          <div v-if="imageResult" class="test-result">
+            <el-image
+              v-if="imageResult.materials?.length"
+              :src="imageResult.materials[0].url"
+              :preview-src-list="[imageResult.materials[0].url]"
+              fit="contain"
+              style="max-width: 100%; max-height: 160px; border-radius: 6px"
+            />
+            <p class="test-meta">{{ imageResult.provider }} / {{ imageResult.model }} · 预估 ¥{{ imageResult.cost }} · 耗时 {{ formatElapsed(imageResult.elapsed) }}</p>
+            <pre v-if="imageResult.prompt" class="result" style="max-height: 100px">{{ imageResult.prompt }}</pre>
+          </div>
+          <el-alert v-if="imageError" type="error" :closable="true" :title="imageError" @close="imageError = ''" show-icon style="margin-top: 12px" />
+        </div>
+      </el-col>
+      <el-col :span="12">
+        <div class="page-card">
+          <h3>测试视频生成</h3>
+          <el-input v-model="videoTopic" placeholder="输入主题" />
+          <el-input-number v-model="videoDuration" :min="1" :max="60" :step="1" style="width: 100%; margin-top: 8px" />
+          <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px">
+            <el-button type="primary" :loading="generatingVideo" @click="testVideo">生成视频</el-button>
+            <span class="cost-tag">预估 ¥{{ videoCostEstimate }}</span>
+          </div>
+          <div v-if="videoResult" class="test-result">
+            <video
+              v-if="videoResult.materials?.length && videoResult.materials[0].url"
+              :src="videoResult.materials[0].url"
+              :poster="videoResult.materials[0].thumbnail_url"
+              controls
+              preload="metadata"
+              style="max-width: 100%; max-height: 240px; border-radius: 6px; display: block"
+            />
+            <p class="test-meta">{{ videoResult.provider }} / {{ videoResult.model }} · {{ videoResult.materials?.[0]?.duration || videoResult.duration }}s · 预估 ¥{{ videoResult.cost }} · 耗时 {{ formatElapsed(videoResult.elapsed) }}</p>
+            <pre v-if="videoResult.prompt" class="result" style="max-height: 100px">{{ videoResult.prompt }}</pre>
+          </div>
+          <el-alert v-if="videoError" type="error" :closable="true" :title="videoError" @close="videoError = ''" show-icon style="margin-top: 12px" />
         </div>
       </el-col>
     </el-row>
@@ -54,6 +119,20 @@
       <el-select v-model="selectedImage" placeholder="选择文生图模型" style="width: 100%">
         <el-option
           v-for="item in imageOptions"
+          :key="item.provider + item.model"
+          :label="item.label"
+          :value="`${item.provider}::${item.model}`"
+          :disabled="!item.ready"
+        />
+      </el-select>
+    </div>
+
+    <div v-if="canWrite" class="page-card" style="margin-top: 16px">
+      <h3>切换文生视频模型</h3>
+      <p class="muted" style="margin: 0 0 10px">视频生成需配置相应厂商的 API Key</p>
+      <el-select v-model="selectedVideo" placeholder="选择文生视频模型" style="width: 100%">
+        <el-option
+          v-for="item in videoOptions"
           :key="item.provider + item.model"
           :label="item.label"
           :value="`${item.provider}::${item.model}`"
@@ -89,10 +168,54 @@
       </el-table>
     </div>
 
+    <!-- 腾讯云 VRS 声音复刻模式 -->
+    <div class="card" style="margin-top:16px">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between">
+        <span>🎙️ 腾讯云 VRS 声音复刻模式</span>
+        <el-tag v-if="vrsSource === 'env'" type="warning" size="small">环境变量已覆盖</el-tag>
+        <el-tag v-else-if="vrsSource === 'json'" type="success" size="small">配置生效中</el-tag>
+        <el-tag v-else type="info" size="small">默认值</el-tag>
+      </div>
+      <div style="padding:8px 4px 16px;color:#64748b;font-size:13px;line-height:1.7">
+        声音复刻（TTS）支持两种模式；切换后立即对前端生效（创建复刻任务时使用）。
+        <br />充值资源包开通 <b>一句话声音复刻</b> 后切换到该模式，否则用基础版（默认）即可。
+      </div>
+      <el-radio-group v-model="vrsTaskType" :disabled="!canWrite || vrsSaving">
+        <el-radio-button :value="1">
+          基础版
+          <span style="color:#94a3b8;font-size:12px;margin-left:4px">免费额度 / 默认</span>
+        </el-radio-button>
+        <el-radio-button :value="5">
+          一句话复刻
+          <span style="color:#f59e0b;font-size:12px;margin-left:4px">需充值</span>
+        </el-radio-button>
+      </el-radio-group>
+      <div style="margin-top:16px;display:flex;gap:12px;align-items:center">
+        <el-button
+          type="primary"
+          :loading="vrsSaving"
+          :disabled="!canWrite || vrsTaskType === vrsOriginal"
+          @click="saveVrsTaskType"
+        >
+          保存切换
+        </el-button>
+        <el-button @click="refreshVrsTaskType">刷新</el-button>
+        <span v-if="vrsStored" style="color:#94a3b8;font-size:12px">
+          已保存值：{{ vrsStored }} ｜ 优先级：环境变量 VRS_TASK_TYPE &gt; 此配置 &gt; 默认(基础版)
+        </span>
+      </div>
+    </div>
+
     <el-dialog v-model="providerVisible" :title="`配置 ${providerForm.label}`" width="520px">
       <el-form label-width="90px">
-        <el-form-item v-if="providerForm.key_field" label="API Key">
+        <el-form-item v-if="providerForm.key_field" label="SecretId">
           <el-input v-model="providerForm.api_key" type="password" show-password placeholder="留空则不修改" />
+        </el-form-item>
+        <el-form-item v-if="providerForm.secret_key_field" label="SecretKey">
+          <el-input v-model="providerForm.secret_key" type="password" show-password placeholder="留空则不修改" />
+        </el-form-item>
+        <el-form-item v-if="providerForm.sub_app_id_field" label="SubAppId">
+          <el-input v-model="providerForm.sub_app_id" placeholder="留空则不修改" />
         </el-form-item>
         <el-form-item v-if="providerForm.base_url_field || providerForm.custom" label="Base URL">
           <el-input v-model="providerForm.base_url" :placeholder="providerForm.default_base_url" />
@@ -160,20 +283,43 @@ const modelData = ref(null)
 const providers = ref([])
 const selectedText = ref('')
 const selectedImage = ref('')
+const selectedVideo = ref('')
 const topic = ref('春茶上新')
 const textResult = ref('')
 const generating = ref(false)
+const textError = ref('')
+const imageError = ref('')
+const videoError = ref('')
+const pageError = ref('')
+const imageTopic = ref('春茶上新')
+const imageRatio = ref('3:4')
+const imageResult = ref(null)
+const generatingImage = ref(false)
+const videoTopic = ref('春茶上新')
+const videoDuration = ref(5)
+const videoResult = ref(null)
+const generatingVideo = ref(false)
 const loading = ref(false)
 const providerVisible = ref(false)
 const addVisible = ref(false)
+// VRS 复刻模式（基础版=1 / 一句话复刻=5）
+const vrsTaskType = ref(1)
+const vrsOriginal = ref(1)
+const vrsSaving = ref(false)
+const vrsStored = ref('')
+const vrsSource = ref('default')
 const providerForm = reactive({
   provider: '',
   label: '',
   key_field: '',
+  secret_key_field: '',
+  sub_app_id_field: '',
   base_url_field: '',
   default_base_url: '',
   custom: false,
   api_key: '',
+  secret_key: '',
+  sub_app_id: '',
   base_url: '',
 })
 const addForm = reactive({
@@ -192,9 +338,41 @@ const current = computed(() => ({
   image: modelData.value?.image?.current
     ? `${modelData.value.image.current.provider} / ${modelData.value.image.current.model}`
     : '-',
+  video: modelData.value?.video?.current
+    ? `${modelData.value.video.current.provider} / ${modelData.value.video.current.model}`
+    : '-',
 }))
 const textOptions = computed(() => modelData.value?.text?.available || [])
 const imageOptions = computed(() => modelData.value?.image?.available || [])
+const videoOptions = computed(() => modelData.value?.video?.available || [])
+
+// --- 费用预估 ---
+function getVideoPricePerSec(modelName) {
+  if (!modelName) return 0.5
+  if (modelName.includes('mini')) return 0.5
+  if (modelName.includes('pro')) return 1.5
+  if (modelName.includes('seedance-2-0')) return 1.0
+  return 0.5
+}
+
+function getImagePricePerImage(modelName) {
+  if (!modelName) return 0.02
+  if (modelName.includes('seedream')) return 0.02
+  return 0.08
+}
+
+function formatElapsed(seconds) {
+  const s = Number(seconds) || 0
+  if (s < 60) return `${s.toFixed(1)} 秒`
+  const m = Math.floor(s / 60)
+  const rest = Math.round(s % 60)
+  return `${m} 分 ${rest} 秒`
+}
+
+const currentVideoModel = computed(() => modelData.value?.video?.current?.model || '')
+const currentImageModel = computed(() => modelData.value?.image?.current?.model || '')
+const videoCostEstimate = computed(() => (videoDuration.value * getVideoPricePerSec(currentVideoModel.value)).toFixed(2))
+const imageCostEstimate = computed(() => getImagePricePerImage(currentImageModel.value).toFixed(2))
 
 function splitModels(raw) {
   return raw
@@ -213,26 +391,63 @@ async function loadModels() {
   modelData.value = models
   const textCur = models.text?.current
   const imageCur = models.image?.current
+  const videoCur = models.video?.current
   if (textCur?.provider && textCur?.model) {
     selectedText.value = `${textCur.provider}::${textCur.model}`
   }
   if (imageCur?.provider && imageCur?.model) {
     selectedImage.value = `${imageCur.provider}::${imageCur.model}`
   }
+  if (videoCur?.provider && videoCur?.model) {
+    selectedVideo.value = `${videoCur.provider}::${videoCur.model}`
+  }
+}
+
+async function refreshVrsTaskType() {
+  try {
+    const data = await api.getVrsTaskType()
+    const v = Number(data?.value) || 1
+    vrsTaskType.value = v
+    vrsOriginal.value = v
+    vrsStored.value = data?.stored || ''
+    vrsSource.value = data?.source || 'default'
+  } catch (e) {
+    console.warn('[vrs-task-type] 读取失败：', e?.message || e)
+  }
+}
+
+async function saveVrsTaskType() {
+  if (vrsTaskType.value === vrsOriginal.value) return
+  vrsSaving.value = true
+  try {
+    const data = await api.setVrsTaskType(vrsTaskType.value)
+    const v = Number(data?.value) || 1
+    vrsTaskType.value = v
+    vrsOriginal.value = v
+    vrsStored.value = data?.stored || ''
+    vrsSource.value = data?.source || 'default'
+    ElMessage.success(
+      v === 5 ? '已切换到一句话复刻模式（需充值额度）' : '已切换到基础版（默认）',
+    )
+  } catch (e) {
+    ElMessage.error(e?.response?.data?.detail || e?.message || '保存失败')
+  } finally {
+    vrsSaving.value = false
+  }
 }
 
 async function load() {
   loading.value = true
   try {
-    await Promise.all([loadProviders(), loadModels()])
+    await Promise.all([loadProviders(), loadModels(), refreshVrsTaskType()])
   } catch (e) {
     try {
       await loadProviders()
     } catch (providerError) {
-      ElMessage.error(providerError.message || '加载厂商列表失败')
+      pageError.value = providerError.message || '加载厂商列表失败'
     }
     if (!modelData.value) {
-      ElMessage.error(e.message || '加载模型信息失败')
+      pageError.value = e.message || '加载模型信息失败'
     }
   } finally {
     loading.value = false
@@ -245,7 +460,7 @@ async function detect() {
     ElMessage.success('已重新自动匹配')
     await load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '自动匹配失败'
   }
 }
 
@@ -253,29 +468,61 @@ async function apply() {
   try {
     const [textProvider, textModel] = selectedText.value.split('::')
     const [imageProvider, imageModel] = selectedImage.value.split('::')
+    const [videoProvider, videoModel] = selectedVideo.value ? selectedVideo.value.split('::') : ['', '']
     await api.selectModel({
       mode: 'manual',
       text_provider: textProvider,
       text_model: textModel,
       image_provider: imageProvider,
       image_model: imageModel,
+      video_provider: videoProvider || undefined,
+      video_model: videoModel || undefined,
     })
     ElMessage.success('已切换模型')
     await load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '切换模型失败'
   }
 }
 
 async function testText() {
   generating.value = true
+  textError.value = ''
   try {
     const res = await api.generateText(topic.value)
     textResult.value = JSON.stringify(res, null, 2)
   } catch (e) {
-    ElMessage.error(e.message)
+    textError.value = e.message || '文案生成失败'
   } finally {
     generating.value = false
+  }
+}
+
+async function testImage() {
+  generatingImage.value = true
+  imageResult.value = null
+  imageError.value = ''
+  try {
+    const res = await api.generateImage({ topic: imageTopic.value, platform: 'xhs', ratio: imageRatio.value, count: 1 })
+    imageResult.value = res
+  } catch (e) {
+    imageError.value = e.message || '图片生成失败'
+  } finally {
+    generatingImage.value = false
+  }
+}
+
+async function testVideo() {
+  generatingVideo.value = true
+  videoResult.value = null
+  videoError.value = ''
+  try {
+    const res = await api.generateVideo({ topic: videoTopic.value, platform: 'douyin', duration: videoDuration.value })
+    videoResult.value = res
+  } catch (e) {
+    videoError.value = e.message || '视频生成失败'
+  } finally {
+    generatingVideo.value = false
   }
 }
 
@@ -283,10 +530,14 @@ function openProvider(row) {
   providerForm.provider = row.provider
   providerForm.label = row.label
   providerForm.key_field = row.key_field
+  providerForm.secret_key_field = row.secret_key_field
+  providerForm.sub_app_id_field = row.sub_app_id_field
   providerForm.base_url_field = row.base_url_field
   providerForm.default_base_url = row.default_base_url
   providerForm.custom = !!row.custom
   providerForm.api_key = ''
+  providerForm.secret_key = ''
+  providerForm.sub_app_id = ''
   providerForm.base_url = row.base_url || row.default_base_url || ''
   providerVisible.value = true
 }
@@ -315,7 +566,7 @@ async function submitAddProvider() {
     addVisible.value = false
     await load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '添加失败'
   }
 }
 
@@ -324,13 +575,16 @@ async function saveProvider() {
     await api.saveProviderConfig({
       provider: providerForm.provider,
       api_key: providerForm.api_key || undefined,
+      secret_key: providerForm.secret_key || undefined,
+      sub_app_id: providerForm.sub_app_id || undefined,
       base_url: providerForm.base_url || undefined,
     })
     ElMessage.success('配置已保存')
     providerVisible.value = false
     await load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '保存配置失败'
+    ElMessage.error(pageError.value)
   }
 }
 
@@ -341,7 +595,7 @@ async function clearProvider() {
     providerVisible.value = false
     await load()
   } catch (e) {
-    ElMessage.error(e.message)
+    pageError.value = e.message || '清除配置失败'
   }
 }
 
@@ -386,5 +640,22 @@ onMounted(load)
   overflow: auto;
   max-height: 240px;
   font-size: 12px;
+}
+.test-result {
+  margin-top: 12px;
+}
+.test-meta {
+  margin: 8px 0 0;
+  color: #666;
+  font-size: 13px;
+}
+.cost-tag {
+  font-size: 12px;
+  color: #e6a23c;
+  white-space: nowrap;
+  padding: 2px 8px;
+  background: #fdf6ec;
+  border: 1px solid #faecd8;
+  border-radius: 4px;
 }
 </style>

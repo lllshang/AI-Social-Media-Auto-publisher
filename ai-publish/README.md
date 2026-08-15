@@ -11,6 +11,7 @@
 | [日常使用手册](../docs/daily-usage.md) | 登录、发布、AI 配置 |
 | [API 手动测试](../docs/api-test.md) | curl 接口清单 |
 | [多平台扩展路线图](../docs/multi-platform-roadmap.md) | 抖音等平台规划 |
+| [**新人协作指导手册**](../docs/onboarding/README.md) | **新成员从零上手：环境搭建 → 项目导览 → 开发流程 → 部署上线** |
 
 ## 目录结构
 

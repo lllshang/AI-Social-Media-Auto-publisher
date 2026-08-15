@@ -4,7 +4,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Any
 
 
 @dataclass
@@ -73,6 +76,9 @@ class ImageGenerateInput:
     cover_text: str | None = None
     brand_color: str | None = None
     brand_hint: str | None = None
+    # ====== 腾讯云 VOD AIGC 图生图 (数字人背景) 专用 ======
+    reference_image_url: str | None = None  # 参考图（数字人原图），存在则走图生图
+    background_prompt: str | None = None  # 背景描述，图生图时作为 Prompt
 
 
 @dataclass
@@ -82,6 +88,50 @@ class ImageGenerateResult:
     prompt: str
     cost: float = 0.0
     negative_prompt: str | None = None
+    elapsed: float = 0.0
+
+
+@dataclass
+class VideoGenerateInput:
+    topic: str
+    platform: str = "douyin"
+    duration: int = 5
+    resolution: str = "720p"
+    fps: int = 24
+    style: str = "default"
+    image_url: str | None = None
+    count: int = 1
+    avatar_id: int | None = None
+    avatar_type: str | None = None  # digital_human | simulation_human
+    # ====== 腾讯云 VOD AIGC (Kling) scene 专用 ======
+    scene_type: str | None = None  # avatar_i2v | lip_sync | motion_control
+    reference_image_url: str | None = None  # 数字人参考图 (Usage=Reference)
+    reference_video_url: str | None = None  # 仿真人/对口型参考视频 (Usage=Reference)
+    reference_audio_url: str | None = None  # 仿真人参考音频 (可选)
+    script_text: str | None = None  # 数字人/仿真人文本驱动 (Prompt)
+    # ====== TTS 语音合成 (edge-tts) ======
+    voice_id: str | None = None  # 音色 ID（如 zh-CN-XiaoxiaoNeural）；为空则用默认
+    tts_text: str | None = None  # 实际要被 TTS 念出来的文本；为空则用 script_text 或 topic
+    voice_sample_url: str | None = None  # 用户自定义上传的声音样本（暂作扩展位，本期不启用）
+    audio_duration: float = 0.0  # TTS 合成音频真实时长（秒）；数字人视频时长由它驱动
+    # ====== 腾讯云主体注册 (Kling SubjectInfos) 专用 ======
+    subject_image_url: str | None = None  # 用于主体注册的干净原图 URL（数字人，建议用 reference_image_url）
+    avatar_subject_id: str | None = None  # 已缓存的腾讯云主体 ID（命中则跳过注册，直接复用）
+    # ====== 腾讯云 VOD AIGC 模型选择（前端透传）======
+    video_model: str | None = None  # 纯视频(文生/图生)模型: Hailuo|Kling|Vidu|Mingmou|GV|OS|PixVerse
+    kling_version: str | None = None  # 数字人/对口型 Kling 版本: 1.6|2.0|2.1|2.5|2.6|O1|3.0|3.0-Omni
+
+
+@dataclass
+class VideoGenerateResult:
+    video_paths: list[str]
+    thumbnail_paths: list[str]
+    provider: str
+    prompt: str
+    cost: float = 0.0
+    duration: float = 0.0
+    elapsed: float = 0.0
+    metadata: dict = field(default_factory=dict)
 
 
 class PlatformAdapter(Protocol):
@@ -96,6 +146,10 @@ class AiTextAdapter(Protocol):
 
 class AiImageAdapter(Protocol):
     async def generate(self, data: ImageGenerateInput) -> ImageGenerateResult: ...
+
+
+class AiVideoAdapter(Protocol):
+    async def generate(self, data: VideoGenerateInput) -> VideoGenerateResult: ...
 
 
 class StorageAdapter(ABC):

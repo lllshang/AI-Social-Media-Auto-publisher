@@ -88,6 +88,77 @@
 
     <div v-if="canManageSettings" class="page-card" style="margin-top: 16px">
       <div class="section-head">
+        <h3>热点抓取</h3>
+      </div>
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="开启付费热点 API 可能产生按次费用；默认使用免费 DailyHot 源。"
+        style="margin-bottom: 12px"
+      />
+      <el-table :data="trendingConfigs" size="small">
+        <el-table-column prop="config_key" label="配置项" width="220" />
+        <el-table-column prop="remark" label="说明" min-width="200" show-overflow-tooltip />
+        <el-table-column label="值" min-width="200">
+          <template #default="{ row }">
+            <el-switch
+              v-if="isBoolConfig(row.config_key)"
+              :model-value="boolConfigOn(row.config_value)"
+              active-text="开启"
+              inactive-text="关闭"
+              @change="(v) => setBoolConfig(row, v)"
+            />
+            <el-select
+              v-else-if="isSelectConfig(row.config_key)"
+              v-model="row.config_value"
+              style="width: 180px"
+            >
+              <el-option
+                v-for="opt in selectConfigOptions(row.config_key)"
+                :key="opt.value"
+                :label="opt.label"
+                :value="opt.value"
+              />
+            </el-select>
+            <el-input-number
+              v-else-if="isIntConfig(row.config_key)"
+              v-model="intConfigValues[row.config_key]"
+              :min="0"
+              :max="23"
+              controls-position="right"
+              style="width: 160px"
+              @change="(v) => setIntConfig(row, v)"
+            />
+            <el-input v-else v-model="row.config_value" />
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" :loading="savingKey === row.config_key" @click="save(row)">
+              保存
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-form label-width="160px" class="image-mod-form" style="margin-top: 16px">
+        <el-form-item label="DailyHot 基址">
+          <el-input v-model="trendingForm.dailyhot_base_url" placeholder="https://api-hot.imsyy.top" />
+        </el-form-item>
+        <el-form-item label="小游戏关键词">
+          <el-input v-model="trendingForm.mini_game_keywords" placeholder="逗号分隔" />
+        </el-form-item>
+        <el-form-item label="付费 API Key">
+          <el-input v-model="trendingForm.paid_api_key" type="password" show-password placeholder="TikHub Key（可选）" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="trendingSaving" @click="saveTrendingSecrets">保存热点扩展配置</el-button>
+        </el-form-item>
+      </el-form>
+    </div>
+
+    <div v-if="canManageSettings" class="page-card" style="margin-top: 16px">
+      <div class="section-head">
         <h3>本机发布 Worker</h3>
         <el-button type="primary" size="small" @click="openCreateWorker">新建 Worker</el-button>
       </div>
@@ -427,6 +498,12 @@ const imageModForm = reactive({
   alibaba_access_key_secret: '',
   alibaba_region: 'cn-shanghai',
 })
+const trendingForm = reactive({
+  dailyhot_base_url: 'https://api-hot.imsyy.top',
+  mini_game_keywords: '小游戏,手游,休闲游戏,试玩,游戏,原神,鸣潮,崩坏,星穹铁道,绝区零,王者荣耀,和平精英,蛋仔派对,元梦之星,英雄联盟,阴阳师,明日方舟,第五人格,光遇,逆水寒,梦幻西游,金铲铲,云顶之弈,吃鸡,PUBG,CS2,迷你世界,我的世界',
+  paid_api_key: '',
+})
+const trendingSaving = ref(false)
 
 const HIDDEN_CONFIG_KEYS = new Set([
   'image_moderation_tencent_secret_id',
@@ -435,12 +512,28 @@ const HIDDEN_CONFIG_KEYS = new Set([
   'image_moderation_alibaba_access_key_id',
   'image_moderation_alibaba_access_key_secret',
   'image_moderation_alibaba_region',
+  'trending_paid_api_key',
+  'trending_dailyhot_base_url',
+  'trending_mini_game_keywords',
+])
+
+const TRENDING_CONFIG_KEYS = new Set([
+  'trending_enabled',
+  'trending_fetch_mode',
+  'trending_fetch_cron_hour',
+  'trending_paid_api_enabled',
+  'trending_paid_provider',
 ])
 
 const PAID_IMAGE_PROVIDERS = new Set(['tencent', 'alibaba'])
 
 const visibleConfigs = computed(() =>
-  configs.value.filter((row) => !HIDDEN_CONFIG_KEYS.has(row.config_key)),
+  configs.value.filter(
+    (row) => !HIDDEN_CONFIG_KEYS.has(row.config_key) && !TRENDING_CONFIG_KEYS.has(row.config_key),
+  ),
+)
+const trendingConfigs = computed(() =>
+  configs.value.filter((row) => TRENDING_CONFIG_KEYS.has(row.config_key)),
 )
 const savingKey = ref('')
 const configs = ref([])
@@ -469,6 +562,7 @@ async function load() {
     configs.value = results[0]
     syncIntConfigValues()
     syncImageModForm()
+    syncTrendingForm()
     roles.value = results[1]
     users.value = canManageUsers.value ? results[2] : []
     if (canManageSettings.value) {
@@ -614,6 +708,8 @@ const BOOL_CONFIG_KEYS = new Set([
   'rate_limit_enabled',
   'rate_limit_include_retry',
   'image_moderation_enabled',
+  'trending_enabled',
+  'trending_paid_api_enabled',
 ])
 const SELECT_CONFIG_OPTIONS = {
   sensitive_word_action: [
@@ -625,6 +721,12 @@ const SELECT_CONFIG_OPTIONS = {
     { label: '腾讯云 IMS（按量计费）', value: 'tencent' },
     { label: '阿里云 Green（按量计费）', value: 'alibaba' },
   ],
+  trending_fetch_mode: [
+    { label: '自动 (auto)', value: 'auto' },
+    { label: '服务器 (server)', value: 'server' },
+    { label: '本机 Worker (local_worker)', value: 'local_worker' },
+  ],
+  trending_paid_provider: [{ label: 'TikHub（按次计费）', value: 'tikhub' }],
 }
 const INT_CONFIG_KEYS = new Set([
   'max_auto_retries',
@@ -635,6 +737,7 @@ const INT_CONFIG_KEYS = new Set([
   'rate_limit_daily_per_account',
   'rate_limit_max_concurrent',
   'publish_running_timeout_minutes',
+  'trending_fetch_cron_hour',
 ])
 const intConfigValues = reactive({})
 
@@ -721,6 +824,7 @@ function intConfigMin(key) {
   if (key === 'rate_limit_daily_per_account') return 0
   if (key === 'rate_limit_max_concurrent') return 1
   if (key === 'publish_running_timeout_minutes') return 0
+  if (key === 'trending_fetch_cron_hour') return 0
   return 5
 }
 
@@ -774,6 +878,12 @@ function syncImageModForm() {
   imageModForm.alibaba_region = configValue('image_moderation_alibaba_region') || 'cn-shanghai'
 }
 
+function syncTrendingForm() {
+  trendingForm.dailyhot_base_url = configValue('trending_dailyhot_base_url') || 'https://api-hot.imsyy.top'
+  trendingForm.mini_game_keywords = configValue('trending_mini_game_keywords') || trendingForm.mini_game_keywords
+  trendingForm.paid_api_key = configValue('trending_paid_api_key') || ''
+}
+
 async function saveImageModSecrets() {
   imageModSaving.value = true
   try {
@@ -801,11 +911,46 @@ async function saveImageModSecrets() {
   }
 }
 
+async function saveTrendingSecrets() {
+  trendingSaving.value = true
+  try {
+    const entries = [
+      ['trending_dailyhot_base_url', trendingForm.dailyhot_base_url],
+      ['trending_mini_game_keywords', trendingForm.mini_game_keywords],
+      ['trending_paid_api_key', trendingForm.paid_api_key],
+    ]
+    for (const [key, value] of entries) {
+      const row = configs.value.find((item) => item.config_key === key)
+      await api.updateSystemConfig(key, {
+        config_value: value,
+        remark: row?.remark,
+      })
+      if (row) row.config_value = value
+    }
+    ElMessage.success('热点扩展配置已保存')
+  } catch (e) {
+    ElMessage.error(e.message)
+  } finally {
+    trendingSaving.value = false
+  }
+}
+
 async function setBoolConfig(row, on) {
   if (row.config_key === 'image_moderation_enabled' && on) {
     const provider = configValue('image_moderation_provider') || 'stub'
     try {
       await confirmImageModerationBilling(provider, '开启图片内容审核')
+    } catch {
+      return
+    }
+  }
+  if (row.config_key === 'trending_paid_api_enabled' && on) {
+    try {
+      await ElMessageBox.confirm(
+        '开启付费热点 API 兜底后，免费源失败时可能调用 TikHub 等按次计费接口。是否开启？',
+        '付费热点 API',
+        { type: 'warning', confirmButtonText: '开启', cancelButtonText: '取消' },
+      )
     } catch {
       return
     }
@@ -837,6 +982,13 @@ async function save(row) {
       await ElMessageBox.confirm(
         `切换为 ${providerLabel(row.config_value)} 后，开启图片审核将产生按量费用。是否保存？`,
         '图片审核 Provider',
+        { type: 'warning', confirmButtonText: '保存', cancelButtonText: '取消' },
+      )
+    }
+    if (row.config_key === 'trending_paid_api_enabled' && boolConfigOn(row.config_value)) {
+      await ElMessageBox.confirm(
+        '保存后将允许在免费热点源失败时使用付费 API（按次计费）。是否保存？',
+        '付费热点 API',
         { type: 'warning', confirmButtonText: '保存', cancelButtonText: '取消' },
       )
     }

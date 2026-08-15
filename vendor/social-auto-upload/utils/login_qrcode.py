@@ -14,6 +14,11 @@ def build_login_qrcode_path(account_file: str, suffix: str = "login_qrcode") -> 
     return account_path.with_name(f"{account_path.stem}_{suffix}_{timestamp}.png")
 
 
+def path_to_data_url(qrcode_path: Path) -> str:
+    encoded = base64.b64encode(qrcode_path.read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
 def save_data_url_image(data_url: str, output_path: Path) -> Path:
     if not data_url.startswith("data:image/"):
         raise ValueError("二维码地址不是 data:image 格式")

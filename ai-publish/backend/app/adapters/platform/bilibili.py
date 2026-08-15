@@ -93,16 +93,12 @@ class BilibiliPlatformAdapter:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         bilibili_cookie_gen = self._import_login()
-        from app.utils.login_poll import login_poll_params
-
-        _, max_checks = login_poll_params(self.settings)
-        timeout_seconds = max(self.settings.login_timeout_seconds, max_checks)
 
         outcome = await bilibili_cookie_gen(
             str(path),
             qrcode_callback=self._wrap_qrcode_callback(qrcode_callback),
             progress_callback=self._wrap_progress_callback(progress_callback),
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=self.settings.login_timeout_seconds,
             proxy_url=publish_proxy,
         )
         return LoginResult(
@@ -116,6 +112,17 @@ class BilibiliPlatformAdapter:
     async def check_cookie_valid(self, cookie_file: str, publish_proxy: str | None = None) -> bool:
         if not Path(cookie_file).exists():
             return False
+        self._ensure_vendor_path()
+        try:
+            from uploader.bilibili_uploader.login import (  # type: ignore
+                prepare_biliup_cookie_file,
+                validate_bilibili_cookie_file,
+            )
+
+            if await asyncio.to_thread(validate_bilibili_cookie_file, cookie_file):
+                return True
+        except ImportError:
+            pass
         run_biliup_command = self._import_runtime()
         arguments = build_biliup_arguments(["-u", cookie_file, "renew"], publish_proxy)
         result = await asyncio.to_thread(run_biliup_command, arguments)
@@ -144,10 +151,17 @@ class BilibiliPlatformAdapter:
                 await self._log_step(context, "validate", "failed", "Cookie 无效")
                 return PublishResult(success=False, message="账号未登录或已失效，请重新扫码登录")
 
+            from uploader.bilibili_uploader.login import prepare_biliup_cookie_file  # type: ignore
+
+            upload_cookie = await asyncio.to_thread(
+                prepare_biliup_cookie_file,
+                context.cookie_file,
+            )
+
             arguments = build_biliup_arguments(
                 [
                     "-u",
-                    context.cookie_file,
+                    upload_cookie,
                     "upload",
                     str(video_path),
                     "--title",

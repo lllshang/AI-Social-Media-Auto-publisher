@@ -8,6 +8,15 @@
       </div>
     </div>
     <el-alert
+      v-if="!runtime.bilibili_enabled"
+      type="warning"
+      :closable="false"
+      show-icon
+      class="runtime-alert"
+      title="B站功能未开启"
+      description="平台列表不显示 B站 是预期行为。请在服务器 ai-publish/.env 设置 BILIBILI_ENABLED=true，执行 bash scripts/upgrade.sh 或 docker compose restart api 后刷新本页。"
+    />
+    <el-alert
       v-if="runtime.docker && runtime.xhs_qr_login_supported"
       type="info"
       :closable="false"
@@ -37,7 +46,7 @@
     <div class="page-card filter-bar">
       <el-radio-group v-model="filterPlatform" @change="load">
         <el-radio-button label="">全部平台</el-radio-button>
-        <el-radio-button v-for="p in PLATFORMS" :key="p.value" :label="p.value">{{ p.label }}</el-radio-button>
+        <el-radio-button v-for="p in availablePlatforms" :key="p.value" :label="p.value">{{ p.label }}</el-radio-button>
       </el-radio-group>
       <el-select
         v-model="filterGroupId"
@@ -87,7 +96,7 @@
         <el-table-column v-if="can('accounts:write')" label="操作" width="440">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" @click="check(row)">检测 Cookie</el-button>
+            <el-button size="small" :loading="checkingCookieId === row.id" @click="check(row)">检测 Cookie</el-button>
             <el-button size="small" type="warning" :loading="loggingInId === row.id" @click="login(row)">
               扫码登录
             </el-button>
@@ -137,7 +146,7 @@
       <el-form label-width="80px">
         <el-form-item label="平台">
           <el-select v-model="form.platform" style="width: 100%">
-            <el-option v-for="p in PLATFORMS" :key="p.value" :label="p.label" :value="p.value" />
+            <el-option v-for="p in availablePlatforms" :key="p.value" :label="p.label" :value="p.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="账号名">
@@ -173,17 +182,25 @@
 
     <el-dialog v-model="qrVisible" title="扫码登录" width="420px" :close-on-click-modal="false">
       <p class="muted">{{ qrMessage }}</p>
-      <div v-if="!qrDataUrl && loggingIn" class="qr-loading">正在生成二维码...</div>
+      <p v-if="platformLoginHint(loginPlatform)" class="muted login-hint">
+        {{ platformLoginHint(loginPlatform) }}
+      </p>
+      <p v-if="loginPlatform === 'bilibili' && !qrDataUrl && loggingIn" class="muted bilibili-login-hint">
+        首次 B 站登录可能需 1–3 分钟下载组件，请保持窗口打开；二维码出现后请在约 60 秒内扫码。
+      </p>
+      <div v-if="!qrDataUrl && loggingIn" class="qr-loading">
+        {{ loginPlatform === 'bilibili' ? '正在准备 B 站二维码…' : '正在生成二维码...' }}
+      </div>
       <img v-if="qrDataUrl" :src="qrDataUrl" alt="qrcode" class="qr-image" />
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { ElLoading, ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
-import { PLATFORMS, platformAppName, platformLabel, platformLoginHint } from '@/constants/platforms'
+import { platformsForRuntime, platformAppName, platformLabel, platformLoginHint } from '@/constants/platforms'
 import { usePermission } from '@/composables/usePermission'
 
 const { can } = usePermission()
@@ -191,6 +208,7 @@ const { can } = usePermission()
 const loading = ref(false)
 const loggingIn = ref(false)
 const loggingInId = ref(null)
+const checkingCookieId = ref(null)
 const accounts = ref([])
 const groups = ref([])
 const filterPlatform = ref('')
@@ -220,9 +238,12 @@ const loginPlatform = ref('xhs')
 const runtime = ref({
   docker: false,
   xhs_qr_login_supported: true,
+  qr_login_supported: true,
+  bilibili_enabled: false,
   docker_login_hint: '',
   local_app_url: 'http://127.0.0.1:8765/app/',
 })
+const availablePlatforms = computed(() => platformsForRuntime(runtime.value))
 
 function statusType(status) {
   if (status === 'active') return 'success'
@@ -297,12 +318,21 @@ async function pollLoginSession(sessionId) {
   if (res.qrcode_data_url) {
     qrDataUrl.value = res.qrcode_data_url
   }
-  if (res.status === 'waiting_scan' && res.qrcode_data_url) {
+    if (res.status === 'waiting_scan' && res.qrcode_data_url) {
     const waited = pollCount.value
-    qrMessage.value =
-      waited >= 15
-        ? `手机已确认？正在同步登录状态（已等待 ${waited} 秒，最长约 5 分钟）…`
-        : `请使用${platformAppName(loginPlatform.value)}扫码；手机确认后请稍候，正在同步登录状态…`
+    const isBili = loginPlatform.value === 'bilibili'
+    if (res.message && res.message.includes('已扫码')) {
+      qrMessage.value = res.message
+    } else {
+      qrMessage.value =
+        waited >= 15
+          ? `手机已确认？正在同步登录状态（已等待 ${waited} 秒，最长约 5 分钟）…`
+          : isBili
+            ? '请用哔哩哔哩 App 扫码；扫码后请在手机上点击确认登录…'
+            : loginPlatform.value === 'channels'
+              ? '请用微信 App 扫码；扫码后选择视频号并在手机上确认…'
+              : `请使用${platformAppName(loginPlatform.value)}扫码；手机确认后请稍候，正在同步登录状态…`
+    }
   } else if (res.message) {
     qrMessage.value = res.message
   } else {
@@ -312,25 +342,16 @@ async function pollLoginSession(sessionId) {
     await finishLoginSuccess()
     return
   }
-  // 兜底：后端会话未及时结束时，轮询 Cookie 是否已写入
-  if (pollCount.value >= 8 && loggingInId.value) {
-    try {
-      const cookieRes = await api.checkCookie(loggingInId.value)
-      if (cookieRes.valid) {
-        await finishLoginSuccess('登录成功（Cookie 已生效）')
-        return
-      }
-    } catch {
-      /* ignore */
-    }
-  }
   if (['failed', 'timeout', 'cookie_invalid'].includes(res.status)) {
+    if (!loggingIn.value) return
     stopPolling()
     loggingIn.value = false
     loggingInId.value = null
     pollCount.value = 0
     qrMessage.value = res.message || '登录失败'
+    qrVisible.value = false
     ElMessage.error(res.message || '登录失败')
+    return
   }
 }
 
@@ -400,22 +421,39 @@ async function create() {
 }
 
 async function check(row) {
+  if (checkingCookieId.value) return
+  checkingCookieId.value = row.id
+  const loadingInstance = ElLoading.service({
+    lock: true,
+    text: `正在检测「${row.account_name}」Cookie，请稍候…`,
+    background: 'rgba(0, 0, 0, 0.35)',
+  })
   try {
     const res = await api.checkCookie(row.id)
-    ElMessage.success(res.valid ? 'Cookie 有效' : 'Cookie 失效')
-    load()
+    ElMessage.success(res.valid ? 'Cookie 有效' : 'Cookie 已失效')
+    await load()
   } catch (e) {
     ElMessage.error(e.message)
+  } finally {
+    checkingCookieId.value = null
+    loadingInstance.close()
   }
 }
 
 function loginPreparingMessage(platform) {
-  return platform === 'bilibili' ? '正在准备二维码，请稍候…' : '正在启动浏览器，请稍候...'
+  if (platform === 'bilibili') {
+    return '正在准备 B 站二维码（首次可能需 1–3 分钟）…'
+  }
+  return '正在启动浏览器，请稍候...'
 }
 
 async function login(row) {
+  if (row.platform === 'bilibili' && !runtime.value.bilibili_enabled) {
+    ElMessage.warning('B站功能未启用，请在服务器设置 BILIBILI_ENABLED=true 后重启')
+    return
+  }
   const qrSupported = runtime.value.qr_login_supported ?? runtime.value.xhs_qr_login_supported
-  if (runtime.value.docker && !qrSupported) {
+  if (row.platform !== 'bilibili' && runtime.value.docker && !qrSupported) {
     ElMessage.warning(runtime.value.docker_login_hint)
     return
   }
@@ -432,8 +470,8 @@ async function login(row) {
     if (res.qrcode_data_url) {
       qrDataUrl.value = res.qrcode_data_url
     }
-    qrMessage.value = res.message || `请使用${platformAppName(row.platform)}扫码`
-    if (res.success) {
+    qrMessage.value = res.message || platformLoginHint(row.platform) || `请使用${platformAppName(row.platform)}扫码`
+    if (res.status === 'success' && res.success) {
       ElMessage.success('登录成功')
       qrVisible.value = false
       loggingIn.value = false

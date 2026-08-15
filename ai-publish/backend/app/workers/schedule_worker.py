@@ -4,7 +4,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.database import SessionLocal
 from app.services.material_cleanup_service import MaterialCleanupService
 from app.services.publish_service import PublishService
@@ -17,7 +16,6 @@ class ScheduleWorker:
         self._scheduler: AsyncIOScheduler | None = None
 
     def start(self) -> AsyncIOScheduler | None:
-        settings = get_settings()
         db = SessionLocal()
         try:
             config = SystemConfigService(db)
@@ -25,11 +23,16 @@ class ScheduleWorker:
             auto_retry_enabled = config.auto_retry_enabled()
             cleanup_enabled = config.material_cleanup_enabled()
             poll_interval = config.scheduler_poll_interval_seconds()
+            from app.services.trending_config_service import TrendingConfigService
+
+            trending_cfg = TrendingConfigService(db)
+            trending_enabled = trending_cfg.enabled()
+            trending_cron_hour = trending_cfg.fetch_cron_hour()
         finally:
             db.close()
 
-        if not (scheduler_enabled or auto_retry_enabled or cleanup_enabled):
-            logger.info("后台调度已全部关闭（定时发布/自动重试/素材清理）")
+        if not (scheduler_enabled or auto_retry_enabled or cleanup_enabled or trending_enabled):
+            logger.info("后台调度已全部关闭（定时发布/自动重试/素材清理/热点）")
             return None
 
         scheduler = AsyncIOScheduler()
@@ -60,13 +63,24 @@ class ScheduleWorker:
                 replace_existing=True,
                 max_instances=1,
             )
+        if trending_enabled:
+            scheduler.add_job(
+                self.run_trending_fetch,
+                "cron",
+                hour=trending_cron_hour,
+                minute=0,
+                id="trending_fetch_daily",
+                replace_existing=True,
+                max_instances=1,
+            )
         scheduler.start()
         self._scheduler = scheduler
         logger.info(
-            "后台调度已启动：定时发布={} 自动重试={} 素材清理={}，轮询间隔 {} 秒",
+            "后台调度已启动：定时发布={} 自动重试={} 素材清理={} 热点抓取={}，轮询间隔 {} 秒",
             scheduler_enabled,
             auto_retry_enabled,
             cleanup_enabled,
+            trending_enabled,
             poll_interval,
         )
         return scheduler
@@ -119,6 +133,24 @@ class ScheduleWorker:
                 logger.info("素材清理：移除 {} 条，跳过 {}", result["removed"], result["skipped"])
         except Exception as exc:
             logger.exception("素材清理失败: {}", exc)
+        finally:
+            db.close()
+
+    async def run_trending_fetch(self) -> None:
+        db = SessionLocal()
+        try:
+            from app.services.trending_fetch_service import TrendingFetchService
+
+            service = TrendingFetchService(db)
+            run = await service.fetch_all()
+            logger.info(
+                "热点定时抓取完成 status={} source={} items={}",
+                run.status,
+                run.source,
+                run.item_count,
+            )
+        except Exception as exc:
+            logger.exception("热点定时抓取失败: {}", exc)
         finally:
             db.close()
 

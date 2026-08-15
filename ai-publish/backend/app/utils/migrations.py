@@ -10,6 +10,11 @@ def run_migrations() -> None:
 
     columns = {col["name"] for col in inspector.get_columns("materials")}
     statements: list[str] = []
+
+    if inspector.has_table("avatars"):
+        avatar_columns = {col["name"] for col in inspector.get_columns("avatars")}
+        if "subject_id" not in avatar_columns:
+            statements.append("ALTER TABLE avatars ADD COLUMN subject_id VARCHAR(128)")
     if "name" not in columns:
         statements.append("ALTER TABLE materials ADD COLUMN name VARCHAR(128)")
     if "category" not in columns:
@@ -118,6 +123,142 @@ def run_migrations() -> None:
             "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
         )
 
+    if not inspector.has_table("trending_fetch_runs"):
+        statements.append(
+            "CREATE TABLE trending_fetch_runs ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "source VARCHAR(32) NOT NULL, "
+            "mode VARCHAR(32) NOT NULL, "
+            "status VARCHAR(20) NOT NULL, "
+            "item_count INTEGER DEFAULT 0, "
+            "error_message TEXT, "
+            "started_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "finished_at DATETIME)"
+        )
+
+    if not inspector.has_table("trending_items"):
+        statements.append(
+            "CREATE TABLE trending_items ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "platform VARCHAR(32) NOT NULL, "
+            "snapshot_date VARCHAR(10) NOT NULL, "
+            "rank INTEGER DEFAULT 0, "
+            "title VARCHAR(512) NOT NULL, "
+            "tags TEXT, "
+            "heat_score NUMERIC(12, 4) DEFAULT 0, "
+            "source_url VARCHAR(1024), "
+            "cover_url VARCHAR(1024), "
+            "video_url VARCHAR(1024), "
+            "duration_seconds INTEGER, "
+            "aspect_ratio VARCHAR(16), "
+            "ref_material_id INTEGER, "
+            "first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+
+    if not inspector.has_table("avatars"):
+        statements.append(
+            "CREATE TABLE avatars ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "name VARCHAR(128) NOT NULL, "
+            "type VARCHAR(32) NOT NULL, "
+            "gender VARCHAR(16), "
+            "config TEXT, "
+            "reference_images TEXT, "
+            "reference_image_url VARCHAR(1024), "
+            "thumbnail VARCHAR(512), "
+            "background_prompt TEXT, "
+            "background_image_url VARCHAR(1024), "
+            "subject_id VARCHAR(128), "
+            "status VARCHAR(20) DEFAULT 'active', "
+            "created_by INTEGER, "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+
+    # 兼容已存在 avatars 表：新增参考视频/参考图字段
+    if inspector.has_table("avatars"):
+        avatar_columns = {col["name"] for col in inspector.get_columns("avatars")}
+        if "reference_video_url" not in avatar_columns:
+            statements.append("ALTER TABLE avatars ADD COLUMN reference_video_url VARCHAR(1024)")
+        if "reference_image_url" not in avatar_columns:
+            statements.append("ALTER TABLE avatars ADD COLUMN reference_image_url VARCHAR(1024)")
+        if "background_prompt" not in avatar_columns:
+            statements.append("ALTER TABLE avatars ADD COLUMN background_prompt TEXT")
+        if "background_image_url" not in avatar_columns:
+            statements.append("ALTER TABLE avatars ADD COLUMN background_image_url VARCHAR(1024)")
+        if "subject_id" not in avatar_columns:
+            statements.append("ALTER TABLE avatars ADD COLUMN subject_id VARCHAR(128)")
+
+    if not inspector.has_table("creative_sessions"):
+        statements.append(
+            "CREATE TABLE creative_sessions ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "user_id INTEGER NOT NULL, "
+            "content_type VARCHAR(20) NOT NULL, "
+            "keywords TEXT NOT NULL, "
+            "background TEXT, "
+            "theme_style VARCHAR(100), "
+            "scene_desc TEXT, "
+            "platforms TEXT, "
+            "status VARCHAR(20) DEFAULT 'drafting', "
+            "final_copy TEXT, "
+            "polish_history TEXT, "
+            "output_material_ids TEXT, "
+            "draft_data TEXT, "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+
+    if inspector.has_table("creative_sessions"):
+        session_columns = {col["name"] for col in inspector.get_columns("creative_sessions")}
+        if "draft_data" not in session_columns:
+            statements.append("ALTER TABLE creative_sessions ADD COLUMN draft_data TEXT")
+
+    if not inspector.has_table("generation_tasks"):
+        statements.append(
+            "CREATE TABLE generation_tasks ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "session_id INTEGER NOT NULL, "
+            "gen_type VARCHAR(30) NOT NULL, "
+            "provider VARCHAR(50) NOT NULL, "
+            "input_params TEXT, "
+            "status VARCHAR(20) DEFAULT 'pending', "
+            "progress INTEGER DEFAULT 0, "
+            "result TEXT, "
+            "error_message TEXT, "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "completed_at DATETIME)"
+        )
+
+    if not inspector.has_table("voice_clone_tasks"):
+        statements.append(
+            "CREATE TABLE voice_clone_tasks ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "name VARCHAR(128) NOT NULL, "
+            "task_id VARCHAR(128), "
+            "sample_url VARCHAR(1024), "
+            "voice_type INTEGER, "
+            "fast_voice_type VARCHAR(128), "
+            "status VARCHAR(20) DEFAULT 'pending', "
+            "error_message TEXT, "
+            "created_by INTEGER, "
+            "created_at DATETIME DEFAULT CURRENT_TIMESTAMP, "
+            "updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)"
+        )
+    else:
+        # 老库升级：分两阶段补 fast_voice_type 列与状态列
+        vc_cols = {c["name"] for c in inspector.get_columns("voice_clone_tasks")}
+        if "fast_voice_type" not in vc_cols:
+            statements.append("ALTER TABLE voice_clone_tasks ADD COLUMN fast_voice_type VARCHAR(128)")
+        if "status" not in vc_cols:
+            statements.append("ALTER TABLE voice_clone_tasks ADD COLUMN status VARCHAR(20) DEFAULT 'pending'")
+        if "created_at" not in vc_cols:
+            statements.append("ALTER TABLE voice_clone_tasks ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP")
+        if "updated_at" not in vc_cols:
+            statements.append("ALTER TABLE voice_clone_tasks ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP")
+
     if not statements:
         return
 
@@ -128,3 +269,25 @@ def run_migrations() -> None:
 
 def run_sqlite_migrations() -> None:
     run_migrations()
+
+
+def run_universal_migrations() -> None:
+    """跨数据库兼容的轻量迁移（仅用于基础列追加）。
+
+    不依赖 run_migrations 内的 SQLite 专属语法（AUTOINCREMENT 等），
+    适用于生产环境 MySQL。启动时由 main.py 调用。
+    """
+    inspector = inspect(engine)
+    if not inspector.has_table("avatars"):
+        return
+    avatar_columns = {col["name"] for col in inspector.get_columns("avatars")}
+    statements = []
+    if "background_prompt" not in avatar_columns:
+        statements.append("ALTER TABLE avatars ADD COLUMN background_prompt TEXT")
+    if "background_image_url" not in avatar_columns:
+        statements.append("ALTER TABLE avatars ADD COLUMN background_image_url VARCHAR(1024)")
+    if not statements:
+        return
+    with engine.begin() as conn:
+        for stmt in statements:
+            conn.execute(text(stmt))

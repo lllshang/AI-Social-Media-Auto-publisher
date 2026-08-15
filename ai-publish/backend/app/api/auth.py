@@ -33,11 +33,18 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/me")
-def me(user: User = Depends(get_current_user)):
+def me(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    # 注意：必须和 /login 一样按「角色」计算权限，不能返回 user.permissions
+    # （那是用户自定义权限字段，大部分用户为空数组）。
+    # 否则前端 refreshSession() 会把本地正确的权限覆盖成空数组，
+    # 触发 dashboard 路由守卫权限不足 → 重定向回 dashboard 的死循环 → 白屏。
+    rbac = RbacService(db)
+    role = rbac.get_role(user.role_id)
+    permissions = get_user_permissions(user, rbac.get_role_permissions(user))
     return {
         "username": user.username,
-        "role_name": getattr(user, "role_name", "operator"),
-        "permissions": getattr(user, "permissions", []),
+        "role_name": role.role_name if role else "operator",
+        "permissions": permissions,
     }
 
 
