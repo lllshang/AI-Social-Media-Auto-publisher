@@ -117,6 +117,9 @@ class VideoGenerateInput:
     # ====== 腾讯云主体注册 (Kling SubjectInfos) 专用 ======
     subject_image_url: str | None = None  # 用于主体注册的干净原图 URL（数字人，建议用 reference_image_url）
     avatar_subject_id: str | None = None  # 已缓存的腾讯云主体 ID（命中则跳过注册，直接复用）
+    # ====== 腾讯云 VOD AIGC 模型选择（前端透传）======
+    video_model: str | None = None  # 纯视频(文生/图生)模型: Hailuo|Kling|Vidu|Mingmou|GV|OS|PixVerse
+    kling_version: str | None = None  # 数字人/对口型 Kling 版本: 1.6|2.0|2.1|2.5|2.6|O1|3.0|3.0-Omni
 
 
 @dataclass

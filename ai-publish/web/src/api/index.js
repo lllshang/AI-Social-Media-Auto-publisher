@@ -133,6 +133,9 @@ export const api = {
   },
   generateText: (topic, platform = 'xhs', content_type = 'note') =>
     http.post('/api/ai/text/generate', { topic, platform, content_type }),
+  // 按指令润色：不依赖创作 session，基于已有文案 + 指令改写
+  polishText: (payload) =>
+    http.post('/api/ai/text/polish', payload),
   generateImage: (payload) => {
     if (typeof payload === 'string') {
       const [topic, platform = 'xhs', ratio = '3:4', count = 1, cover_text] = arguments

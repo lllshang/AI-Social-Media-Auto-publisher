@@ -380,6 +380,8 @@ class AiContentService:
         avatar_type: str | None = None,
         voice_id: str | None = None,
         tts_text: str | None = None,
+        video_model: str | None = None,  # 纯视频模型: Hailuo|Kling|Vidu|Mingmou|GV|OS|PixVerse
+        kling_version: str | None = None,  # 数字人 Kling 版本: 1.6|2.0|2.1|2.5|2.6|O1|3.0|3.0-Omni
     ) -> dict:
         """AI 视频生成核心逻辑"""
         # 数字人 / 仿真人 → 腾讯云 VOD AIGC (Kling)
@@ -553,6 +555,8 @@ class AiContentService:
             voice_id=tts_voice_used or voice_id,
             tts_text=tts_text or script_text or topic,
             audio_duration=audio_duration,
+            video_model=video_model,
+            kling_version=kling_version,
         )
 
         logger.info(

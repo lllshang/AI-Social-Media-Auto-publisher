@@ -171,12 +171,28 @@
           <el-input v-model="aiVideoForm.topic" placeholder="如：春茶上新短视频" />
         </el-form-item>
         <el-form-item label="生成方式">
-          <el-radio-group v-model="aiVideoForm.mode">
+          <el-radio-group v-model="aiVideoForm.mode" @change="onVideoModeChange">
             <el-radio value="t2v">文生视频</el-radio>
-            <el-radio value="i2v">照片生视频</el-radio>
+            <el-radio value="i2v">图生视频</el-radio>
+            <el-radio value="digital_human">数字人</el-radio>
+            <el-radio value="simulation_human">仿真人</el-radio>
           </el-radio-group>
+          <p class="upload-hint" style="margin-top: 6px">
+            当前视频生成走<strong>腾讯云点播（VOD）</strong>通道，与「AI 模型」页配置一致；
+            选「数字人 / 仿真人」会自动切换为图生视频并加载数字人列表（对口型，走 Kling，支持）。
+          </p>
         </el-form-item>
-        <el-form-item v-if="aiVideoForm.mode === 'i2v'" label="驱动照片">
+        <!-- 数字人 / 仿真人：自动联动图生视频 -->
+        <template v-if="aiVideoForm.mode === 'digital_human' || aiVideoForm.mode === 'simulation_human'">
+          <el-form-item label="选择数字人">
+            <el-select v-model="aiVideoForm.avatarId" placeholder="选择已创建的数字人" @focus="loadVideoAvatars" style="width: 100%">
+              <el-option v-for="av in videoAvatars.filter(a => a.type === aiVideoForm.mode)" :key="av.id" :label="av.name" :value="av.id" />
+            </el-select>
+            <p class="upload-hint">选择数字人后，将以其形象做图生视频（对口型）。未选数字人无法提交，避免误扣费。</p>
+          </el-form-item>
+        </template>
+        <!-- 纯图生视频（不上传照片 + 不选数字人时拦截，避免 H3 不支持误扣费） -->
+        <el-form-item v-else-if="aiVideoForm.mode === 'i2v'" label="驱动照片">
           <el-upload :auto-upload="false" :show-file-list="false" accept="image/*" @change="onVideoDriverPhotoChange">
             <el-button>选择照片</el-button>
           </el-upload>
@@ -184,7 +200,10 @@
             <img :src="videoDriverPhotoPreview" style="max-width: 160px; max-height: 160px; border-radius: 8px" />
             <el-button size="small" type="danger" plain style="margin-left: 8px" @click="clearVideoDriverPhoto">清除</el-button>
           </div>
-          <p class="upload-hint">上传人物照片，AI 将生成仿真人说话/动作视频（需 MiniMax Key）</p>
+          <p class="upload-hint">
+            上传人物照片生成图生视频。注意：当前默认子模型（Hailuo H3）对纯图生视频支持有限，提交若失败会被后台拒绝且不扣费；
+            如需稳定出图生视频，建议选上方「数字人 / 仿真人」走对口型，或在「AI 模型」页切换支持 i2v 的子模型（如可灵 Kling）。
+          </p>
         </el-form-item>
         <el-form-item label="时长">
           <el-input-number v-model="aiVideoForm.duration" :min="1" :max="60" :step="1" style="width: 100%" />
@@ -235,7 +254,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Headset } from '@element-plus/icons-vue'
+import { Headset, WarningFilled } from '@element-plus/icons-vue'
 import { api } from '@/api'
 import { PLATFORMS, platformCoverRatio } from '@/constants/platforms'
 import BrandColorSelect from '@/components/BrandColorSelect.vue'
@@ -272,9 +291,27 @@ const audioPreviewTitle = ref('')
 // AI 生成视频
 const showAiVideoGenerate = ref(false)
 const aiVideoGenerating = ref(false)
-const aiVideoForm = reactive({ platform: 'douyin', topic: '', mode: 't2v', duration: 5 })
+const aiVideoForm = reactive({ platform: 'douyin', topic: '', mode: 't2v', duration: 5, avatarId: null })
 const videoDriverPhotoFile = ref(null)
 const videoDriverPhotoPreview = ref('')
+// 数字人 / 仿真人列表（AI 生成视频对话框内联动使用）
+const videoAvatars = ref([])
+async function loadVideoAvatars() {
+  try {
+    videoAvatars.value = await api.listAvatars()
+  } catch {
+    /* ignore */
+  }
+}
+// 选「数字人 / 仿真人」自动联动为图生视频（i2v）；切回文生视频收起数字人
+function onVideoModeChange(val) {
+  if (val === 'digital_human' || val === 'simulation_human') {
+    // 保持 mode 语义为 i2v（图生视频），用 avatarType 区分数字人
+    aiVideoForm.mode = val
+  } else if (val === 't2v') {
+    aiVideoForm.avatarId = null
+  }
+}
 
 function typeLabel(type) {
   return { image: '图片', video: '视频', text: '文案' }[type] || type
@@ -496,28 +533,41 @@ function platformVideoResolution(platform) {
 
 async function submitAiVideoGenerate() {
   if (!aiVideoForm.topic.trim()) return ElMessage.warning('请填写主题')
-  if (aiVideoForm.mode === 'i2v' && !videoDriverPhotoFile.value) return ElMessage.warning('请先上传驱动照片')
+  const isAvatar = aiVideoForm.mode === 'digital_human' || aiVideoForm.mode === 'simulation_human'
+  if (isAvatar) {
+    if (!aiVideoForm.avatarId) return ElMessage.warning('请先选择数字人（数字人 / 仿真人为必选项）')
+  } else if (aiVideoForm.mode === 'i2v' && !videoDriverPhotoFile.value) {
+    // 纯图生视频（不上传照片）：H3 不支持，提交会被后台拒绝且不扣费，这里先提示
+    return ElMessage.warning('请先上传驱动照片，或选择上方「数字人 / 仿真人」走对口型（更稳定）')
+  }
   pageError.value = ''
   aiVideoGenerating.value = true
   try {
     let imageUrl = null
-    if (aiVideoForm.mode === 'i2v' && videoDriverPhotoFile.value) {
+    // 数字人 / 仿真人：不传 image_url，走 avatar 对口型（Kling），避免 H3 i2v 误扣费
+    if (!isAvatar && aiVideoForm.mode === 'i2v' && videoDriverPhotoFile.value) {
       const uploadRes = await api.uploadMaterial(videoDriverPhotoFile.value, { name: '驱动照片', category: '视频驱动' })
       imageUrl = uploadRes.url
     }
-    const res = await api.generateVideo({
+    const payload = {
       topic: aiVideoForm.topic,
       platform: aiVideoForm.platform,
       duration: aiVideoForm.duration,
       resolution: platformVideoResolution(aiVideoForm.platform),
       fps: 24,
       image_url: imageUrl,
-    })
+    }
+    if (isAvatar) {
+      payload.avatar_id = aiVideoForm.avatarId
+      payload.avatar_type = aiVideoForm.mode
+    }
+    const res = await api.generateVideo(payload)
     const count = res.materials?.length || 1
     ElMessage.success(`已生成 ${count} 个视频（${res.provider}）`)
     showAiVideoGenerate.value = false
     aiVideoForm.topic = ''
     aiVideoForm.mode = 't2v'
+    aiVideoForm.avatarId = null
     videoDriverPhotoFile.value = null
     videoDriverPhotoPreview.value = ''
     load()

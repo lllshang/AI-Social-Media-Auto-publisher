@@ -95,6 +95,17 @@ class TextGenerateRequest(BaseModel):
     style: str = "default"
 
 
+class TextPolishRequest(BaseModel):
+    """按指令润色：基于已有文案 + 用户指令改写，不依赖创作 session。"""
+    title: str = ""
+    body: str = ""
+    tags: list[str] = []
+    platform: str = "xhs"
+    content_type: str = "note"
+    instruction: str | None = None  # 用户自然语言指令（如"缩短到100字""第一句改抓人"）
+    quick_action: str | None = None  # shorten | expand | humorous | add_emoji | formal | bilibili_style | xiaohongshu_style | douyin_style
+
+
 class ImageGenerateRequest(BaseModel):
     topic: str
     platform: str = "xhs"
@@ -117,6 +128,9 @@ class VideoGenerateRequest(BaseModel):
     count: int = 1
     avatar_id: int | None = None
     avatar_type: str | None = None  # digital_human | simulation_human
+    # ====== 腾讯云 VOD AIGC 模型选择 ======
+    video_model: str | None = None  # 纯视频(文生/图生)模型: Hailuo|Kling|Vidu|Mingmou|GV|OS|PixVerse
+    kling_version: str | None = None  # 数字人/对口型 Kling 版本: 1.6|2.0|2.1|2.5|2.6|O1|3.0|3.0-Omni
 
 
 class AvatarCreate(BaseModel):

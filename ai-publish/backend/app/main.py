@@ -125,6 +125,9 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:8765",
         "http://localhost:8765",
+        # 生产环境：腾讯云 CVM 自签 HTTPS
+        "https://150.158.23.10",
+        "http://150.158.23.10",
     ],
     allow_credentials=True,
     allow_methods=["*"],

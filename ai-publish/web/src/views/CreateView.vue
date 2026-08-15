@@ -368,9 +368,21 @@
               </p>
             </el-form-item>
           </template>
+          <el-form-item v-if="videoGenType === 'text_to_video' || videoGenType === 'image_to_video'" label="视频模型">
+            <el-select v-model="videoModel" style="width: 240px">
+              <el-option v-for="m in VOD_VIDEO_MODELS" :key="m.value" :label="m.label" :value="m.value" />
+            </el-select>
+            <p class="muted">腾讯云 VOD AIGC 网关支持多模型，纯视频默认海螺 H3（中文理解好、性价比高）。数字人/对口型仅可灵 Kling 支持，无需在此选择。</p>
+          </el-form-item>
           <el-form-item v-if="videoGenType !== 'digital_human' && videoGenType !== 'simulation_human'" label="时长">
             <el-input-number v-model="videoDuration" :min="1" :max="60" :step="1" style="width: 160px" />
             <span class="cost-tag" style="margin-left: 8px">预估 ¥{{ videoCostEstimate }}</span>
+          </el-form-item>
+          <el-form-item v-if="videoGenType === 'digital_human' || videoGenType === 'simulation_human'" label="Kling 版本">
+            <el-select v-model="klingVersion" style="width: 200px">
+              <el-option v-for="v in KLING_VERSIONS" :key="v.value" :label="v.label" :value="v.value" />
+            </el-select>
+            <p class="muted">数字人/对口型仅可灵 Kling 支持，选不同版本影响画质与动作稳定性。</p>
           </el-form-item>
           <el-alert
             v-else
@@ -769,6 +781,8 @@ function resetForm() {
   selectedAvatarId.value = null
   avatarScript.value = ''
   useCustomScript.value = false
+  videoModel.value = 'Hailuo'
+  klingVersion.value = '2.6'
   avatars.value = []
   imageStyle.value = '科技感'
   brandColor.value = ''
@@ -808,6 +822,8 @@ async function resumeDraft(draft) {
       videoDesc.value = dd.video_params.desc || ''
       videoDuration.value = dd.video_params.duration || 5
       videoResolution.value = dd.video_params.resolution || '720p'
+      videoModel.value = dd.video_params.videoModel || 'Hailuo'
+      klingVersion.value = dd.video_params.klingVersion || '2.6'
     }
     if (dd.image_params) {
       imageStyle.value = dd.image_params.style || '科技感'
@@ -878,6 +894,8 @@ const generatingCopy = ref(false)
 const isPolishing = ref(false)
 const genStarting = ref(false)
 const completing = ref(false)
+// 从发布向导「去内容创作」带过来的账号，创作完成返回发布向导时原样带回，避免账号被重置
+const incomingAccountId = ref(null)
 
 const form = reactive({
   content_type: 'video',
@@ -903,6 +921,32 @@ const selectedAvatarId = ref(null)
 const avatars = ref([])
 const avatarScript = ref('') // 仿真人/数字人口播词（可选，覆盖视频描述）
 const useCustomScript = ref(false) // 是否使用自定义口播词（否则用 AI 定稿文案，其长度决定视频时长）
+
+// 腾讯云 VOD AIGC 模型选择
+// 纯视频(文生/图生)可选模型清单（数字人/对口型仅 Kling 支持，故数字人分支不展示此处）
+const VOD_VIDEO_MODELS = [
+  { value: 'Hailuo', label: '海螺 Hailuo（默认·性价比高）' },
+  { value: 'Kling', label: '可灵 Kling' },
+  { value: 'Vidu', label: 'Vidu' },
+  { value: 'Mingmou', label: '明眸 Mingmou' },
+  { value: 'GV', label: 'GV' },
+  { value: 'OS', label: 'OS' },
+  { value: 'PixVerse', label: 'PixVerse' },
+  { value: 'Hunyuan', label: '混元 Hunyuan' },
+]
+// 数字人/对口型 Kling 可选版本
+const KLING_VERSIONS = [
+  { value: '2.6', label: '2.6（默认）' },
+  { value: '3.0', label: '3.0' },
+  { value: '3.0-Omni', label: '3.0-Omni' },
+  { value: '2.5', label: '2.5' },
+  { value: '2.1', label: '2.1' },
+  { value: '2.0', label: '2.0' },
+  { value: '1.6', label: '1.6' },
+  { value: 'O1', label: 'O1' },
+]
+const videoModel = ref('Hailuo') // 纯视频默认用海螺 H3
+const klingVersion = ref('2.6') // 数字人默认 Kling 2.6
 
 // ====== TTS 配音音色 ======
 const voiceId = ref(loadPickedVoice() || 'zh-CN-XiaoxiaoNeural') // 默认晓晓（女·温柔）；若用户曾手动选过，恢复用户的偏好
@@ -1579,6 +1623,8 @@ function collectDraftData() {
       desc: videoDesc.value,
       duration: videoDuration.value,
       resolution: videoResolution.value,
+      videoModel: videoModel.value,
+      klingVersion: klingVersion.value,
     },
     image_params: {
       style: imageStyle.value,
@@ -1859,8 +1905,13 @@ async function startVideoGen() {
       // 配音：选中的音色（标准音色 id 或 复刻音色 clone:<voice_type>）
       payload.voice_id = voiceId.value
       payload.tts_text = avatarScript.value.trim() || videoDesc.value
+      // 数字人/对口型仅 Kling 支持，传 Kling 版本
+      payload.kling_version = klingVersion.value || '2.6'
       // 注：复刻音色直接通过 voice_id=clone:<voice_type> 走后端 VRS 合成，
       // 不再依赖前端上传样本 URL（旧的 reference_audio_url 路径已废弃）。
+    } else {
+      // 纯视频(文生/图生)：传 VOD 视频模型（默认海螺 H3）
+      payload.video_model = videoModel.value || 'Hailuo'
     }
     await api.startGeneration(sessionId.value, payload)
     step.value = 3
@@ -2039,8 +2090,13 @@ async function finishCreation() {
   statusError.value = ''
   try {
     const res = await api.completeSession(sessionId.value)
-    ElMessage.success(`创作完成！产出 ${res.materials?.length || 0} 个素材`)
-    router.push({ path: '/publish', query: { withSession: sessionId.value } })
+    const materialCount = res.materials?.length || 0
+    ElMessage.success(`创作完成！产出 ${materialCount} 个素材`)
+    // 把创作视图当前选择的平台/账号带到发布向导，避免回到发布页被重置为默认账号
+    const publishQuery = { withSession: sessionId.value }
+    if (form.platforms?.length) publishQuery.platform = form.platforms[0]
+    if (incomingAccountId.value) publishQuery.account = incomingAccountId.value
+    router.push({ path: '/publish', query: publishQuery })
   } catch (e) {
     statusError.value = e.message || '完成失败'
   } finally {
@@ -2087,6 +2143,9 @@ onMounted(async () => {
 
   if (route.query.platform) {
     form.platforms = [route.query.platform]
+  }
+  if (route.query.account) {
+    incomingAccountId.value = route.query.account
   }
 
   // 提前拉取标准音色，保证默认选中项能显示中文名而非 id

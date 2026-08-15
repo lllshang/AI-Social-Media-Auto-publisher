@@ -55,6 +55,60 @@ class TencentVodPermissionError(RuntimeError):
     """腾讯云 VOD AIGC 权限/开通类错误（如 Kling 数字人/对口型未开通）"""
 
 
+# 腾讯云 VOD AIGC 网关支持的全部底层模型（截至 2026-08-03 官方文档）。
+# 数字人(avatar_i2v)/对口型(lip_sync)/动作控制(motion_control) 仅 Kling 支持，其余模型只能做普通文生/图生视频。
+VOD_VIDEO_MODELS: dict[str, dict[str, Any]] = {
+    "Kling": {
+        "label": "可灵 Kling",
+        "default_version": "2.6",
+        "versions": ["1.6", "2.0", "2.1", "2.5", "2.6", "O1", "3.0", "3.0-Omni"],
+        "supports_scene": True,  # 支持数字人/对口型
+    },
+    "Hailuo": {
+        "label": "海螺 Hailuo",
+        "default_version": "H3",
+        "versions": ["02", "2.3", "2.3-fast", "H3"],
+        "supports_scene": False,
+    },
+    "Vidu": {
+        "label": "Vidu",
+        "default_version": "q3-pro",
+        "versions": ["q2", "q2-pro", "q2-turbo", "q3", "q3-pro", "q3-turbo"],
+        "supports_scene": False,
+    },
+    "Mingmou": {
+        "label": "明眸 Mingmou",
+        "default_version": "1.0",
+        "versions": ["1.0"],
+        "supports_scene": False,
+    },
+    "GV": {
+        "label": "GV",
+        "default_version": "3.1",
+        "versions": ["3.1", "3.1-fast"],
+        "supports_scene": False,
+    },
+    "OS": {
+        "label": "OS",
+        "default_version": "2.0",
+        "versions": ["2.0"],
+        "supports_scene": False,
+    },
+    "PixVerse": {
+        "label": "PixVerse",
+        "default_version": "v6",
+        "versions": ["v5.6", "v6", "c1"],
+        "supports_scene": False,
+    },
+    "Hunyuan": {
+        "label": "混元 Hunyuan",
+        "default_version": "1.5",
+        "versions": ["1.5", "3.0"],
+        "supports_scene": False,
+    },
+}
+
+
 # 权限/开通类错误码（子账号未授权、模型不支持、AIGC 未开通等）
 PERMISSION_ERROR_CODES = {
     "FailedOperation.NoPermission",
@@ -467,11 +521,12 @@ class TencentVodVideoAdapter:
         # 覆盖工厂传入的默认模型（如 Hailuo H3），保证 SceneType 与 ModelName 一致。
         if data.scene_type in ("avatar_i2v", "lip_sync", "motion_control"):
             model_name = "Kling"
-            # Kling 版本必须从 {1.6,2.0,2.1,2.5,2.6,O1,3.0,3.0-Omni} 选，
-            # 不能复用 self.model_version（可能是 H3/Hailuo 等其他模型版本）。
-            # 仅当 self.model_version 本身以 Kling 合法版本开头才使用，否则用 2.6。
+            # Kling 版本可从前端 kling_version 指定（{1.6,2.0,2.1,2.5,2.6,O1,3.0,3.0-Omni}），
+            # 否则沿用 self.model_version（已是合法 Kling 版本时）或默认 2.6。
             kling_valid_versions = {"1.6", "2.0", "2.1", "2.5", "2.6", "O1", "3.0", "3.0-Omni"}
-            if self.model_version in kling_valid_versions:
+            if data.kling_version in kling_valid_versions:
+                model_version = data.kling_version
+            elif self.model_version in kling_valid_versions:
                 model_version = self.model_version
             else:
                 # 默认 2.6（id=70 成功链路用的就是 2.6）
@@ -479,8 +534,14 @@ class TencentVodVideoAdapter:
                 # 真正决定是否加字幕的是 prompt 长度/音频时长，不在此处理。
                 model_version = "2.6"
         else:
-            model_name = self.model_name
-            model_version = self.model_version
+            # 纯视频（文生/图生）：尊重前端透传的 video_model（如 Hailuo/Vidu/PixVerse），
+            # 否则回退到工厂默认（self.model_name/version，默认 Hailuo H3）。
+            if data.video_model and data.video_model in VOD_VIDEO_MODELS:
+                model_name = data.video_model
+                model_version = VOD_VIDEO_MODELS[data.video_model]["default_version"]
+            else:
+                model_name = self.model_name
+                model_version = self.model_version
 
         # 构建提交任务请求体
         payload: dict[str, Any] = {

@@ -415,6 +415,8 @@ class CreateService:
             avatar_type=data.avatar_type,
             voice_id=data.voice_id,
             tts_text=data.tts_text,
+            video_model=data.video_model,
+            kling_version=data.kling_version,
         )
 
         task.provider = result.get("provider", "unknown")
