@@ -38,21 +38,39 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
 
 
 def authenticate_user(db: Session, username: str, password: str) -> User | None:
-    user = db.query(User).filter(User.username == username, User.status == "active").first()
-    if not user or not verify_password(password, user.password_hash):
+    user = db.query(User).filter(User.username == username).first()
+    if not user or user.status != "active" or not verify_password(password, user.password_hash):
         return None
     return user
 
 
 def ensure_admin_user(db: Session) -> None:
+    from app.models import Role
+    from app.services.rbac_service import ensure_default_roles
+
     settings = get_settings()
-    exists = db.query(User).filter(User.username == settings.admin_username).first()
-    if exists:
-        return
-    user = User(
-        username=settings.admin_username,
-        password_hash=hash_password(settings.admin_password),
-        status="active",
-    )
-    db.add(user)
+    ensure_default_roles(db)
+    seeds = [
+        (settings.admin_username, settings.admin_password, "admin"),
+        (settings.operator_username, settings.operator_password, "operator"),
+        (settings.reviewer_username, settings.reviewer_password, "reviewer"),
+        (settings.viewer_username, settings.viewer_password, "viewer"),
+    ]
+    for username, password, role_name in seeds:
+        role = db.query(Role).filter(Role.role_name == role_name).first()
+        if not role:
+            continue
+        exists = db.query(User).filter(User.username == username).first()
+        if exists:
+            if not exists.role_id:
+                exists.role_id = role.id
+            continue
+        db.add(
+            User(
+                username=username,
+                password_hash=hash_password(password),
+                role_id=role.id,
+                status="active",
+            )
+        )
     db.commit()

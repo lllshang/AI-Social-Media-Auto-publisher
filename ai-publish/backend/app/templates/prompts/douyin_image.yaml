@@ -1,0 +1,10 @@
+template: |
+  为抖音平台生成竖版封面图，比例 {ratio}（{ratio_hint}），主题「{topic}」，风格 {style_label}，
+  品牌色：{brand_color}，品牌说明：{brand_hint}。
+  画面醒目、适合短视频封面，文字区域留白便于叠加标题。
+template_en: |
+  Douyin vertical cover image, ratio {ratio} ({ratio_hint}), topic: {topic}, style: {style_en},
+  brand color: {brand_color}, brand note: {brand_hint},
+  eye-catching short-video cover with text-safe area.
+negative_prompt: |
+  blurry, low quality, watermark, cluttered layout, unreadable text, deformed faces

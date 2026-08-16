@@ -43,7 +43,7 @@ PROVIDER_FIELDS: dict[str, dict[str, Any]] = {
         "key_field": "doubao_api_key",
         "base_url_field": "doubao_base_url",
         "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
-        "kind": "text",
+        "kind": "both",
     },
     "baidu": {
         "label": "百度千帆 (文心)",
@@ -65,6 +65,51 @@ PROVIDER_FIELDS: dict[str, dict[str, Any]] = {
         "base_url_field": "minimax_base_url",
         "default_base_url": "https://api.minimax.chat/v1",
         "kind": "text",
+    },
+    "kling": {
+        "label": "可灵 AI (Kling)",
+        "key_field": "kling_api_key",
+        "base_url_field": "kling_base_url",
+        "default_base_url": "https://api.klingai.com",
+        "kind": "video",
+    },
+    "dreamina": {
+        "label": "即梦 Dreamina",
+        "key_field": "dreamina_api_key",
+        "base_url_field": "dreamina_base_url",
+        "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+        "model_field": "dreamina_model",
+        "default_model": "doubao-seedance-2-0-mini-260615",
+        "kind": "video",
+    },
+    "baidu_video": {
+        "label": "百度文心一格/千帆视频",
+        "key_field": "baidu_api_key",
+        "base_url_field": "baidu_video_base_url",
+        "default_base_url": "https://qianfan.baidubce.com/v2",
+        "kind": "video",
+    },
+    "tencent_vod_video": {
+        "label": "腾讯 VOD AIGC 视频",
+        "key_field": "tencent_vod_secret_id",
+        "secret_key_field": "tencent_vod_secret_key",
+        "sub_app_id_field": "tencent_vod_sub_app_id",
+        "base_url_field": None,
+        "default_base_url": "",
+        "model_field": "tencent_vod_model",
+        "default_model": "Hailuo|H3",
+        "kind": "video",
+    },
+    "tencent_vod_image": {
+        "label": "腾讯 VOD AIGC 生图",
+        "key_field": "tencent_vod_secret_id",
+        "secret_key_field": "tencent_vod_secret_key",
+        "sub_app_id_field": "tencent_vod_sub_app_id",
+        "base_url_field": None,
+        "default_base_url": "",
+        "model_field": "tencent_vod_image_model",
+        "default_model": "Hunyuan|3.0",
+        "kind": "image",
     },
     "openai": {
         "label": "OpenAI",
@@ -152,24 +197,35 @@ class AiProviderConfigService:
 
     def _build_builtin_item(self, provider_id: str, spec: dict[str, Any]) -> dict[str, Any]:
         key_field = spec.get("key_field")
+        secret_key_field = spec.get("secret_key_field")
+        sub_app_id_field = spec.get("sub_app_id_field")
         base_field = spec.get("base_url_field")
+        model_field = spec.get("model_field")
         api_key = self.get_field_value(key_field) if key_field else ""
         base_url = self.get_field_value(base_field) if base_field else spec.get("default_base_url", "")
         if not base_url and base_field:
             base_url = getattr(self.settings, base_field, spec.get("default_base_url", ""))
+        model = self.get_field_value(model_field) if model_field else spec.get("default_model", "")
+        if not model and model_field:
+            model = getattr(self.settings, model_field, spec.get("default_model", ""))
         raw = self._load_raw()
         return {
             "provider": provider_id,
             "label": spec["label"],
             "kind": spec["kind"],
             "key_field": key_field,
+            "secret_key_field": secret_key_field,
+            "sub_app_id_field": sub_app_id_field,
             "base_url_field": base_field,
+            "model_field": model_field,
             "default_base_url": spec.get("default_base_url", ""),
+            "default_model": spec.get("default_model", ""),
             "image_base_url_field": spec.get("image_base_url_field"),
             "default_image_base_url": spec.get("default_image_base_url", ""),
             "configured": bool(api_key) if key_field else bool(base_url),
             "api_key_masked": self._mask_key(api_key),
             "base_url": base_url or spec.get("default_base_url", ""),
+            "model": model or spec.get("default_model", ""),
             "source": "runtime" if (key_field and raw.get(key_field)) else "env",
             "custom": False,
         }
@@ -219,6 +275,9 @@ class AiProviderConfigService:
         *,
         api_key: str | None = None,
         base_url: str | None = None,
+        model: str | None = None,
+        secret_key: str | None = None,
+        sub_app_id: str | None = None,
         clear_key: bool = False,
     ) -> dict[str, Any]:
         custom = self.get_custom_provider(provider)
@@ -227,6 +286,7 @@ class AiProviderConfigService:
                 provider,
                 api_key=api_key,
                 base_url=base_url,
+                model=model,
                 clear_key=clear_key,
             )
 
@@ -237,6 +297,9 @@ class AiProviderConfigService:
         raw = self._load_raw()
         key_field = spec.get("key_field")
         base_field = spec.get("base_url_field")
+        model_field = spec.get("model_field")
+        secret_key_field = spec.get("secret_key_field")
+        sub_app_id_field = spec.get("sub_app_id_field")
 
         if clear_key and key_field:
             raw.pop(key_field, None)
@@ -246,11 +309,29 @@ class AiProviderConfigService:
             else:
                 raw.pop(key_field, None)
 
+        if secret_key is not None and secret_key_field:
+            if secret_key.strip():
+                raw[secret_key_field] = encrypt_text(secret_key.strip(), self.settings.cookie_encryption_key)
+            else:
+                raw.pop(secret_key_field, None)
+
+        if sub_app_id is not None and sub_app_id_field:
+            if sub_app_id.strip():
+                raw[sub_app_id_field] = sub_app_id.strip()
+            else:
+                raw.pop(sub_app_id_field, None)
+
         if base_url is not None and base_field:
             if base_url.strip():
                 raw[base_field] = base_url.strip()
             else:
                 raw.pop(base_field, None)
+
+        if model is not None and model_field:
+            if model.strip():
+                raw[model_field] = model.strip()
+            else:
+                raw.pop(model_field, None)
 
         self._save_raw(raw)
         return next(item for item in self.list_providers() if item["provider"] == provider)
@@ -261,6 +342,7 @@ class AiProviderConfigService:
         *,
         api_key: str | None = None,
         base_url: str | None = None,
+        model: str | None = None,
         clear_key: bool = False,
     ) -> dict[str, Any]:
         custom = self.get_custom_provider(provider)
@@ -351,3 +433,52 @@ class AiProviderConfigService:
         if len(value) <= 8:
             return "*" * len(value)
         return f"{value[:4]}****{value[-4:]}"
+
+    # -------- 腾讯云 VRS 声音复刻模式 --------
+    # 明文字段，写在 ai_provider_config.json 顶层，不走 encrypt。
+    # 切换值：1 = 基础版（无独立计费，腾讯云控制台关闭前默认免费），
+    #         5 = 一句话声音复刻（独立计费，需充值资源包）
+    VRS_TASK_TYPE_BASIC = 1
+    VRS_TASK_TYPE_ONESHOT = 5
+    VRS_TASK_TYPE_FIELD = "vrs_task_type"
+
+    def get_vrs_task_type(self) -> dict[str, Any]:
+        """读取当前 VRS 复刻模式（明文字段，存储于 ai_provider_config.json）。"""
+        import os
+
+        env_val = (os.environ.get("VRS_TASK_TYPE") or "").strip()
+        raw = self._load_raw()
+        stored_val = str(raw.get(self.VRS_TASK_TYPE_FIELD, "")).strip()
+
+        # 解析优先级：环境变量 > JSON > 默认基础版
+        def _coerce(v: str) -> int:
+            v = (v or "").strip()
+            if v in ("1", "5"):
+                return int(v)
+            return self.VRS_TASK_TYPE_BASIC
+
+        current = _coerce(env_val) if env_val else _coerce(stored_val)
+        return {
+            "value": current,
+            "options": [
+                {"value": self.VRS_TASK_TYPE_BASIC, "label": "基础版（免费额度/默认）"},
+                {"value": self.VRS_TASK_TYPE_ONESHOT, "label": "一句话声音复刻（需充值资源包）"},
+            ],
+            "stored": stored_val,
+            "env_override": bool(env_val),
+            "source": "env" if env_val else ("json" if stored_val else "default"),
+        }
+
+    def set_vrs_task_type(self, value: int) -> dict[str, Any]:
+        """保存 VRS 复刻模式到 ai_provider_config.json（明文字段）。"""
+        try:
+            ivalue = int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("vrs_task_type 必须为 1 或 5") from exc
+        if ivalue not in (self.VRS_TASK_TYPE_BASIC, self.VRS_TASK_TYPE_ONESHOT):
+            raise ValueError("vrs_task_type 必须为 1 或 5")
+
+        raw = self._load_raw()
+        raw[self.VRS_TASK_TYPE_FIELD] = str(ivalue)
+        self._save_raw(raw)
+        return self.get_vrs_task_type()

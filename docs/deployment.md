@@ -17,17 +17,9 @@
 | **A. 本地开发部署** | 个人开发、本机试用、需要小红书扫码发布 | SQLite | `8765` |
 | **B. Docker 部署** | 上服务器、团队共用 API、MySQL 生产库 | MySQL + Redis | `8000` |
 
-> **重要：** 小红书 **Playwright 扫码登录 + 自动发布** 依赖本机 Chrome 图形环境。  
-> 生产环境推荐 **混合部署**：API/MySQL 在 Docker（Linux 服务器），**发布操作在有浏览器的 Mac/Windows 上执行**。
-
-```
-┌─────────────────────────────┐       ┌──────────────────────────────┐
-│  Linux 服务器 (Docker)       │       │  Mac / Windows 发布机         │
-│  • API + MySQL + Redis      │ ◄───► │  • Chrome + Playwright       │
-│  • Vue 管理页 /app/         │  API  │  • 扫码登录 / execute 发布    │
-│  • 素材/Cookie 持久化卷      │       │  • 可选：本地 Ollama          │
-└─────────────────────────────┘       └──────────────────────────────┘
-```
+> **Docker 服务器（推荐）：** API 镜像内置 **apt Chromium**，支持 **管理页无头扫码登录** 与 **无头自动发布**（二维码在网页展示，无需本机 Chrome）。  
+> **本地开发：** 可使用本机 Chrome（`PLAYWRIGHT_HEADLESS=false`）弹窗扫码。  
+> **混合部署（可选）：** 若服务器 Chromium 不可用，可在 Mac/Windows 本地扫码/发布后同步 Cookie。
 
 ---
 
@@ -278,9 +270,33 @@ docker compose logs -f api
 curl http://127.0.0.1:8000/health
 ```
 
-访问：**http://127.0.0.1:8000/app/**
+访问：**http://127.0.0.1:8000/app/**（直连 API）或 **http://127.0.0.1:8080/app/**（经 Nginx 反代，默认 `NGINX_HTTP_PORT`）
 
 **访问宿主机 Ollama：** `.env` 中已默认 `OLLAMA_BASE_URL=http://host.docker.internal:11434`（Docker Desktop 支持）。
+
+### 4.2.1 C 阶段服务（Redis 队列 / Worker / Nginx / 对象存储）
+
+`docker compose` 现包含：
+
+| 服务 | 作用 |
+|------|------|
+| `api` | HTTP API；`TASK_QUEUE_EMBEDDED_CONSUMER=false` 时仅入队 |
+| `worker` | 消费 Redis 队列执行发布任务 |
+| `nginx` | 80/443 反代 API；HTTPS 需证书 |
+| `redis` | 任务队列 |
+
+```bash
+# 首次启用 HTTPS 前生成自签证书（开发/内网）
+bash docker/nginx/generate-self-signed-cert.sh
+
+docker compose up -d --build
+docker compose ps    # 应看到 api、worker、nginx、mysql、redis
+docker compose logs -f worker
+```
+
+对象存储（腾讯云 COS / 阿里云 OSS）：在 `.env` 设置 `STORAGE=cos` 或 `oss`，并填写 `OBJECT_STORAGE_*`（S3 兼容 endpoint）。公网访问前缀填 `OBJECT_STORAGE_PUBLIC_BASE_URL`。
+
+系统开关（审核、定时发布间隔等）可在管理后台 **系统设置** 页面修改，无需重启。
 
 ---
 
@@ -692,23 +708,30 @@ bash scripts/upgrade.sh
 | 功能 | 服务器部署后 |
 |------|----------------|
 | 管理页登录、素材、任务、AI 配置 | ✅ 可用 |
-| 小红书网页扫码（服务器一体） | 🚧 完善中；管理页会提示 Docker 环境说明 |
-| 小红书发布 | 服务器无头浏览器方案完善中；过渡期可参考 [§5 混合部署](#5-混合部署过渡方案) |
+| 小红书网页扫码（服务器一体） | ✅ 无头 Chromium + 管理页展示二维码 |
+| 小红书无头发布 | ✅ 容器内 Playwright 执行（需 Cookie 有效） |
+| Chromium 自检 | `bash scripts/install-playwright-browser.sh` |
+| 运行时状态 | `GET /api/system/runtime` → `chromium_available`、`qr_login_supported` |
+
+**Docker 扫码/发布验证步骤：**
+
+1. 部署后执行 `bash scripts/install-playwright-browser.sh`（确认 `/usr/bin/chromium` 可用）
+2. 打开 `/app/accounts` → 新建小红书账号 → **扫码登录**（应弹出二维码）
+3. **检测 Cookie** 显示有效后，创建图文任务并 **执行**
+4. 查看 `docker compose logs -f api` 与任务日志抽屉
 
 ---
 
-## 5. 混合部署（过渡方案）
+## 5. 混合部署（备选方案）
 
-适用于：**API 在 Linux Docker 服务器，小红书扫码/发布暂在本机 Mac/Windows**（服务器一体扫码方案完善前）。
+适用于：**服务器 Chromium 不可用**，或希望在本机 Mac/Windows 完成首次扫码。
 
 | 步骤 | 操作 |
 |------|------|
 | 1 | 服务器 `docker compose up`，团队通过 `https://publish.example.com/app/` 管理任务 |
-| 2 | 在 **有 Chrome 的 Mac/Windows** 上克隆同版本代码，配置 `.env` 指向服务器 API（或本地跑 execute 脚本） |
-| 3 | Cookie 可通过 `import_sau_cookie.py` 导入，或在本地扫码后同步 Cookie 文件 |
-| 4 | 在管理页创建任务；**execute 发布** 在有浏览器的环境触发 |
-
-> Docker 容器内 `PLAYWRIGHT_HEADLESS=true` 时难以扫码；不要期望在无 GUI 的 Linux 容器里完成首次小红书登录。
+| 2 | 在 **有 Chrome 的 Mac/Windows** 上本地 `./start.sh` 扫码，或通过 `import_sau_cookie.py` 导入 Cookie |
+| 3 | 将 Cookie 同步到服务器 `cookies_data` 卷，或在管理页重新扫码（推荐服务器一体扫码） |
+| 4 | 在管理页创建任务 → **执行** 发布（服务器无头或本机均可） |
 
 ---
 
@@ -722,7 +745,11 @@ bash scripts/upgrade.sh
 | SAU_VENDOR_PATH | 绝对路径到 vendor | `/vendor/social-auto-upload` |
 | WEB_DIST_PATH | 留空（自动找 web/dist） | `/web/dist` |
 | OLLAMA_BASE_URL | `http://127.0.0.1:11434` | `http://host.docker.internal:11434` |
-| PLAYWRIGHT_HEADLESS | `false`（扫码） | `true`（服务器） |
+| PLAYWRIGHT_HEADLESS | `false`（本机弹窗扫码） | `true`（无头，网页展示二维码） |
+| PLAYWRIGHT_CHROMIUM_EXECUTABLE | 留空（自动检测） | `/usr/bin/chromium` |
+| BILIBILI_ENABLED | `false`（默认隐藏 B 站） | `false`；需 B 站时设为 `true` 并重启 API |
+
+**B 站说明：** `BILIBILI_ENABLED=true` 后前台出现 B 站入口；登录走 biliup（不依赖 Playwright），发布为视频 + 分区 tid。默认关闭，不影响小红书/抖音/快手。建议在独立分支 `feature/bilibili-isolated-publish` 验证后再于生产开启。
 
 AI Key 也可在管理页 **AI 模型 → 厂商配置** 中填写（加密存于 `backend/data/ai_provider_config.json`）。
 
@@ -852,7 +879,233 @@ sudo usermod -aG docker ubuntu
 
 ---
 
-## 10. 生产上线检查清单
+## 10. 发布限频与风控试运行
+
+生产环境建议在管理页 **系统设置** 开启 `rate_limit_enabled`，试运行期可参考：
+
+| 配置项 | 建议起步值 |
+|--------|------------|
+| `rate_limit_min_interval_seconds` | `300`（5 分钟） |
+| `rate_limit_daily_per_account` | `5`～`10` |
+| `rate_limit_max_concurrent` | `1` |
+| `sensitive_word_enabled` | `true` |
+| `require_content_review` | `true`（有人审时） |
+
+观测指标与是否启用本机 Worker（D.4）的决策流程见 [phase-d-trial-guide.md](./phase-d-trial-guide.md)。
+
+### 10.1 本机 Worker + 每账号代理（方案 1 + D.4）
+
+适用：希望用**本机真实 Chrome** 发帖，且每账号走**不同代理 IP**（成本最高：代理费 + 本机常开）。
+
+**服务器侧**
+
+1. 系统设置 → **本机发布 Worker** → 新建，复制 **Token**（仅显示一次）。
+2. 平台账号 → 编辑 → 选择 **本机 Worker**；可选填 **网络线路**（`http://` / `socks5://` URL）。
+3. 执行发布任务后，绑定账号的任务进入该 Worker 专属队列，在「任务日志」可见 `dispatch` / `worker_claim`。
+
+**本机侧**
+
+```bash
+cd ai-publish
+# 需已安装 backend 依赖与本机 Chrome
+export AI_PUBLISH_API_BASE=https://你的域名
+export AI_PUBLISH_WORKER_TOKEN=上一步复制的Token
+python worker/local_publish_worker.py
+```
+
+本机进程用 Token 向服务器证明身份；服务器根据 Token 查 `publish_workers` 表，从 `ai-publish:queue:worker:{worker_key}` 派发任务。**未绑定 Worker 的账号仍在服务器执行。**
+
+**常见错误：`No module named 'conf'`**
+
+social-auto-upload 依赖同目录下的 `conf.py`（默认不入 Git）。首次启动 Worker 时会从 `vendor/social-auto-upload/conf.example.py` 自动生成；也可手动：
+
+```bash
+cp vendor/social-auto-upload/conf.example.py vendor/social-auto-upload/conf.py
+```
+
+然后重启 Worker，在任务日志中应出现 `start` → `finish success`，而非立即 `failed`。
+
+**常见错误：`未找到 social-auto-upload 目录：/vendor/social-auto-upload`**
+
+说明本机 Worker 误用了 **Docker** 里的路径。请用 `run-worker.sh` / `一键启动.command` 启动（会自动设置正确的 `SAU_VENDOR_PATH`），不要直接 `python worker/local_publish_worker.py` 且未 export 环境变量。启动日志应看到：
+
+```text
+[worker] SAU_VENDOR_PATH=/你的项目路径/vendor/social-auto-upload
+```
+
+### 10.2 本机 Worker 开机自启
+
+本机需已执行过 `./start.sh`（存在 `backend/.venv`），且已安装 **Chrome**（扫码/发帖用真实浏览器）。
+
+**1. 配置环境变量**
+
+```bash
+cd ai-publish/worker
+cp worker.env.example worker.env
+# 编辑 worker.env：AI_PUBLISH_API_BASE、AI_PUBLISH_WORKER_TOKEN
+```
+
+`worker.env` 含 Token，**不要提交 Git**。
+
+**2. macOS（推荐 LaunchAgent，用户登录后启动）**
+
+```bash
+cd ai-publish/worker
+chmod +x install-macos.sh run-worker.sh
+./install-macos.sh
+```
+
+- 日志：`worker/logs/worker.stdout.log`、`worker.stderr.log`
+- 查看状态：`launchctl print gui/$(id -u)/com.ai-publish.local-worker`
+- 停止：`launchctl bootout gui/$(id -u)/com.ai-publish.local-worker`
+- 修改 `worker.env` 后：`launchctl kickstart -k gui/$(id -u)/com.ai-publish.local-worker`
+
+> macOS 需**保持用户已登录图形桌面**，Chrome 才能正常驱动；合盖休眠期间 Worker 会暂停，唤醒后自动重连。
+
+**3. Linux 桌面（systemd 用户服务）**
+
+```bash
+cd ai-publish/worker
+chmod +x install-linux.sh run-worker.sh
+./install-linux.sh
+```
+
+- 状态：`systemctl --user status ai-publish-worker`
+- 日志：`journalctl --user -u ai-publish-worker -f`
+- 若希望用户未登录桌面也常驻：`sudo loginctl enable-linger $USER`
+
+**4. 手动运行（调试）**
+
+```bash
+cd ai-publish/worker
+./run-worker.sh
+```
+
+**5. Windows**
+
+暂无安装脚本；可用「任务计划程序」在登录时运行 `run-worker.sh`（Git Bash / WSL），或开终端执行 `./run-worker.sh` 并保持窗口不关。
+
+---
+
+## 11. 磁盘监控与素材清理
+
+素材文件默认保存在 API 容器/本机 `storage/materials`（或 `.env` 中 `STORAGE_PATH` 指定目录）。长期运行建议：
+
+### 11.1 磁盘监控
+
+| 环境 | 建议 |
+|------|------|
+| Docker | `docker system df`；`df -h` 查看挂载卷；轻量云监控告警磁盘 >80% |
+| 本机开发 | 定期查看 `ai-publish/data/materials` 目录大小 |
+
+### 11.2 自动清理（管理页配置）
+
+在 **系统设置** 中可配置：
+
+| 配置项 | 说明 |
+|--------|------|
+| `material_cleanup_enabled` | 开启后每小时清理一次 |
+| `material_retention_days` | 超过保留天数且**未被任何发布任务引用**的素材将被物理删除 |
+
+> 已被 `publish_tasks.material_ids` 引用的素材不会被清理，避免误删历史任务依赖。
+
+### 11.3 手动巡检 cron（可选）
+
+若未开启自动清理，可在服务器增加巡检脚本（示例，每日 3:00）：
+
+```bash
+# /etc/cron.d/ai-publish-disk
+0 3 * * * ubuntu du -sh /opt/ai-publish/data/materials >> /var/log/ai-publish-disk.log 2>&1
+```
+
+Docker 部署可将路径改为卷内实际挂载点，并结合云监控告警。
+
+### 11.4 失败任务自动重试
+
+系统设置中 `auto_retry_enabled`、`max_auto_retries`、`retry_delay_minutes` 控制失败后自动重试；达上限后任务保持 `failed`，可在任务列表手动重试。
+
+---
+
+## 12. 正式 HTTPS（Let's Encrypt）
+
+自签证书适用于内网/开发；**公网域名**建议改用 Let's Encrypt。
+
+### 11.1 前置条件
+
+- 域名 A 记录已指向服务器公网 IP
+- 安全组/防火墙放行 **80**、**443**
+- Nginx 容器已运行（`docker compose up -d nginx`）
+
+### 11.2 使用 Certbot（宿主机申请，挂载到 Nginx）
+
+```bash
+# Ubuntu 示例
+sudo apt install -y certbot
+
+sudo certbot certonly --standalone -d your.domain.com \
+  --pre-hook "docker compose -f /opt/ai-publish/docker-compose.yml stop nginx" \
+  --post-hook "docker compose -f /opt/ai-publish/docker-compose.yml start nginx"
+
+# 证书路径（默认）
+# /etc/letsencrypt/live/your.domain.com/fullchain.pem
+# /etc/letsencrypt/live/your.domain.com/privkey.pem
+```
+
+将证书挂载到 `ai-publish/docker/nginx/certs/`（或修改 `nginx.conf` 的 `ssl_certificate` 路径指向 `/etc/letsencrypt/...` 只读挂载）。
+
+### 11.3 更新 deploy.env
+
+```bash
+PUBLIC_HOST=your.domain.com
+USE_HTTPS=true
+NGINX_HTTPS_PORT=443
+```
+
+修改 `docker/nginx/nginx.conf` 中 `server_name` 与证书文件名后：
+
+```bash
+docker compose up -d --force-recreate nginx api
+```
+
+### 11.4 自动续期
+
+```bash
+# crontab -e
+0 3 1 * * certbot renew --quiet && docker compose -f /opt/ai-publish/docker-compose.yml restart nginx
+```
+
+---
+
+## 13. Docker 日志轮转与磁盘告警
+
+### 12.1 日志轮转（json-file driver）
+
+在 `docker-compose.yml` 各服务下可增加（示例）：
+
+```yaml
+logging:
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+```
+
+适用于 `api`、`worker`、`nginx`，避免容器日志撑满磁盘。
+
+### 12.2 磁盘与队列监控
+
+| 检查项 | 命令/端点 |
+|--------|-----------|
+| 健康检查 | `GET /health` — 含 `database`、`redis`、`queue_depth` |
+| Prometheus | `GET /metrics`（`METRICS_ENABLED=true` 时） |
+| 素材目录 | `du -sh /opt/ai-publish/data/materials` 或 Docker 卷 |
+| 队列积压 | `/health` 中 `queue_depth` > 10 持续 5 分钟需告警 |
+
+云监控建议：磁盘使用率 > 80% 告警；可选 Grafana + Prometheus 抓取 `/metrics`。
+
+---
+
+## 14. 生产上线检查清单
 
 - [ ] 修改 `SECRET_KEY`、`ADMIN_PASSWORD`、`COOKIE_ENCRYPTION_KEY`
 - [ ] 配置 `scripts/deploy.env` 中 `PUBLIC_HOST`（IP 或域名）
@@ -867,7 +1120,7 @@ sudo usermod -aG docker ubuntu
 
 ---
 
-## 11. 快速命令索引
+## 15. 快速命令索引
 
 | 目标 | Mac | Windows | Linux / 腾讯云 |
 |------|-----|---------|----------------|

@@ -44,14 +44,27 @@ fi
 
 cd "$ROOT_DIR"
 
-echo "[升级] 重建并重启 API（MySQL/Redis 不删卷）..."
-docker compose up -d --build api
+echo "[升级] 重启 API（backend 已挂载到容器，同步后重启即可生效；改 requirements/Dockerfile 时用 BUILD_API=1）..."
+if [[ "${BUILD_API:-0}" == "1" ]]; then
+  docker compose up -d --build api worker
+else
+  docker compose up -d api worker
+fi
 
 echo "[Playwright] 检查/安装浏览器..."
 if bash scripts/install-playwright-browser.sh; then
   echo "[Playwright] 浏览器就绪"
 else
   echo "[Playwright] 浏览器安装未完成，稍后可执行: bash scripts/install-playwright-browser.sh"
+fi
+
+if grep -qE '^BILIBILI_ENABLED=(true|1|yes|on)' "${ROOT_DIR}/.env" 2>/dev/null; then
+  echo "[biliup] B 站已开启，预下载登录组件..."
+  if bash scripts/install-biliup.sh; then
+    echo "[biliup] 组件就绪"
+  else
+    echo "[biliup] 预下载未完成，可稍后执行: bash scripts/install-biliup.sh"
+  fi
 fi
 
 echo ""

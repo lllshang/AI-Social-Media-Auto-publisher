@@ -1,44 +1,149 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
-from app.dependencies import get_current_user
+from app.dependencies import require_permission
 from app.models import User
+from app.utils.permissions import PERM_ACCOUNTS_READ, PERM_ACCOUNTS_WRITE
+from app.models import PlatformAccount
+from app.utils.proxy_utils import mask_proxy_url
 from app.schemas import (
+    AccountGroupAssignRequest,
     CookieCheckResponse,
     LoginAccountResponse,
     LoginSessionResponse,
     PlatformAccountCreate,
     PlatformAccountResponse,
+    PlatformAccountUpdate,
 )
+from app.services.account_group_service import AccountGroupService
+from app.services.log_service import LogService
 from app.services.login_session_service import login_session_service
 from app.services.platform_account_service import PlatformAccountService
-from app.utils.runtime_env import docker_login_hint, xhs_qr_login_supported
+from app.utils.bilibili_guard import assert_bilibili_enabled
+from app.utils.request_ip import get_client_ip
+from app.utils.runtime_env import docker_login_hint, platform_scan_hint, qr_login_supported
 
 router = APIRouter(prefix="/api/platform-accounts", tags=["platform-accounts"])
+
+
+def _ensure_login_allowed(account: PlatformAccount) -> None:
+    if account.platform == "bilibili":
+        try:
+            assert_bilibili_enabled()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return
+    if not qr_login_supported():
+        raise HTTPException(status_code=400, detail=docker_login_hint())
+
+
+def _account_response(
+    account: PlatformAccount,
+    group_service: AccountGroupService,
+    account_service: PlatformAccountService,
+) -> PlatformAccountResponse:
+    proxy = account.publish_proxy
+    return PlatformAccountResponse(
+        id=account.id,
+        platform=account.platform,
+        account_name=account.account_name,
+        remark=account.remark,
+        group_id=account.group_id,
+        group_name=group_service.get_group_name(account.group_id),
+        worker_id=account.worker_id,
+        worker_name=account_service.get_worker_name(account.worker_id),
+        publish_proxy_masked=mask_proxy_url(proxy),
+        has_publish_proxy=bool(proxy),
+        status=account.status,
+        created_at=account.created_at,
+    )
 
 
 @router.get("", response_model=list[PlatformAccountResponse])
 def list_accounts(
     platform: str | None = Query(default=None),
+    group_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_READ)),
 ):
     service = PlatformAccountService(db)
-    return service.list_accounts(platform)
+    group_service = AccountGroupService(db)
+    accounts = service.list_accounts(platform, group_id)
+    return [_account_response(account, group_service, service) for account in accounts]
 
 
 @router.post("", response_model=PlatformAccountResponse)
 def create_account(
     data: PlatformAccountCreate,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = PlatformAccountService(db)
+    group_service = AccountGroupService(db)
     try:
-        return service.create_account(data.platform, data.account_name, current_user.id)
+        account = service.create_account(data.platform, data.account_name, current_user.id)
+        LogService(db).add_operation(
+            "platform_account.create",
+            current_user.id,
+            "platform_account",
+            account.id,
+            ip=get_client_ip(request),
+        )
+        return _account_response(account, group_service, service)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/{account_id}", response_model=PlatformAccountResponse)
+def update_account(
+    account_id: int,
+    data: PlatformAccountUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
+):
+    service = PlatformAccountService(db)
+    group_service = AccountGroupService(db)
+    try:
+        fields_set = data.model_fields_set
+        account = service.update_account(
+            account_id,
+            account_name=data.account_name,
+            remark=data.remark,
+            worker_id=data.worker_id,
+            publish_proxy=data.publish_proxy,
+            clear_publish_proxy=data.clear_publish_proxy,
+            worker_id_set="worker_id" in fields_set,
+            publish_proxy_set="publish_proxy" in fields_set or data.clear_publish_proxy,
+        )
+        LogService(db).add_operation(
+            "platform_account.update",
+            current_user.id,
+            "platform_account",
+            account.id,
+            ip=get_client_ip(request),
+        )
+        return _account_response(account, group_service, service)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{account_id}/group", response_model=PlatformAccountResponse)
+def assign_account_group(
+    account_id: int,
+    data: AccountGroupAssignRequest,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
+):
+    account_service = PlatformAccountService(db)
+    group_service = AccountGroupService(db)
+    try:
+        account = group_service.assign_account(account_id, data.group_id)
+        return _account_response(account, group_service, account_service)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -46,12 +151,20 @@ def create_account(
 @router.delete("/{account_id}")
 def delete_account(
     account_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = PlatformAccountService(db)
     try:
         service.delete_account(account_id)
+        LogService(db).add_operation(
+            "platform_account.delete",
+            current_user.id,
+            "platform_account",
+            account_id,
+            ip=get_client_ip(request),
+        )
         return {"success": True}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -62,21 +175,58 @@ async def _run_login_session(session_id: str, account_id: int) -> None:
     if not session:
         return
 
-    async def on_qrcode(payload: dict) -> None:
-        current = await login_session_service.get(session_id)
-        if not current:
-            return
-        current.touch(
-            status="waiting_scan",
-            qrcode_data_url=payload.get("image_data_url") or "",
-            qrcode_path=payload.get("image_path") or "",
-            message="请使用小红书 App 扫码登录",
-        )
-
     db = SessionLocal()
     try:
         service = PlatformAccountService(db)
-        result = await service.login(account_id, qrcode_callback=on_qrcode)
+        account = service.get_account(account_id)
+        scan_hint = platform_scan_hint(account.platform if account else "xhs")
+
+        async def on_qrcode(payload: dict) -> None:
+            current = await login_session_service.get(session_id)
+            if not current:
+                return
+            current.touch(
+                status="waiting_scan",
+                qrcode_data_url=payload.get("image_data_url") or "",
+                qrcode_path=payload.get("image_path") or "",
+                message=scan_hint,
+            )
+
+        async def on_progress(message: str, status: str = "waiting_scan") -> None:
+            current = await login_session_service.get(session_id)
+            if not current:
+                return
+            current.touch(status=status, message=message)
+
+        starting_message = (
+            "正在准备二维码，请稍候..."
+            if account and account.platform == "bilibili"
+            else "正在启动浏览器，请稍候..."
+        )
+        await on_progress(starting_message, "starting")
+        loop = asyncio.get_running_loop()
+
+        def on_progress_sync(message: str, status: str = "starting") -> None:
+            future = asyncio.run_coroutine_threadsafe(on_progress(message, status), loop)
+            future.result(timeout=10)
+
+        if account and account.platform == "bilibili":
+            result = await service.login(
+                account_id,
+                qrcode_callback=on_qrcode,
+                progress_callback=on_progress_sync,
+            )
+        elif account and account.platform == "channels":
+            result = await service.login(
+                account_id,
+                qrcode_callback=on_qrcode,
+                progress_callback=on_progress_sync,
+            )
+        else:
+            result = await service.login(
+                account_id,
+                qrcode_callback=on_qrcode,
+            )
         await login_session_service.finish(session_id, result)
     except Exception as exc:
         current = await login_session_service.get(session_id)
@@ -90,21 +240,19 @@ async def _run_login_session(session_id: str, account_id: int) -> None:
 async def start_login_account(
     account_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
-    if not xhs_qr_login_supported():
-        raise HTTPException(status_code=400, detail=docker_login_hint())
-
     service = PlatformAccountService(db)
     account = service.get_account(account_id)
     if not account:
         raise HTTPException(status_code=404, detail="账号不存在")
+    _ensure_login_allowed(account)
 
     session = await login_session_service.create(account_id)
     task = asyncio.create_task(_run_login_session(session.session_id, account_id))
     session.task = task
 
-    for _ in range(60):
+    for _ in range(120):
         current = await login_session_service.get(session.session_id)
         if not current:
             break
@@ -121,7 +269,7 @@ async def start_login_account(
 @router.get("/login-sessions/{session_id}", response_model=LoginSessionResponse)
 async def get_login_session(
     session_id: str,
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     session = await login_session_service.get(session_id)
     if not session:
@@ -133,16 +281,19 @@ async def get_login_session(
 async def login_account(
     account_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
-    if not xhs_qr_login_supported():
-        raise HTTPException(status_code=400, detail=docker_login_hint())
+    service = PlatformAccountService(db)
+    account = service.get_account(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    _ensure_login_allowed(account)
 
     session = await login_session_service.create(account_id)
     task = asyncio.create_task(_run_login_session(session.session_id, account_id))
     session.task = task
 
-    for _ in range(60):
+    for _ in range(120):
         current = await login_session_service.get(session.session_id)
         if not current:
             break
@@ -191,12 +342,17 @@ async def login_account(
 @router.post("/{account_id}/check-cookie", response_model=CookieCheckResponse)
 async def check_cookie(
     account_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PERM_ACCOUNTS_WRITE)),
 ):
     service = PlatformAccountService(db)
     try:
-        result = await service.check_cookie(account_id)
+        result = await service.check_cookie(
+            account_id,
+            user_id=current_user.id,
+            ip=get_client_ip(request),
+        )
         return CookieCheckResponse(**result)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

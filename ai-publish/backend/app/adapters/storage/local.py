@@ -25,5 +25,13 @@ class LocalStorageAdapter(StorageAdapter):
         return str(dest), self.get_url(str(dest))
 
     def get_url(self, file_path: str) -> str:
-        name = Path(file_path).name
-        return f"/static/materials/{name}"
+        # 计算 file_path 相对于 base_path 的子路径，保留 voices/ 等子目录，
+        # 否则 voices/avatar_xxx.mp3 会被截断为 /static/materials/avatar_xxx.mp3，
+        # 实际文件却在 voices/ 下，访问 404。
+        p = Path(file_path)
+        try:
+            rel = p.relative_to(self.base_path)
+        except ValueError:
+            # 兜底：不在 base_path 下时只用文件名
+            return f"/static/materials/{p.name}"
+        return f"/static/materials/{rel.as_posix()}"

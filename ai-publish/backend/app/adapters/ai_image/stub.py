@@ -1,12 +1,13 @@
 from app.adapters.base import ImageGenerateInput, ImageGenerateResult
 from app.adapters.factory import get_adapter_factory
+from app.utils.prompt_templates import build_image_generation_prompt
 
 
 class StubImageAdapter:
     provider = "stub"
 
     async def generate(self, data: ImageGenerateInput) -> ImageGenerateResult:
-        prompt = data.topic
+        prompt, negative_prompt = build_image_generation_prompt(data)
         storage = get_adapter_factory().get_storage_adapter()
         placeholder = (
             b"\x89PNG\r\n\x1a\n"
@@ -17,4 +18,6 @@ class StubImageAdapter:
         for _ in range(max(1, data.count)):
             file_path, _ = storage.save_bytes(placeholder, suffix=".png")
             paths.append(file_path)
-        return ImageGenerateResult(image_paths=paths, provider=self.provider, prompt=prompt, cost=0.0)
+        return ImageGenerateResult(
+            image_paths=paths, provider=self.provider, prompt=prompt, cost=0.0, negative_prompt=negative_prompt
+        )

@@ -1,10 +1,8 @@
-from pathlib import Path
-
 import httpx
-import yaml
 
 from app.adapters.base import ImageGenerateInput, ImageGenerateResult
 from app.config import get_settings
+from app.utils.prompt_templates import build_image_generation_prompt
 
 
 class TokenHubImageAdapter:
@@ -15,27 +13,17 @@ class TokenHubImageAdapter:
     def __init__(self, model: str = "hy-image-lite") -> None:
         self.settings = get_settings()
         self.model = model
-        self.prompt_template = self._load_template()
 
-    def _load_template(self) -> str:
-        template_path = Path(__file__).resolve().parents[2] / "templates" / "prompts" / "xhs_image.yaml"
-        if template_path.exists():
-            data = yaml.safe_load(template_path.read_text(encoding="utf-8"))
-            return data.get("template", "")
-        return "为{platform}生成{ratio}比例封面图，主题：{topic}，风格：{style}"
-
-    def _build_prompt(self, data: ImageGenerateInput) -> str:
-        if len(data.topic) > 30:
-            return data.topic
-        return self.prompt_template.replace("{platform}", data.platform).replace("{topic}", data.topic).replace(
-            "{ratio}", data.ratio
-        ).replace("{style}", data.style)
+    def _build_prompt(self, data: ImageGenerateInput) -> tuple[str, str | None]:
+        if len(data.topic) > 80:
+            return data.topic, None
+        return build_image_generation_prompt(data)
 
     async def generate(self, data: ImageGenerateInput) -> ImageGenerateResult:
         from app.adapters.factory import get_adapter_factory
         from app.services.ai_provider_config_service import AiProviderConfigService
 
-        prompt = self._build_prompt(data)
+        prompt, negative_prompt = self._build_prompt(data)
         storage = get_adapter_factory().get_storage_adapter()
         config = AiProviderConfigService()
         api_key = config.get_field_value("tencent_maas_api_key")
@@ -45,6 +33,7 @@ class TokenHubImageAdapter:
             result = await StubImageAdapter().generate(data)
             result.provider = self.provider
             result.prompt = prompt
+            result.negative_prompt = negative_prompt
             return result
 
         base_url = (
@@ -91,4 +80,5 @@ class TokenHubImageAdapter:
             provider=self.provider,
             prompt=prompt,
             cost=cost,
+            negative_prompt=negative_prompt,
         )

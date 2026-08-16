@@ -1,28 +1,35 @@
 from pathlib import Path
 
 from app.config import get_settings
-from app.utils.playwright_browser import chromium_available
+from app.utils.playwright_browser import chromium_available, find_chromium_executable, is_docker_runtime
 
 
-def is_docker_runtime() -> bool:
-    return Path("/.dockerenv").exists()
-
-
-def xhs_qr_login_supported() -> bool:
+def qr_login_supported() -> bool:
+    """Whether server can run headless browser QR login (all platforms)."""
     if not is_docker_runtime():
         return True
     return chromium_available()
 
 
+def xhs_qr_login_supported() -> bool:
+    """Backward-compatible alias used by frontend."""
+    return qr_login_supported()
+
+
+def headless_publish_supported() -> bool:
+    """Whether server can run Playwright publish without local Chrome."""
+    return chromium_available()
+
+
 def docker_login_hint() -> str:
-    if xhs_qr_login_supported():
+    if qr_login_supported():
         return (
-            "服务器将以无头浏览器打开小红书登录页，二维码会显示在本页面，"
-            "请使用小红书 App 扫码完成绑定。"
+            "服务器将以无头 Chromium 打开登录页，二维码会显示在本页面，"
+            "请使用对应平台 App 扫码完成绑定；发布任务也将在服务器无头执行。"
         )
     return (
-        "服务器尚未安装 Playwright 浏览器，无法网页扫码。"
-        "请重新构建 API 镜像（含 patchright install chromium），"
+        "服务器尚未安装 Chromium，无法网页扫码或无头发布。"
+        "请执行 bash scripts/install-playwright-browser.sh 或重建 API 镜像，"
         "或在本地登录后通过 Cookie 导入。"
     )
 
@@ -38,7 +45,7 @@ def format_vendor_import_error(exc: ImportError, vendor_path: Path) -> str:
     else:
         detail = root
 
-    message = f"无法加载 social-auto-upload 小红书模块：{detail}。目录：{vendor_path}"
+    message = f"无法加载 social-auto-upload 模块：{detail}。目录：{vendor_path}"
     if is_docker_runtime():
         message += f" {docker_login_hint()}"
     else:
@@ -46,16 +53,46 @@ def format_vendor_import_error(exc: ImportError, vendor_path: Path) -> str:
     return message
 
 
+PLATFORM_APP_NAMES = {
+    "xhs": "小红书 App",
+    "douyin": "抖音 App",
+    "kuaishou": "快手 App",
+    "bilibili": "哔哩哔哩 App",
+    "channels": "微信 App",
+}
+
+
+def platform_scan_hint(platform: str) -> str:
+    if platform == "channels":
+        return "请用微信 App 扫一扫；扫码后在手机上选择视频号并确认登录"
+    app_name = PLATFORM_APP_NAMES.get(platform, "对应平台 App")
+    return f"请使用{app_name}扫码登录"
+
+
 def get_runtime_info() -> dict:
+    from app.workers.redis_queue import task_queue
+
     settings = get_settings()
     vendor_path = settings.sau_vendor_abs_path
+    chrome_path = find_chromium_executable()
+    docker = is_docker_runtime()
     return {
-        "docker": is_docker_runtime(),
-        "playwright_headless": settings.playwright_headless,
+        "docker": docker,
+        "playwright_headless": settings.playwright_headless if not docker else True,
         "chromium_available": chromium_available(),
+        "chromium_executable": chrome_path,
         "sau_vendor_path": str(vendor_path),
         "sau_vendor_exists": vendor_path.exists(),
+        "qr_login_supported": qr_login_supported(),
         "xhs_qr_login_supported": xhs_qr_login_supported(),
-        "docker_login_hint": docker_login_hint() if is_docker_runtime() else "",
+        "headless_publish_supported": headless_publish_supported(),
+        "docker_login_hint": docker_login_hint() if docker else "",
         "local_app_url": "http://127.0.0.1:8765/app/",
+        "scheduler_enabled": settings.scheduler_enabled,
+        "scheduler_poll_interval_seconds": settings.scheduler_poll_interval_seconds,
+        "task_queue_enabled": settings.task_queue_enabled,
+        "task_queue_embedded_consumer": settings.task_queue_embedded_consumer,
+        "redis_connected": task_queue.ping(),
+        "storage": settings.storage,
+        "bilibili_enabled": settings.bilibili_enabled,
     }

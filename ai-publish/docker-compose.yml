@@ -32,25 +32,37 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
     env_file:
       - .env
     environment:
       DATABASE_URL: mysql+pymysql://aipublish:aipublish123@mysql:3306/aipublish?charset=utf8mb4
       REDIS_URL: redis://redis:6379/0
+      TASK_QUEUE_ENABLED: "true"
+      TASK_QUEUE_EMBEDDED_CONSUMER: "false"
       STORAGE_LOCAL_PATH: /data/materials
       COOKIE_DIR: /data/cookies
       SAU_VENDOR_PATH: /vendor/social-auto-upload
       WEB_DIST_PATH: /web/dist
+      PLAYWRIGHT_HEADLESS: "true"
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE: /usr/bin/chromium
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    shm_size: "256mb"
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
+      - ./backend:/app
       - ../vendor/social-auto-upload:/vendor/social-auto-upload
       - ./web/dist:/web/dist:ro
       - materials_data:/data/materials
       - cookies_data:/data/cookies
       - provider_config:/app/data
       - playwright_browsers:/opt/playwright
+      - biliup_data:/root/.social-auto-upload
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -59,9 +71,67 @@ services:
       redis:
         condition: service_healthy
 
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    command: ["python", "-m", "app.workers.redis_consumer"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: mysql+pymysql://aipublish:aipublish123@mysql:3306/aipublish?charset=utf8mb4
+      REDIS_URL: redis://redis:6379/0
+      TASK_QUEUE_ENABLED: "true"
+      TASK_QUEUE_EMBEDDED_CONSUMER: "false"
+      STORAGE_LOCAL_PATH: /data/materials
+      COOKIE_DIR: /data/cookies
+      SAU_VENDOR_PATH: /vendor/social-auto-upload
+      PLAYWRIGHT_HEADLESS: "true"
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE: /usr/bin/chromium
+    shm_size: "256mb"
+    volumes:
+      - ./backend:/app
+      - ../vendor/social-auto-upload:/vendor/social-auto-upload
+      - materials_data:/data/materials
+      - cookies_data:/data/cookies
+      - provider_config:/app/data
+      - playwright_browsers:/opt/playwright
+      - biliup_data:/root/.social-auto-upload
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "3"
+    ports:
+      - "${NGINX_HTTP_PORT:-8080}:80"
+      - "${NGINX_HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+
 volumes:
   mysql_data:
   materials_data:
   cookies_data:
   provider_config:
   playwright_browsers:
+  biliup_data:

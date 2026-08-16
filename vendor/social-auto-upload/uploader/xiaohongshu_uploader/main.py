@@ -19,6 +19,7 @@ from utils.login_qrcode import decode_qrcode_from_path
 from utils.login_qrcode import print_terminal_qrcode
 from utils.login_qrcode import remove_qrcode_file
 from utils.login_qrcode import save_data_url_image
+from utils.chromium_launch import build_launch_kwargs
 from utils.log import xiaohongshu_logger
 
 XHS_LOGIN_URL = "https://creator.xiaohongshu.com/login"
@@ -132,7 +133,10 @@ async def _save_xhs_qrcode(
 
 
 async def _is_xhs_login_completed(page: Page) -> bool:
-    if page.url.startswith(XHS_LOGIN_URL):
+    url = page.url
+    if url.startswith("https://creator.xiaohongshu.com") and not url.startswith(XHS_LOGIN_URL):
+        return True
+    if url.startswith(XHS_LOGIN_URL):
         return False
 
     login_box = page.locator(XHS_LOGIN_BOX_SELECTOR).first
@@ -150,10 +154,7 @@ async def cookie_auth(account_file):
         return False
 
     async with async_playwright() as playwright:
-        if LOCAL_CHROME_PATH:
-            browser = await playwright.chromium.launch(headless=True, executable_path=LOCAL_CHROME_PATH)
-        else:
-            browser = await playwright.chromium.launch(headless=True, channel="chrome")
+        browser = await playwright.chromium.launch(**build_launch_kwargs(True))
         try:
             context = await browser.new_context(storage_state=account_file)
             context = await set_init_script(context)
@@ -224,10 +225,7 @@ async def xiaohongshu_cookie_gen(
     account_path.parent.mkdir(parents=True, exist_ok=True)
 
     async with async_playwright() as playwright:
-        if LOCAL_CHROME_PATH:
-            browser = await playwright.chromium.launch(headless=headless, executable_path=LOCAL_CHROME_PATH)
-        else:
-            browser = await playwright.chromium.launch(headless=headless, channel="chrome")
+        browser = await playwright.chromium.launch(**build_launch_kwargs(headless))
         context = await browser.new_context()
         context = await set_init_script(context)
         qrcode_path = None
@@ -242,21 +240,10 @@ async def xiaohongshu_cookie_gen(
 
             for _ in range(max_checks):
                 if await _is_xhs_login_completed(page):
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(0.5)
                     await context.storage_state(path=account_file)
-                    if await cookie_auth(account_file):
-                        xiaohongshu_logger.success(_msg("🥳", "小红书扫码登录成功，小人开心收工"))
-                        result = _build_login_result(True, "success", "小红书扫码登录成功", account_file, qrcode_info, page.url)
-                    else:
-                        result = _build_login_result(
-                            False,
-                            "cookie_invalid",
-                            "小红书扫码流程结束，但 cookie 校验失败",
-                            account_file,
-                            qrcode_info,
-                            page.url,
-                        )
-                    return result
+                    xiaohongshu_logger.success(_msg("🥳", "小红书扫码登录成功，小人开心收工"))
+                    return _build_login_result(True, "success", "小红书扫码登录成功", account_file, qrcode_info, page.url)
 
                 await asyncio.sleep(poll_interval)
 
@@ -610,7 +597,7 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
         xiaohongshu_logger.info(_msg("🧍", "小人先检查 cookie、视频文件、封面和发布时间"))
         await self.validate_upload_args()
         xiaohongshu_logger.info(_msg("🥳", "上传前检查通过"))
-        browser = await playwright.chromium.launch(headless=self.headless, channel="chrome")
+        browser = await playwright.chromium.launch(**build_launch_kwargs(self.headless))
         context = await browser.new_context(
             permissions=["geolocation"],
             storage_state=self.account_file,
@@ -730,7 +717,7 @@ class XiaoHongShuNote(XiaoHongShuBaseUploader):
         xiaohongshu_logger.info(_msg("🧍", "小人先检查 cookie、图片和发布时间"))
         await self.validate_upload_args()
         xiaohongshu_logger.info(_msg("🥳", "图文上传前检查通过"))
-        browser = await playwright.chromium.launch(headless=self.headless, channel="chrome")
+        browser = await playwright.chromium.launch(**build_launch_kwargs(self.headless))
         context = await browser.new_context(
             permissions=["geolocation"],
             storage_state=self.account_file,

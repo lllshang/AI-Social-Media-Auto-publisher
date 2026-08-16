@@ -12,7 +12,7 @@ from app.adapters.ai_image.wanxiang import WanxiangImageAdapter
 from app.adapters.ai_text.openai_compatible import OpenAiCompatibleTextAdapter
 from app.adapters.ai_text.stub import StubTextAdapter
 from app.adapters.ai_text.tongyi import TongyiTextAdapter
-from app.adapters.base import AiImageAdapter, AiTextAdapter
+from app.adapters.base import AiImageAdapter, AiTextAdapter, AiVideoAdapter
 from app.config import BACKEND_DIR, get_settings
 from app.services.ai_provider_config_service import AiProviderConfigService
 
@@ -38,6 +38,8 @@ class RuntimeSelection:
     text_model: str = ""
     image_provider: str = "auto"
     image_model: str = ""
+    video_provider: str = "auto"
+    video_model: str = ""
     updated_at: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -49,6 +51,7 @@ class DetectionResult:
     detected_at: str
     text: dict[str, Any]
     image: dict[str, Any]
+    video: dict[str, Any]
     runtime: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
@@ -145,8 +148,9 @@ class AiModelService:
             "base_url_field": "doubao_base_url",
             "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
             "models": [
-                ("doubao-pro-32k", "doubao-pro-32k"),
-                ("doubao-lite-32k", "doubao-lite-32k"),
+                ("doubao-seed-1.6", "doubao-seed-1.6"),
+                ("doubao-1.5-pro-32k", "doubao-1.5-pro-32k"),
+                ("doubao-1.5-lite-32k", "doubao-1.5-lite-32k"),
             ],
         },
         {
@@ -185,6 +189,16 @@ class AiModelService:
     )
 
     REMOTE_IMAGE_PROVIDERS = (
+        {
+            "provider": "doubao",
+            "label": "字节豆包 生图",
+            "key_field": "doubao_api_key",
+            "base_url_field": "doubao_base_url",
+            "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+            "models": [
+                ("doubao-seedream-4.0", "seedream-4.0"),
+            ],
+        },
         {
             "provider": "wanxiang",
             "label": "通义万相 (DashScope)",
@@ -232,6 +246,106 @@ class AiModelService:
             "default_base_url": "https://api.siliconflow.cn/v1",
             "models": [
                 ("black-forest-labs/FLUX.1-schnell", "black-forest-labs/FLUX.1-schnell"),
+            ],
+        },
+        {
+            "provider": "tencent_vod_image",
+            "label": "腾讯 VOD AIGC 生图",
+            "key_field": "tencent_vod_secret_id",
+            "secret_key_field": "tencent_vod_secret_key",
+            "sub_app_id_field": "tencent_vod_sub_app_id",
+            "cost_field": "tencent_vod_cost_per_image",
+            "models": [
+                ("Hunyuan", "混元 Hunyuan 3.0"),
+                ("OG", "OG"),
+                ("GG", "GG"),
+                ("Qwen", "Qwen"),
+            ],
+        },
+    )
+
+    REMOTE_VIDEO_PROVIDERS = (
+        {
+            "provider": "wanxiang_video",
+            "label": "通义万相视频 (DashScope)",
+            "key_field": "dashscope_api_key",
+            "models": [
+                ("video-synthesis-v1", "通义视频 V1"),
+            ],
+        },
+        {
+            "provider": "minimax_video",
+            "label": "MiniMax 海螺视频",
+            "key_field": "minimax_api_key",
+            "models": [
+                ("MiniMax-Hailuo-2.3", "海螺 2.3 (文生+图生)"),
+                ("MiniMax-Hailuo-02", "海螺 02"),
+                ("T2V-01", "T2V-01 (纯文生)"),
+                ("I2V-01", "I2V-01 (纯图生)"),
+                ("S2V-01", "S2V-01 (主体参考)"),
+            ],
+        },
+        {
+            "provider": "kling_video",
+            "label": "可灵 AI 视频",
+            "key_field": "kling_api_key",
+            "base_url_field": "kling_base_url",
+            "default_base_url": "https://api.klingai.com",
+            "models": [
+                ("kling-v1", "可灵 V1"),
+                ("kling-v1-5", "可灵 V1.5"),
+            ],
+        },
+        {
+            "provider": "dreamina_video",
+            "label": "即梦 Dreamina 视频",
+            "key_field": "dreamina_api_key",
+            "fallback_key_field": "doubao_api_key",
+            "base_url_field": "dreamina_base_url",
+            "default_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+            "models": [
+                ("doubao-seedance-2-0-mini-260615", "Seedance 2.0 Mini"),
+                ("doubao-seedance-2-0-260128", "Seedance 2.0"),
+                ("doubao-seedance-2-0-pro-260528", "Seedance 2.0 Pro"),
+            ],
+        },
+        {
+            "provider": "baidu_video",
+            "label": "百度文心一格/千帆视频",
+            "key_field": "baidu_api_key",
+            "base_url_field": "baidu_video_base_url",
+            "default_base_url": "https://qianfan.baidubce.com/v2",
+            "models": [
+                ("bilibili-index", "文心视频"),
+            ],
+        },
+        {
+            "provider": "hunyuan_video",
+            "label": "腾讯混元视频（占位）",
+            "key_field": "hunyuan_api_key",
+            "models": [
+                ("hunyuan-video-v1", "混元视频 V1（未公开）"),
+            ],
+        },
+        {
+            "provider": "tencent_vod_video",
+            "label": "腾讯 VOD AIGC 视频",
+            "key_field": "tencent_vod_secret_id",
+            "fallback_key_field": "tencent_secret_id",
+            "secret_key_field": "tencent_vod_secret_key",
+            "fallback_secret_key_field": "tencent_secret_key",
+            "sub_app_id_field": "tencent_vod_sub_app_id",
+            "models": [
+                ("Hailuo|H3", "海螺 H3"),
+                ("Hailuo|2.0", "海螺 2.0"),
+                ("Hunyuan|1.5", "混元 1.5"),
+                ("Kling|2.6", "可灵 2.6"),
+                ("Kling|2.0", "可灵 2.0"),
+                ("Vidu|1.5", "Vidu 1.5"),
+                ("PixVerse|2.0", "PixVerse 2.0"),
+                ("Mingmou|1.0", "明眸 1.0"),
+                ("GV|1.0", "GV 1.0"),
+                ("OS|1.0", "OS 1.0"),
             ],
         },
     )
@@ -293,6 +407,8 @@ class AiModelService:
         text_model: str | None = None,
         image_provider: str | None = None,
         image_model: str | None = None,
+        video_provider: str | None = None,
+        video_model: str | None = None,
     ) -> RuntimeSelection:
         runtime = self.load_runtime()
         if mode is not None:
@@ -305,6 +421,10 @@ class AiModelService:
             runtime.image_provider = image_provider
         if image_model is not None:
             runtime.image_model = image_model
+        if video_provider is not None:
+            runtime.video_provider = video_provider
+        if video_model is not None:
+            runtime.video_model = video_model
         return self.save_runtime(runtime)
 
     async def detect_ollama_models(self) -> list[ModelOption]:
@@ -436,12 +556,22 @@ class AiModelService:
             api_key = self._config_value(spec["key_field"])
             ready = bool(api_key)
             reason = None if ready else "未配置 API Key"
-            for _, model_name in spec["models"]:
+            secret_key_field = spec.get("secret_key_field")
+            sub_app_id_field = spec.get("sub_app_id_field")
+            if secret_key_field:
+                if not self._config_value(secret_key_field):
+                    ready = False
+                    reason = reason or "未配置 SecretKey"
+            if sub_app_id_field:
+                if not self._config_value(sub_app_id_field):
+                    ready = False
+                    reason = reason or "未配置 SubAppId"
+            for model_id, model_label in spec["models"]:
                 options.append(
                     ModelOption(
                         provider=spec["provider"],
-                        model=model_name,
-                        label=f"{spec['label']} / {model_name}",
+                        model=model_id,
+                        label=f"{spec['label']} / {model_label}",
                         source="remote",
                         kind="image",
                         ready=ready,
@@ -461,6 +591,51 @@ class AiModelService:
             )
         )
         return options
+
+    def _remote_video_options(self) -> list[ModelOption]:
+        options: list[ModelOption] = []
+        for spec in self.REMOTE_VIDEO_PROVIDERS:
+            api_key = self._config_value(spec["key_field"])
+            fallback_key_field = spec.get("fallback_key_field")
+            if not api_key and fallback_key_field:
+                api_key = self._config_value(fallback_key_field)
+            ready = bool(api_key)
+            reason = None if ready else "未配置 API Key"
+            for model_id, model_name in spec["models"]:
+                options.append(
+                    ModelOption(
+                        provider=spec["provider"],
+                        model=model_id,
+                        label=f"{spec['label']} / {model_name}",
+                        source="remote",
+                        kind="video",
+                        ready=ready,
+                        reason=reason,
+                    )
+                )
+        options.append(
+            ModelOption(
+                provider="stub",
+                model="stub",
+                label="Stub 占位视频",
+                source="local",
+                kind="video",
+                ready=True,
+                reason="无 Key 时生成黑屏占位视频",
+            )
+        )
+        return options
+
+    def _pick_best_video(self, options: list[ModelOption]) -> ModelOption:
+        ready = [o for o in options if o.ready and o.provider != "stub"]
+
+        # 优先级：可灵 > 即梦 > MiniMax > 通义万相 > 腾讯混元 > stub
+        for provider in ("kling_video", "dreamina_video", "minimax_video", "wanxiang_video", "hunyuan_video"):
+            choice = next((o for o in ready if o.provider == provider), None)
+            if choice:
+                return choice
+
+        return next(o for o in options if o.provider == "stub")
 
     def _rank_ollama_model(self, model: str) -> tuple[int, str]:
         preferred = (self.settings.ollama_text_model or "").lower()
@@ -518,6 +693,7 @@ class AiModelService:
         ollama = await self.detect_ollama_models()
         text_options = ollama + self._remote_text_options()
         image_options = self._remote_image_options()
+        video_options = self._remote_video_options()
         runtime = self.load_runtime()
 
         if runtime.mode == "auto" or runtime.text_provider in {"", "auto"}:
@@ -528,6 +704,10 @@ class AiModelService:
             recommended_image = self._pick_best_image(image_options)
             runtime.image_provider = recommended_image.provider
             runtime.image_model = recommended_image.model
+        if runtime.mode == "auto" or runtime.video_provider in {"", "auto"}:
+            recommended_video = self._pick_best_video(video_options)
+            runtime.video_provider = recommended_video.provider
+            runtime.video_model = recommended_video.model
         if runtime.mode == "auto":
             self.save_runtime(runtime)
 
@@ -547,6 +727,14 @@ class AiModelService:
             ),
             self._pick_best_image(image_options),
         )
+        current_video = next(
+            (
+                o
+                for o in video_options
+                if o.provider == runtime.video_provider and o.model == runtime.video_model
+            ),
+            self._pick_best_video(video_options),
+        )
 
         return DetectionResult(
             detected_at=datetime.now(timezone.utc).isoformat(),
@@ -559,6 +747,11 @@ class AiModelService:
                 "current": current_image.to_dict(),
                 "recommended": self._pick_best_image(image_options).to_dict(),
                 "available": [o.to_dict() for o in image_options],
+            },
+            video={
+                "current": current_video.to_dict(),
+                "recommended": self._pick_best_video(video_options).to_dict(),
+                "available": [o.to_dict() for o in video_options],
             },
             runtime=runtime.to_dict(),
         )
@@ -660,14 +853,131 @@ class AiModelService:
             from app.adapters.ai_image.openai_dalle import OpenAiDalleImageAdapter
 
             return OpenAiDalleImageAdapter(model=model or "black-forest-labs/FLUX.1-schnell")
+        if provider == "doubao":
+            from app.adapters.ai_image.openai_dalle import OpenAiDalleImageAdapter
+
+            return OpenAiDalleImageAdapter(model=model or "doubao-seedream-4.0")
         custom = self.provider_config.get_custom_provider(provider)
         if custom and custom.get("kind") in {"image", "both"}:
             from app.adapters.ai_image.openai_dalle import OpenAiDalleImageAdapter
 
             return OpenAiDalleImageAdapter(model=model or "default")
+        if provider == "tencent_vod_image":
+            from app.adapters.ai_image.tencent_vod_image import TencentVodImageAdapter
+
+            secret_id = self._config_value("tencent_vod_secret_id") or self._config_value("tencent_secret_id") or ""
+            secret_key = self._config_value("tencent_vod_secret_key") or self._config_value("tencent_secret_key") or ""
+            sub_app_id = self._config_value("tencent_vod_sub_app_id") or ""
+            try:
+                cost_per_image = float(self._config_value("tencent_vod_cost_per_image") or 0)
+            except (TypeError, ValueError):
+                cost_per_image = 0.0
+            model_name, _, model_version = (model or "Hunyuan|3.0").partition("|")
+            return TencentVodImageAdapter(
+                model_name=model_name or "Hunyuan",
+                model_version=model_version or "3.0",
+                sub_app_id=sub_app_id,
+                secret_id=secret_id,
+                secret_key=secret_key,
+                cost_per_image=cost_per_image,
+            )
         from app.adapters.ai_image.stub import StubImageAdapter
 
         return StubImageAdapter()
+
+    def get_video_adapter(self) -> AiVideoAdapter:
+        """获取当前配置的视频生成适配器"""
+        provider, model = self._resolve_video_target()
+
+        if provider == "wanxiang_video":
+            from app.adapters.ai_video.wanxiang import WanxiangVideoAdapter
+
+            return WanxiangVideoAdapter(model=model or "video-synthesis-v1")
+        elif provider == "minimax_video":
+            from app.adapters.ai_video.minimax import MinimaxVideoAdapter
+
+            return MinimaxVideoAdapter(model=model or "MiniMax-Hailuo-2.3")
+        elif provider == "kling_video":
+            from app.adapters.ai_video.kling import KlingVideoAdapter
+
+            base_url = self._config_value("kling_base_url") or "https://api.klingai.com"
+            return KlingVideoAdapter(model=model or "kling-v1", base_url=base_url)
+        elif provider == "dreamina_video":
+            from app.adapters.ai_video.dreamina import DreaminaVideoAdapter
+
+            base_url = self._config_value("dreamina_base_url") or "https://ark.cn-beijing.volces.com/api/v3"
+            dreamina_model = self._config_value("dreamina_model") or model or "doubao-seedance-2-0-mini-260615"
+            return DreaminaVideoAdapter(model=dreamina_model, base_url=base_url)
+        elif provider == "baidu_video":
+            from app.adapters.ai_video.baidu_video import BaiduVideoAdapter
+
+            base_url = self._config_value("baidu_video_base_url") or "https://qianfan.baidubce.com/v2"
+            return BaiduVideoAdapter(model=model or "bilibili-index", base_url=base_url)
+        elif provider == "hunyuan_video":
+            from app.adapters.ai_video.hunyuan import HunyuanVideoAdapter
+
+            return HunyuanVideoAdapter(model=model or "hunyuan-video-v1")
+        elif provider == "tencent_vod_video":
+            from app.adapters.ai_video.tencent_vod import TencentVodVideoAdapter
+
+            secret_id = self._config_value("tencent_vod_secret_id") or self._config_value("tencent_secret_id") or ""
+            secret_key = self._config_value("tencent_vod_secret_key") or self._config_value("tencent_secret_key") or ""
+            sub_app_id = self._config_value("tencent_vod_sub_app_id") or ""
+            try:
+                cost_per_second = float(self._config_value("tencent_vod_cost_per_second") or 0)
+            except (TypeError, ValueError):
+                cost_per_second = 0.0
+            model_name, _, model_version = (model or "Hailuo|H3").partition("|")
+            return TencentVodVideoAdapter(
+                model_name=model_name or "Hunyuan",
+                model_version=model_version or "1.5",
+                sub_app_id=sub_app_id,
+                secret_id=secret_id,
+                secret_key=secret_key,
+                cost_per_second=cost_per_second,
+            )
+        elif provider == "digital_human_video":
+            from app.adapters.ai_video.digital_human_stub import DigitalHumanStubVideoAdapter
+
+            return DigitalHumanStubVideoAdapter()
+        else:
+            from app.adapters.ai_video.stub import StubVideoAdapter
+
+            return StubVideoAdapter()
+
+    def get_digital_human_video_adapter(self) -> AiVideoAdapter:
+        """数字人视频适配器：腾讯云 VOD AIGC (Kling) 数字人/对口型。
+
+        权限默认视为已开通（按需求），若未开通会在生成任务时返回
+        TencentVodPermissionError 明确提示去开通对应能力。
+        """
+        return self.get_ai_video_adapter()
+
+    def _resolve_video_target(self) -> tuple[str, str]:
+        """解析视频生成目标（provider, model）"""
+        runtime = self.load_runtime()
+        provider = runtime.video_provider or "auto"
+        model = runtime.video_model or ""
+
+        if provider not in {"", "auto"}:
+            return provider, model
+
+        # 自动检测可用提供商（优先级：可灵 > 即梦 > MiniMax > 通义万相 > 腾讯 VOD AIGC > 腾讯混元 > stub）
+        if self._config_value("kling_api_key"):
+            return "kling_video", "kling-v1"
+        elif self._config_value("dreamina_api_key") or self._config_value("doubao_api_key"):
+            return "dreamina_video", "seedance-2.0"
+        elif self._config_value("minimax_api_key"):
+            return "minimax_video", "MiniMax-Hailuo-2.3"
+        elif self._config_value("dashscope_api_key"):
+            return "wanxiang_video", "video-synthesis-v1"
+        elif self._config_value("tencent_vod_secret_id") and self._config_value("tencent_vod_secret_key"):
+            return "tencent_vod_video", "Hailuo|H3"
+        elif self._config_value("hunyuan_api_key"):
+            return "hunyuan_video", "hunyuan-video-v1"
+        else:
+            return "stub", ""
+
 
     def list_provider_configs(self) -> list[dict[str, Any]]:
         return self.provider_config.list_providers()
@@ -677,12 +987,16 @@ class AiModelService:
         provider: str,
         *,
         api_key: str | None = None,
+        secret_key: str | None = None,
+        sub_app_id: str | None = None,
         base_url: str | None = None,
         clear_key: bool = False,
     ) -> dict[str, Any]:
         return self.provider_config.save_provider_config(
             provider,
             api_key=api_key,
+            secret_key=secret_key,
+            sub_app_id=sub_app_id,
             base_url=base_url,
             clear_key=clear_key,
         )

@@ -1,13 +1,18 @@
 from datetime import datetime
 from pathlib import Path
+import shutil
 
 from sqlalchemy.orm import Session
 
 from app.adapters.base import LoginResult
 from app.adapters.factory import get_adapter_factory
 from app.config import get_settings
-from app.models import AccountCookie, PlatformAccount
+from app.models import AccountCookie, PlatformAccount, PublishWorker
+from app.services.log_service import LogService
+from app.utils.bilibili_guard import assert_bilibili_enabled
 from app.utils.crypto import decrypt_text, encrypt_text
+from app.utils.proxy_utils import mask_proxy_url, validate_proxy_url
+from app.utils.vendor_proxy import use_account_proxy
 
 
 class PlatformAccountService:
@@ -16,13 +21,21 @@ class PlatformAccountService:
         self.settings = get_settings()
         self.factory = get_adapter_factory()
 
-    def list_accounts(self, platform: str | None = None) -> list[PlatformAccount]:
+    def list_accounts(
+        self,
+        platform: str | None = None,
+        group_id: int | None = None,
+    ) -> list[PlatformAccount]:
         query = self.db.query(PlatformAccount)
         if platform:
             query = query.filter(PlatformAccount.platform == platform)
+        if group_id is not None:
+            query = query.filter(PlatformAccount.group_id == group_id)
         return query.order_by(PlatformAccount.id.desc()).all()
 
     def create_account(self, platform: str, account_name: str, user_id: int | None = None) -> PlatformAccount:
+        if platform == "bilibili":
+            assert_bilibili_enabled()
         exists = (
             self.db.query(PlatformAccount)
             .filter(PlatformAccount.platform == platform, PlatformAccount.account_name == account_name)
@@ -37,6 +50,68 @@ class PlatformAccountService:
             created_by=user_id,
         )
         self.db.add(account)
+        self.db.commit()
+        self.db.refresh(account)
+        return account
+
+    def resolve_publish_proxy(self, account: PlatformAccount) -> str | None:
+        value = (account.publish_proxy or "").strip()
+        return value or None
+
+    def get_worker_name(self, worker_id: int | None) -> str | None:
+        if not worker_id:
+            return None
+        worker = self.db.query(PublishWorker).filter(PublishWorker.id == worker_id).first()
+        return worker.name if worker else None
+
+    def update_account(
+        self,
+        account_id: int,
+        *,
+        account_name: str | None = None,
+        remark: str | None = None,
+        worker_id: int | None = None,
+        publish_proxy: str | None = None,
+        clear_publish_proxy: bool = False,
+        worker_id_set: bool = False,
+        publish_proxy_set: bool = False,
+    ) -> PlatformAccount:
+        account = self.get_account(account_id)
+        if not account:
+            raise ValueError("账号不存在")
+        if account_name is not None:
+            name = account_name.strip()
+            if not name:
+                raise ValueError("账号名不能为空")
+            exists = (
+                self.db.query(PlatformAccount)
+                .filter(
+                    PlatformAccount.platform == account.platform,
+                    PlatformAccount.account_name == name,
+                    PlatformAccount.id != account_id,
+                )
+                .first()
+            )
+            if exists:
+                raise ValueError("同平台下账号名已存在")
+            account.account_name = name
+        if remark is not None:
+            account.remark = remark.strip() or None
+        if worker_id_set:
+            if worker_id is None:
+                account.worker_id = None
+            else:
+                worker = self.db.query(PublishWorker).filter(PublishWorker.id == worker_id).first()
+                if not worker:
+                    raise ValueError("所选本机 Worker 不存在")
+                if worker.status != "active":
+                    raise ValueError("所选本机 Worker 已停用")
+                account.worker_id = worker_id
+        if publish_proxy_set:
+            if clear_publish_proxy or publish_proxy is None or not str(publish_proxy).strip():
+                account.publish_proxy = None
+            else:
+                account.publish_proxy = validate_proxy_url(str(publish_proxy))
         self.db.commit()
         self.db.refresh(account)
         return account
@@ -74,35 +149,121 @@ class PlatformAccountService:
             Path(cookie_file).write_text(cookie_plain, encoding="utf-8")
         return cookie_file
 
-    async def login(self, account_id: int, qrcode_callback=None) -> LoginResult:
+    async def login(
+        self,
+        account_id: int,
+        qrcode_callback=None,
+        progress_callback=None,
+    ) -> LoginResult:
         account = self.get_account(account_id)
         if not account:
             raise ValueError("账号不存在")
         adapter = self.factory.get_platform_adapter(account.platform)
         cookie_file = self.cookie_file_path(account)
-        result = await adapter.login(account.id, account.account_name, cookie_file, qrcode_callback=qrcode_callback)
+        backup_path: Path | None = None
+        if account.platform == "bilibili":
+            cookie_path = Path(cookie_file)
+            if cookie_path.exists():
+                backup_path = cookie_path.with_suffix(cookie_path.suffix + ".loginbak")
+                shutil.copy2(cookie_path, backup_path)
+                cookie_path.unlink()
+        # B 站扫码在服务端通过 biliup 完成，不走 Playwright；账号「网络线路」仅用于本机 Worker 发布，
+        # 若误传给 biliup 可能导致无法连 GitHub/B 站、二维码一直不出现。
+        result: LoginResult | None = None
+        try:
+            if account.platform == "bilibili":
+                result = await adapter.login(
+                    account.id,
+                    account.account_name,
+                    cookie_file,
+                    qrcode_callback=qrcode_callback,
+                    progress_callback=progress_callback,
+                    publish_proxy=None,
+                )
+            elif account.platform == "channels":
+                # 视频号扫码在服务器 Playwright 完成；发布代理仅用于 Worker 发布，登录走直连
+                result = await adapter.login(
+                    account.id,
+                    account.account_name,
+                    cookie_file,
+                    qrcode_callback=qrcode_callback,
+                    progress_callback=progress_callback,
+                    publish_proxy=None,
+                )
+            else:
+                proxy_url = self.resolve_publish_proxy(account)
+                with use_account_proxy(proxy_url):
+                    result = await adapter.login(
+                        account.id,
+                        account.account_name,
+                        cookie_file,
+                        qrcode_callback=qrcode_callback,
+                        publish_proxy=proxy_url,
+                    )
+        finally:
+            if backup_path and backup_path.exists():
+                cookie_path = Path(cookie_file)
+                should_restore = result is None or not result.success
+                if should_restore and (not cookie_path.exists() or cookie_path.stat().st_size < 8):
+                    shutil.copy2(backup_path, cookie_file)
+                backup_path.unlink(missing_ok=True)
+        if result is None:
+            raise RuntimeError("登录未返回结果")
         if result.success and Path(cookie_file).exists():
             cookie_plain = Path(cookie_file).read_text(encoding="utf-8")
             self.save_cookie(account, cookie_plain)
         return result
 
-    async def check_cookie(self, account_id: int) -> dict:
+    async def check_cookie(
+        self,
+        account_id: int,
+        *,
+        user_id: int | None = None,
+        ip: str | None = None,
+    ) -> dict:
         account = self.get_account(account_id)
         if not account:
             raise ValueError("账号不存在")
+        prev_status = account.status
         cookie_file = self.sync_cookie_file(account)
         if not Path(cookie_file).exists():
             account.status = "expired"
+            self._log_account_expired(account, prev_status, user_id, ip)
             self.db.commit()
             return {"valid": False, "status": account.status}
         adapter = self.factory.get_platform_adapter(account.platform)
-        valid = await adapter.check_cookie_valid(cookie_file)
+        if account.platform == "bilibili":
+            valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=None)
+        elif account.platform == "channels":
+            valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=None)
+        else:
+            proxy_url = self.resolve_publish_proxy(account)
+            with use_account_proxy(proxy_url):
+                valid = await adapter.check_cookie_valid(cookie_file, publish_proxy=proxy_url)
         account.status = "active" if valid else "expired"
+        if not valid:
+            self._log_account_expired(account, prev_status, user_id, ip)
         if valid:
             cookie_plain = Path(cookie_file).read_text(encoding="utf-8")
             self.save_cookie(account, cookie_plain)
         self.db.commit()
         return {"valid": valid, "status": account.status}
+
+    def _log_account_expired(
+        self,
+        account: PlatformAccount,
+        prev_status: str,
+        user_id: int | None,
+        ip: str | None,
+    ) -> None:
+        if prev_status != "expired":
+            LogService(self.db).add_operation(
+                "platform_account.expired",
+                user_id,
+                "platform_account",
+                account.id,
+                ip=ip,
+            )
 
     def delete_account(self, account_id: int) -> None:
         from app.models import PublishTask

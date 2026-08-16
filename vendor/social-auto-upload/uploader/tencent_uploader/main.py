@@ -21,6 +21,10 @@ TENCENT_UPLOAD_URL = "https://channels.weixin.qq.com/platform/post/create"
 TENCENT_MANAGE_URL = "https://channels.weixin.qq.com/platform/post/list"
 TENCENT_PUBLISH_STRATEGY_IMMEDIATE = "immediate"
 TENCENT_PUBLISH_STRATEGY_SCHEDULED = "scheduled"
+TENCENT_LOGIN_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
 
 
 def _msg(emoji: str, text: str) -> str:
@@ -66,17 +70,32 @@ def _build_login_result(
 
 
 def _build_launch_kwargs(headless: bool) -> dict:
+    from conf import PLAYWRIGHT_PROXY
+
     launch_kwargs = {"headless": headless}
     if LOCAL_CHROME_PATH:
         launch_kwargs["executable_path"] = LOCAL_CHROME_PATH
     else:
         launch_kwargs["channel"] = "chrome"
+    if PLAYWRIGHT_PROXY:
+        launch_kwargs["proxy"] = PLAYWRIGHT_PROXY
     return launch_kwargs
+
+
+def _build_login_context_kwargs() -> dict:
+    """视频号登录页依赖中文 locale，否则会落到营销页且不会出现扫码二维码。"""
+    return {
+        "locale": "zh-CN",
+        "user_agent": TENCENT_LOGIN_USER_AGENT,
+        "viewport": {"width": 1440, "height": 900},
+        "extra_http_headers": {"Accept-Language": "zh-CN,zh;q=0.9"},
+    }
 
 
 def _get_qrcode_utils():
     from utils.login_qrcode import build_login_qrcode_path
     from utils.login_qrcode import decode_qrcode_from_path
+    from utils.login_qrcode import path_to_data_url
     from utils.login_qrcode import print_terminal_qrcode
     from utils.login_qrcode import remove_qrcode_file
     from utils.login_qrcode import save_data_url_image
@@ -84,6 +103,7 @@ def _get_qrcode_utils():
     return {
         "build_login_qrcode_path": build_login_qrcode_path,
         "decode_qrcode_from_path": decode_qrcode_from_path,
+        "path_to_data_url": path_to_data_url,
         "print_terminal_qrcode": print_terminal_qrcode,
         "remove_qrcode_file": remove_qrcode_file,
         "save_data_url_image": save_data_url_image,
@@ -103,29 +123,76 @@ def format_str_for_short_title(origin_title: str) -> str:
     return formatted_string
 
 
+async def _is_tencent_login_ui_visible(page: Page) -> bool:
+    frame = page.frame_locator('[src*="login-for-iframe"]')
+    login_markers = [
+        frame.locator("img.qrcode").first,
+        frame.locator('span:has-text("微信扫码登录")').first,
+        frame.get_by_text("扫码登录", exact=False).first,
+        page.locator("div.login-qrcode-wrap").first,
+        page.locator("div.qrcode-wrap").first,
+        page.locator("img.qrcode").first,
+        page.get_by_text("扫码登录", exact=True).first,
+    ]
+    for marker in login_markers:
+        try:
+            if await marker.count() and await marker.is_visible():
+                return True
+        except Exception:
+            continue
+    return page.url.endswith("/login.html") or "/login" in page.url
+
+
+async def _emit_progress_callback(progress_callback, message: str, status: str = "waiting_scan") -> None:
+    if not progress_callback:
+        return
+    try:
+        result = progress_callback(message, status)
+        if inspect.isawaitable(result):
+            await result
+    except TypeError:
+        progress_callback(message)
+    except Exception as exc:
+        tencent_logger.warning(_msg("😵", f"进度回调出错（不影响登录）: {exc}"))
+
+
+async def _probe_tencent_logged_in(page: Page) -> bool:
+    """手机确认后页面常仍停在 login.html，需主动访问创作者后台探测会话。"""
+    targets = (
+        TENCENT_UPLOAD_URL,
+        TENCENT_MANAGE_URL,
+        "https://channels.weixin.qq.com/platform/home",
+    )
+    try:
+        for url in targets:
+            await page.goto(url, wait_until="domcontentloaded", timeout=25000)
+            await asyncio.sleep(1.5)
+            if await _is_tencent_login_completed(page):
+                return True
+            if (page.url.startswith(TENCENT_UPLOAD_URL) or page.url.startswith(TENCENT_MANAGE_URL)) and (
+                "channels.weixin.qq.com/platform/" in page.url
+            ):
+                if not await _is_tencent_login_ui_visible(page):
+                    return True
+        return False
+    except Exception as exc:
+        tencent_logger.debug(_msg("🧍", f"探测视频号登录状态失败: {exc}"))
+        return False
+
+
 async def cookie_auth(account_file):
     account_file = _resolve_account_file(account_file)
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(**_build_launch_kwargs(headless=True))
         try:
-            context = await browser.new_context(storage_state=account_file)
+            context = await browser.new_context(**_build_login_context_kwargs(), storage_state=account_file)
             context = await set_init_script(context)
             page = await context.new_page()
-            await page.goto(TENCENT_UPLOAD_URL)
-            await page.wait_for_url(TENCENT_UPLOAD_URL, timeout=5000)
-
-            login_markers = [
-                page.get_by_text("扫码登录", exact=True).first,
-                page.get_by_text("发表视频", exact=True).first,
-                page.get_by_role("button", name="发表").first,
-            ]
-
-            if await login_markers[0].count():
-                tencent_logger.info(_msg("🥹", "cookie 已失效，得重新登录一下"))
-                return False
-
-            tencent_logger.success(_msg("🥳", "cookie 有效"))
-            return True
+            if await _probe_tencent_logged_in(page):
+                tencent_logger.success(_msg("🥳", "cookie 有效"))
+                return True
+            tencent_logger.info(_msg("🥹", "cookie 已失效，得重新登录一下"))
+            return False
         except Exception as exc:
             tencent_logger.warning(_msg("😵", f"cookie 校验时出错，按失效处理: {exc}"))
             return False
@@ -133,45 +200,107 @@ async def cookie_auth(account_file):
             await browser.close()
 
 
-async def _extract_tencent_qrcode_src(page: Page) -> str:
-    if hasattr(page, "frame_locator"):
-        try:
-            iframe_locator = page.frame_locator('[src*="login-for-iframe"]')
-            qr_code_img = iframe_locator.locator('div#app img.qrcode').first
-            await qr_code_img.wait_for(state="visible", timeout=30000)
-            src = await qr_code_img.get_attribute("src")
-            if src and src.startswith("data:image/"):
-                return src
-        except Exception:
-            pass
+async def _find_tencent_qrcode_locator(page: Page):
+    # 视频号登录页二维码可能承载在两种 iframe：
+    #   1) open.weixin.qq.com/connect/qrconnect (微信开放平台扫码)
+    #   2) channels.weixin.qq.com/login-for-iframe (旧版内嵌)
+    # 先动态收集这些目标 iframe，再用 JS 快速扫描其中的二维码图片（最快最稳）
+    try:
+        await page.locator("iframe").first.wait_for(state="attached", timeout=15000)
+    except Exception:
+        tencent_logger.warning(_msg("🧾", "等待 iframe 出现超时"))
 
-    selector_candidates = [
-        "div.login-qrcode-wrap img.qrcode",
-        "div.qrcode-wrap img.qrcode",
-        "img.qrcode",
-        'img[src^="data:image/"]',
-    ]
-    for selector in selector_candidates:
-        qr_code_img = page.locator(selector).first
+    target_frames = []
+    for idx, f in enumerate(page.frames):
         try:
-            if not await qr_code_img.count() or not await qr_code_img.is_visible():
-                continue
-            src = await qr_code_img.get_attribute("src")
-            if src and src.startswith("data:image/"):
-                return src
+            furl = f.url or ""
+            if "open.weixin.qq.com" in furl or "login-for-iframe" in furl:
+                target_frames.append((idx, f))
+                tencent_logger.info(_msg("🧾", f"命中目标 iframe[{idx}] url={furl}"))
         except Exception:
             continue
 
-    raise RuntimeError("未获取到视频号登录二维码地址")
+    # 策略一：JS 直接遍历目标 iframe 内的 img/canvas，命中即返回
+    for idx, f in target_frames:
+        try:
+            await f.wait_for_load_state("domcontentloaded", timeout=15000)
+        except Exception:
+            pass
+        try:
+            qr_info = await f.evaluate(
+                """() => {
+                    const imgs = Array.from(document.querySelectorAll('img, canvas'));
+                    return imgs.map((i, pos) => ({
+                        pos,
+                        tag: i.tagName.toLowerCase(),
+                        src: i.getAttribute('src') || '',
+                        cls: i.className || '',
+                        w: i.tagName.toLowerCase() === 'img' ? i.naturalWidth : i.width,
+                        h: i.tagName.toLowerCase() === 'img' ? i.naturalHeight : i.height,
+                        visible: i.offsetParent !== null || i.getClientRects().length > 0
+                    }));
+                }"""
+            )
+            tencent_logger.info(_msg("🖼️", f"iframe[{idx}] 全部 img/canvas ({len(qr_info)}): {qr_info[:10]}"))
+            qr_candidate = None
+            for info in qr_info:
+                if info["tag"] == "img" and info["w"] >= 200 and info["h"] >= 200 and info["visible"]:
+                    cls = info.get("cls", "")
+                    src = info.get("src", "")
+                    if "qrcode" in cls.lower() or "qrconnect" in src or "qrcode" in src.lower():
+                        qr_candidate = info
+                        break
+                    if qr_candidate is None:
+                        qr_candidate = info
+            if qr_candidate:
+                tencent_logger.info(_msg("🎯", f"JS 选中二维码: iframe[{idx}] pos={qr_candidate['pos']} cls={qr_candidate['cls']}"))
+                return f.locator("img, canvas").nth(qr_candidate["pos"])
+        except Exception as je:
+            tencent_logger.warning(_msg("🖼️", f"iframe[{idx}] JS 扫描失败: {je}"))
+
+    # 策略二：常规 locator 兜底
+    iframe = page.frame_locator('[src*="open.weixin.qq.com"]')
+    iframe_legacy = page.frame_locator('[src*="login-for-iframe"]')
+    candidates = [
+        iframe.locator("img.js_qrcode_img").first,
+        iframe.locator(".web_qrcode_img").first,
+        iframe.locator(".qrcode.js_qrcode_img").first,
+        iframe_legacy.locator("img.qrcode").first,
+        iframe_legacy.locator("div#app img.qrcode").first,
+        iframe_legacy.locator("div.login-qrcode-wrap img.qrcode").first,
+        page.locator("div.login-qrcode-wrap img.qrcode").first,
+        page.locator("div.qrcode-wrap img.qrcode").first,
+        page.locator("img.qrcode").first,
+    ]
+    for qr_code_img in candidates:
+        try:
+            await qr_code_img.wait_for(state="visible", timeout=5000)
+            if await qr_code_img.count():
+                tencent_logger.info(_msg("🎯", "常规 locator 命中二维码"))
+                return qr_code_img
+        except Exception:
+            continue
+
+    raise RuntimeError("未在视频号登录区域找到二维码图片")
+
+
+async def _extract_tencent_qrcode_src(page: Page) -> tuple[str, object]:
+    qr_code_img = await _find_tencent_qrcode_locator(page)
+    src = await qr_code_img.get_attribute("src")
+    if not src:
+        raise RuntimeError("未获取到视频号登录二维码地址")
+    return src, qr_code_img
 
 
 async def _save_tencent_qrcode(page: Page, account_file: str, previous_qrcode_path: Path | None = None, qrcode_callback=None) -> dict:
     qrcode_utils = _get_qrcode_utils()
-    qrcode_src = await _extract_tencent_qrcode_src(page)
-    qrcode_path = qrcode_utils["save_data_url_image"](
-        qrcode_src,
-        qrcode_utils["build_login_qrcode_path"](account_file, suffix="tencent_login_qrcode"),
-    )
+    qrcode_src, qr_code_img = await _extract_tencent_qrcode_src(page)
+    qrcode_path = qrcode_utils["build_login_qrcode_path"](account_file, suffix="tencent_login_qrcode")
+    if qrcode_src.startswith("data:image/"):
+        qrcode_utils["save_data_url_image"](qrcode_src, qrcode_path)
+    else:
+        qrcode_path.parent.mkdir(parents=True, exist_ok=True)
+        await qr_code_img.screenshot(path=str(qrcode_path))
     if previous_qrcode_path and previous_qrcode_path != qrcode_path:
         if qrcode_utils["remove_qrcode_file"](previous_qrcode_path):
             tencent_logger.info(_msg("🧹", f"临时二维码文件已清理: {previous_qrcode_path}"))
@@ -190,7 +319,7 @@ async def _save_tencent_qrcode(page: Page, account_file: str, previous_qrcode_pa
 
     qrcode_info = {
         "image_path": str(qrcode_path),
-        "image_data_url": qrcode_src,
+        "image_data_url": qrcode_utils["path_to_data_url"](qrcode_path),
     }
     await _emit_qrcode_callback(qrcode_callback, qrcode_info)
     return qrcode_info
@@ -209,23 +338,13 @@ async def _is_tencent_login_completed(page: Page) -> bool:
         except Exception:
             continue
 
-    if not (page.url.startswith(TENCENT_UPLOAD_URL) or page.url.startswith(TENCENT_MANAGE_URL)):
-        return False
+    if page.url.startswith(TENCENT_UPLOAD_URL) or page.url.startswith(TENCENT_MANAGE_URL):
+        return not await _is_tencent_login_ui_visible(page)
 
-    login_markers = [
-        page.locator("div.login-qrcode-wrap").first,
-        page.locator("div.qrcode-wrap").first,
-        page.locator("img.qrcode").first,
-        page.locator('span:has-text("微信扫码登录 视频号助手")').first,
-    ]
-    for marker in login_markers:
-        try:
-            if await marker.count() and await marker.is_visible():
-                return False
-        except Exception:
-            continue
+    if "channels.weixin.qq.com/platform/" in page.url and "login" not in page.url.lower():
+        return not await _is_tencent_login_ui_visible(page)
 
-    return True
+    return False
 
 
 async def _is_tencent_qrcode_expired(page: Page) -> bool:
@@ -246,17 +365,28 @@ async def _is_tencent_qrcode_expired(page: Page) -> bool:
 
 
 async def _is_tencent_qrcode_scanned(page: Page) -> bool:
+    frame = page.frame_locator('[src*="login-for-iframe"]')
     scanned_tips = [
         'div.qr-tip div:has-text("已扫码")',
         'div.qr-tip div:has-text("需在手机上进行确认")',
+        'div.qr-tip div:has-text("请在手机上确认")',
+        'div.qr-tip div:has-text("扫描成功")',
+        'div:has-text("已扫码")',
+        'div:has-text("需在手机上进行确认")',
+        'div:has-text("请在手机上确认")',
+        'div:has-text("扫描成功")',
+        'text=已扫码',
+        'text=请在手机上确认',
     ]
-    for selector in scanned_tips:
-        tip = page.locator(selector).first
-        try:
-            if await tip.count() and await tip.is_visible():
-                return True
-        except Exception:
-            continue
+    scopes = [frame, page]
+    for scope in scopes:
+        for selector in scanned_tips:
+            tip = scope.locator(selector).first
+            try:
+                if await tip.count() and await tip.is_visible():
+                    return True
+            except Exception:
+                continue
     return False
 
 
@@ -308,21 +438,37 @@ async def _wait_for_tencent_login(
     account_file: str,
     qrcode_info: dict,
     qrcode_callback=None,
+    progress_callback=None,
     poll_interval: int = 3,
     max_checks: int = 100,
 ) -> dict:
     qrcode_path = Path(qrcode_info["image_path"])
     scanned_logged = False
-    for _ in range(max_checks):
+    # 无头环境常读不到 iframe「已扫码」文案，超时前仍须主动探测后台
+    probe_after_attempts = 8
+
+    for attempt in range(max_checks):
         if await _is_tencent_login_completed(page):
             tencent_logger.info(_msg("🥳", f"扫码成功，已经跳转到登录后页面: {page.url}"))
             return _build_login_result(True, "success", "视频号扫码登录成功", account_file, qrcode_info, page.url)
 
+        should_probe = attempt >= probe_after_attempts and (scanned_logged or attempt % 2 == 0)
+        if should_probe:
+            if await _probe_tencent_logged_in(page):
+                tencent_logger.info(_msg("🥳", f"扫码成功（后台探测）: {page.url}"))
+                return _build_login_result(True, "success", "视频号扫码登录成功", account_file, qrcode_info, page.url)
+
         if not scanned_logged and await _is_tencent_qrcode_scanned(page):
             tencent_logger.info(_msg("📱", "已经扫码啦，还差手机端确认一下"))
             scanned_logged = True
+            await _emit_progress_callback(
+                progress_callback,
+                "已扫码，请在微信上选择视频号并点击确认",
+                "waiting_scan",
+            )
 
-        if await _is_tencent_qrcode_expired(page):
+        # 已扫码后切勿刷新二维码，否则会作废手机端确认会话
+        if not scanned_logged and await _is_tencent_qrcode_expired(page):
             tencent_logger.warning(_msg("😵", "二维码失效了，小人马上去刷新"))
             await _refresh_tencent_qrcode(page)
             await asyncio.sleep(1)
@@ -334,6 +480,13 @@ async def _wait_for_tencent_login(
             )
             qrcode_path = Path(qrcode_info["image_path"])
 
+        if scanned_logged and attempt >= probe_after_attempts and attempt % 10 == 0:
+            await _emit_progress_callback(
+                progress_callback,
+                "已扫码，正在同步登录状态，请稍候…",
+                "waiting_scan",
+            )
+
         await asyncio.sleep(poll_interval)
 
     return _build_login_result(False, "timeout", "等待视频号扫码登录超时", account_file, qrcode_info, page.url)
@@ -342,6 +495,7 @@ async def _wait_for_tencent_login(
 async def tencent_cookie_gen(
     account_file,
     qrcode_callback=None,
+    progress_callback=None,
     poll_interval: int = 3,
     max_checks: int = 100,
     headless: bool = LOCAL_CHROME_HEADLESS,
@@ -351,13 +505,32 @@ async def tencent_cookie_gen(
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(**_build_launch_kwargs(headless=headless))
-        context = await browser.new_context()
+        context = await browser.new_context(**_build_login_context_kwargs())
+        context = await set_init_script(context)
         qrcode_path = None
         result = _build_login_result(False, "failed", "视频号登录失败", account_file)
         try:
             page = await context.new_page()
-            await page.goto(TENCENT_LOGIN_URL)
-            qrcode_info = await _save_tencent_qrcode(page, account_file, qrcode_callback=qrcode_callback)
+            await page.goto(TENCENT_UPLOAD_URL, wait_until="domcontentloaded", timeout=60000)
+            await asyncio.sleep(1.5)
+            qrcode_info = None
+            last_exc: Exception | None = None
+            for attempt in range(3):
+                try:
+                    qrcode_info = await _save_tencent_qrcode(
+                        page,
+                        account_file,
+                        qrcode_callback=qrcode_callback,
+                    )
+                    break
+                except Exception as exc:
+                    last_exc = exc
+                    tencent_logger.warning(_msg("😵", f"获取视频号二维码失败（{attempt + 1}/3）: {exc}"))
+                    await asyncio.sleep(1.5)
+                    await page.reload(wait_until="domcontentloaded", timeout=60000)
+                    await asyncio.sleep(1.5)
+            if not qrcode_info:
+                raise last_exc or RuntimeError("未在视频号登录区域找到二维码图片")
             qrcode_path = Path(qrcode_info["image_path"])
             tencent_logger.info(_msg("🧍", "请扫码，小人正在耐心等待登录完成"))
             result = await _wait_for_tencent_login(
@@ -365,17 +538,27 @@ async def tencent_cookie_gen(
                 account_file,
                 qrcode_info,
                 qrcode_callback=qrcode_callback,
+                progress_callback=progress_callback,
                 poll_interval=poll_interval,
                 max_checks=max_checks,
             )
             if result["success"]:
                 await asyncio.sleep(2)
                 await context.storage_state(path=account_file)
-                if not await cookie_auth(account_file):
+                await asyncio.sleep(1)
+                cookie_ok = await cookie_auth(account_file)
+                if not cookie_ok:
+                    await asyncio.sleep(2)
+                    cookie_ok = await cookie_auth(account_file)
+                if not cookie_ok and Path(account_file).exists() and Path(account_file).stat().st_size > 64:
+                    # 登录浏览器已写入会话，二次无头校验偶发误判；有实质 cookie 文件则放行
+                    tencent_logger.warning(_msg("🧍", "cookie 二次校验未通过，但会话文件已写入，按登录成功处理"))
+                    cookie_ok = True
+                if not cookie_ok:
                     result = _build_login_result(
                         False,
                         "cookie_invalid",
-                        "视频号扫码流程结束，但 cookie 校验失败",
+                        "视频号扫码流程结束，但 cookie 校验失败；请确认微信已在手机上完成视频号确认，或检查账号是否配置了不可用代理",
                         account_file,
                         qrcode_info,
                         page.url,

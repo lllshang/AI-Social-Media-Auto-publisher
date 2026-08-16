@@ -1,0 +1,3 @@
+name: phase-d-account-proxy
+status: proposed
+description: 阶段 D.4.1 每账号发布代理（方案1），实现多账号不同出口 IP；与 D.4 本机 Worker 可叠加

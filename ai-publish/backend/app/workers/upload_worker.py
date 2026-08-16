@@ -5,6 +5,8 @@ from app.adapters.factory import get_adapter_factory
 from app.models import PublishTask
 from app.services.material_service import MaterialService
 from app.services.platform_account_service import PlatformAccountService
+from app.services.system_config_service import SystemConfigService
+from app.utils.vendor_proxy import use_account_proxy
 
 
 class UploadWorker:
@@ -20,9 +22,17 @@ class UploadWorker:
             raise ValueError("账号不存在")
         cookie_file = self.account_service.sync_cookie_file(account)
         material_paths: list[str] = []
+        thumbnail_path: str | None = None
         for material_id in task.material_ids or []:
             material = self.material_service.get(material_id)
-            if material:
+            if not material:
+                continue
+            if task.content_type == "video":
+                if material.type == "video":
+                    material_paths.append(material.file_path)
+                elif material.type == "image" and thumbnail_path is None:
+                    thumbnail_path = material.file_path
+            else:
                 material_paths.append(material.file_path)
 
         async def log_callback(step: str, status: str, message: str) -> None:
@@ -32,6 +42,12 @@ class UploadWorker:
             self.db.add(log)
             self.db.commit()
 
+        bilibili_tid = None
+        if task.platform == "bilibili":
+            config = SystemConfigService(self.db)
+            bilibili_tid = task.bilibili_tid or config.get_int("bilibili_default_tid", 21)
+
+        publish_proxy = self.account_service.resolve_publish_proxy(account)
         context = PublishContext(
             task_id=task.id,
             platform=task.platform,
@@ -43,8 +59,13 @@ class UploadWorker:
             tags=task.tags or [],
             content_type=task.content_type,
             material_paths=material_paths,
+            thumbnail_path=thumbnail_path,
+            cover_text=task.cover_text,
             publish_time=task.publish_time,
+            bilibili_tid=bilibili_tid,
+            publish_proxy=publish_proxy,
             log_callback=log_callback,
         )
         adapter = self.factory.get_platform_adapter(task.platform)
-        return await adapter.publish(context)
+        with use_account_proxy(publish_proxy):
+            return await adapter.publish(context)

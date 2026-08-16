@@ -1,14 +1,18 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.adapters.base import PublishContext
 from app.adapters.factory import get_adapter_factory
 from app.config import get_settings
-from app.models import Material, PublishTask, PublishTaskLog
+from app.models import Material, PublishTask, PublishTaskLog, ReviewLog
 from app.services.material_service import MaterialService
 from app.services.platform_account_service import PlatformAccountService
+from app.services.rate_limit_service import RateLimitService
+from app.services.sensitive_word_service import SensitiveWordService
+from app.services.system_config_service import SystemConfigService
+from app.utils.bilibili_guard import BILIBILI_DISABLED_MESSAGE, assert_bilibili_enabled
 from app.workers.upload_worker import UploadWorker
 
 
@@ -16,8 +20,9 @@ class PublishService:
     VALID_TRANSITIONS = {
         "draft": {"pending", "pending_review"},
         "pending_review": {"pending", "rejected"},
-        "rejected": set(),
-        "pending": {"running"},
+        "rejected": {"draft"},
+        "pending": {"running", "dispatching"},
+        "dispatching": {"running", "pending", "failed"},
         "running": {"success", "failed"},
         "failed": {"pending"},
         "success": set(),
@@ -30,6 +35,25 @@ class PublishService:
         self.account_service = PlatformAccountService(db)
         self.material_service = MaterialService(db)
         self.worker = UploadWorker(db)
+        self.system_config = SystemConfigService(db)
+        self.sensitive_words = SensitiveWordService(db)
+        self.rate_limit = RateLimitService(db)
+
+    def _log_sensitive_word_hit(self, task_id: int, result) -> None:
+        self.add_log(
+            task_id,
+            "sensitive_word",
+            "failed" if self.sensitive_words.should_block() else "warn",
+            result.message(),
+        )
+
+    def _enforce_sensitive_words(self, task: PublishTask) -> None:
+        self.sensitive_words.enforce_task(
+            task,
+            log_callback=lambda result: self._log_sensitive_word_hit(task.id, result)
+            if task.id
+            else None,
+        )
 
     def get_task(self, task_id: int) -> PublishTask | None:
         return self.db.query(PublishTask).filter(PublishTask.id == task_id).first()
@@ -79,14 +103,32 @@ class PublishService:
         topic: str | None = None,
         cover_text: str | None = None,
         wizard_step: int | None = None,
+        bilibili_tid: int | None = None,
         status: str = "draft",
         user_id: int | None = None,
     ) -> PublishTask:
         account = self.account_service.get_account(account_id)
         if not account:
             raise ValueError("账号不存在")
+        if platform == "bilibili":
+            assert_bilibili_enabled()
+            if content_type != "video":
+                raise ValueError("B站仅支持视频发布")
+            if bilibili_tid is None:
+                bilibili_tid = self.system_config.get_int("bilibili_default_tid", 21)
+        if platform == "channels" and content_type != "video":
+            raise ValueError("视频号仅支持短视频发布")
         if material_ids:
             self.material_service.validate_material_ids(material_ids, content_type)
+        precheck = PublishTask(
+            title=title,
+            content=content,
+            comment_guide=comment_guide,
+            topic=topic,
+            cover_text=cover_text,
+            tags=tags or [],
+        )
+        self.sensitive_words.enforce_task(precheck)
         task = PublishTask(
             title=title,
             content=content,
@@ -100,6 +142,7 @@ class PublishService:
             content_type=content_type,
             material_ids=material_ids or [],
             publish_time=publish_time,
+            bilibili_tid=bilibili_tid,
             status=status,
             created_by=user_id,
         )
@@ -122,6 +165,7 @@ class PublishService:
         account_id: int | None = None,
         material_ids: list[int] | None = None,
         publish_time: datetime | None = None,
+        bilibili_tid: int | None = None,
     ) -> PublishTask:
         task = self.get_task(task_id)
         if not task:
@@ -156,7 +200,14 @@ class PublishService:
             task.tags = tags
         if publish_time is not None:
             task.publish_time = publish_time
+        if bilibili_tid is not None:
+            task.bilibili_tid = bilibili_tid
+        if task.platform == "bilibili":
+            assert_bilibili_enabled()
+            if task.content_type != "video":
+                raise ValueError("B站仅支持视频发布")
 
+        self._enforce_sensitive_words(task)
         self.db.commit()
         self.db.refresh(task)
         return task
@@ -167,14 +218,87 @@ class PublishService:
             raise ValueError("任务不存在")
         if task.status not in {"draft", "failed"}:
             raise ValueError("当前状态不可提交")
-        next_status = "pending_review" if self.settings.require_content_review else "pending"
+        self._enforce_sensitive_words(task)
+        if task.material_ids:
+            self.material_service.validate_material_ids(task.material_ids, task.content_type)
+        next_status = "pending_review" if self.system_config.require_content_review() else "pending"
         task.status = next_status
         task.error_message = None
+        task.retry_count = 0
+        task.next_retry_at = None
         self.db.commit()
         self.db.refresh(task)
         return task
 
-    def approve_task(self, task_id: int) -> PublishTask:
+    def _log_rate_limit(self, task_id: int, message: str) -> None:
+        self.add_log(task_id, "rate_limit", "pending", message)
+
+    def check_can_execute(self, task: PublishTask) -> str | None:
+        if task.status != "pending":
+            return "仅 pending 状态任务可执行"
+        try:
+            self._enforce_sensitive_words(task)
+        except ValueError as exc:
+            return str(exc)
+        if self.system_config.require_content_review():
+            approved = (
+                self.db.query(ReviewLog.id)
+                .filter(ReviewLog.task_id == task.id, ReviewLog.action == "approved")
+                .first()
+            )
+            if not approved:
+                return "内容审核已开启，该任务须先通过审核方可执行"
+        limit_result = self.rate_limit.evaluate(task)
+        if not limit_result.allowed:
+            self._log_rate_limit(task.id, limit_result.message)
+            return limit_result.message
+        if task.material_ids:
+            try:
+                self.material_service.validate_material_ids(task.material_ids, task.content_type)
+            except ValueError as exc:
+                return str(exc)
+        if task.platform == "bilibili":
+            if not self.settings.bilibili_enabled:
+                return BILIBILI_DISABLED_MESSAGE
+            if task.content_type != "video":
+                return "B站仅支持视频发布"
+            if not task.bilibili_tid:
+                return "请设置 B站分区 tid"
+        return None
+
+    def assert_can_execute(self, task: PublishTask) -> None:
+        error = self.check_can_execute(task)
+        if error:
+            raise ValueError(error)
+
+    def try_start_execution(self, task_id: int) -> bool:
+        task = self.get_task(task_id)
+        if not task:
+            return False
+        error = self.check_can_execute(task)
+        if error:
+            return False
+        task.status = "running"
+        task.error_message = None
+        self.db.commit()
+        self.db.refresh(task)
+        return True
+
+    def list_due_pending_tasks(self, *, limit: int = 20) -> list[PublishTask]:
+        now = datetime.utcnow()
+        return (
+            self.db.query(PublishTask)
+            .filter(
+                PublishTask.status == "pending",
+                PublishTask.publish_time.isnot(None),
+                PublishTask.publish_time <= now,
+            )
+            .order_by(PublishTask.publish_time.asc(), PublishTask.id.asc())
+            .limit(limit)
+            .all()
+        )
+
+    def approve_task(self, task_id: int, reviewer_id: int | None = None) -> PublishTask:
         task = self.get_task(task_id)
         if not task:
             raise ValueError("任务不存在")
@@ -182,18 +306,34 @@ class PublishService:
             raise ValueError("仅 pending_review 任务可审核通过")
         task.status = "pending"
         task.error_message = None
+        self.db.add(
+            ReviewLog(
+                task_id=task.id,
+                action="approved",
+                reviewer_id=reviewer_id,
+            )
+        )
         self.db.commit()
         self.db.refresh(task)
         return task
 
-    def reject_task(self, task_id: int, reason: str | None = None) -> PublishTask:
+    def reject_task(self, task_id: int, reason: str | None = None, reviewer_id: int | None = None) -> PublishTask:
         task = self.get_task(task_id)
         if not task:
             raise ValueError("任务不存在")
         if task.status != "pending_review":
             raise ValueError("仅 pending_review 任务可驳回")
+        comment = reason or "审核驳回"
         task.status = "rejected"
-        task.error_message = reason or "审核驳回"
+        task.error_message = comment
+        self.db.add(
+            ReviewLog(
+                task_id=task.id,
+                action="rejected",
+                comment=comment,
+                reviewer_id=reviewer_id,
+            )
+        )
         self.db.commit()
         self.db.refresh(task)
         return task
@@ -202,6 +342,158 @@ class PublishService:
         log = PublishTaskLog(task_id=task_id, step=step, status=status, message=message)
         self.db.add(log)
         self.db.commit()
+
+    def _latest_dispatch_log(self, task_id: int) -> PublishTaskLog | None:
+        return (
+            self.db.query(PublishTaskLog)
+            .filter(PublishTaskLog.task_id == task_id, PublishTaskLog.step == "dispatch")
+            .order_by(PublishTaskLog.id.desc())
+            .first()
+        )
+
+    def _has_claim_after_dispatch(self, task_id: int, dispatch_log: PublishTaskLog | None) -> bool:
+        query = self.db.query(PublishTaskLog.id).filter(
+            PublishTaskLog.task_id == task_id,
+            PublishTaskLog.step == "worker_claim",
+        )
+        if dispatch_log and dispatch_log.id:
+            query = query.filter(PublishTaskLog.id > dispatch_log.id)
+        return query.first() is not None
+
+    def _latest_worker_claim_log(self, task_id: int) -> PublishTaskLog | None:
+        return (
+            self.db.query(PublishTaskLog)
+            .filter(PublishTaskLog.task_id == task_id, PublishTaskLog.step == "worker_claim")
+            .order_by(PublishTaskLog.id.desc())
+            .first()
+        )
+
+    def _has_finish_after_claim(self, task_id: int, claim_log: PublishTaskLog | None) -> bool:
+        query = self.db.query(PublishTaskLog.id).filter(
+            PublishTaskLog.task_id == task_id,
+            PublishTaskLog.step == "finish",
+        )
+        if claim_log and claim_log.id:
+            query = query.filter(PublishTaskLog.id > claim_log.id)
+        return query.first() is not None
+
+    def _dispatching_since(self, task_id: int) -> datetime:
+        latest_dispatch = self._latest_dispatch_log(task_id)
+        if latest_dispatch and latest_dispatch.created_at:
+            return latest_dispatch.created_at
+        return datetime.utcnow()
+
+    def _running_since(self, task_id: int) -> datetime:
+        latest_claim = self._latest_worker_claim_log(task_id)
+        if latest_claim and latest_claim.created_at:
+            return latest_claim.created_at
+        latest_start = (
+            self.db.query(PublishTaskLog)
+            .filter(PublishTaskLog.task_id == task_id, PublishTaskLog.step == "start")
+            .order_by(PublishTaskLog.id.desc())
+            .first()
+        )
+        if latest_start and latest_start.created_at:
+            return latest_start.created_at
+        return self._dispatching_since(task_id)
+
+    def _task_running_since(self, task: PublishTask) -> datetime:
+        if task.status == "dispatching":
+            return self._dispatching_since(task.id)
+        if task.status == "running":
+            return self._running_since(task.id)
+        latest_dispatch = self._latest_dispatch_log(task.id)
+        if latest_dispatch and latest_dispatch.created_at:
+            return latest_dispatch.created_at
+        marker = (
+            self.db.query(PublishTaskLog)
+            .filter(
+                PublishTaskLog.task_id == task.id,
+                PublishTaskLog.step.in_(("dispatch", "start", "worker_claim")),
+            )
+            .order_by(PublishTaskLog.id.asc())
+            .first()
+        )
+        if marker and marker.created_at:
+            return marker.created_at
+        return task.updated_at or task.created_at or datetime.utcnow()
+
+    def expire_stuck_dispatching_tasks(self) -> list[int]:
+        """本机 Worker 长时间未认领的派发中任务恢复为待发布。"""
+        timeout_minutes = min(self.system_config.publish_running_timeout_minutes(), 10)
+        if timeout_minutes <= 0:
+            timeout_minutes = 10
+        cutoff = datetime.utcnow() - timedelta(minutes=timeout_minutes)
+        expired: list[int] = []
+        dispatching_tasks = self.db.query(PublishTask).filter(PublishTask.status == "dispatching").all()
+        for task in dispatching_tasks:
+            latest_dispatch = self._latest_dispatch_log(task.id)
+            if self._has_claim_after_dispatch(task.id, latest_dispatch):
+                continue
+            ref_time = self._dispatching_since(task.id)
+            if ref_time > cutoff:
+                continue
+            message = (
+                f"派发超过 {timeout_minutes} 分钟本机 Worker 仍未认领，已恢复为待发布；"
+                "请确认 Worker 在线后重新执行"
+            )
+            task.status = "pending"
+            task.error_message = message
+            self.add_log(task.id, "dispatch_timeout", "pending", message)
+            expired.append(task.id)
+        if expired:
+            self.db.commit()
+        return expired
+
+    def expire_stuck_running_tasks(self) -> list[int]:
+        """将超时未完成的执行中任务判为失败，释放并发槽位。"""
+        timeout_minutes = self.system_config.publish_running_timeout_minutes()
+        if timeout_minutes <= 0:
+            return []
+        cutoff = datetime.utcnow() - timedelta(minutes=timeout_minutes)
+        expired: list[int] = []
+        running_tasks = self.db.query(PublishTask).filter(PublishTask.status == "running").all()
+        for task in running_tasks:
+            latest_claim = self._latest_worker_claim_log(task.id)
+            if self._has_finish_after_claim(task.id, latest_claim):
+                continue
+            ref_time = self._running_since(task.id)
+            if ref_time > cutoff:
+                continue
+            message = (
+                f"执行超过 {timeout_minutes} 分钟仍无完成结果，已自动判定失败以释放并发资源；"
+                "请确认本机 Worker 在线后点「重试」"
+            )
+            task.status = "failed"
+            task.error_message = message
+            self.add_log(task.id, "timeout", "failed", message)
+            expired.append(task.id)
+        if expired:
+            self.db.commit()
+        return expired
+
+    def recover_stuck_running_tasks(self) -> list[int]:
+        """兼容调度器调用。"""
+        self.expire_stuck_dispatching_tasks()
+        return self.expire_stuck_running_tasks()
+
+    def recover_task(self, task_id: int) -> PublishTask:
+        task = self.get_task(task_id)
+        if not task:
+            raise ValueError("任务不存在")
+        if task.status not in {"running", "dispatching"}:
+            raise ValueError("仅执行中或派发中任务可解除卡住")
+        if task.status == "dispatching":
+            task.status = "failed"
+            task.error_message = "已手动解除派发卡住并标记失败，可点「重试」后重新执行"
+            self.add_log(task.id, "recover", "failed", task.error_message)
+        else:
+            task.status = "failed"
+            task.error_message = "已手动解除卡住并标记失败，可点「重试」后重新执行"
+            self.add_log(task.id, "recover", "failed", task.error_message)
+        self.db.commit()
+        self.db.refresh(task)
+        return task
 
     def list_logs(self, task_id: int) -> list[PublishTaskLog]:
         return (
@@ -218,24 +510,54 @@ class PublishService:
         if not already_running:
             if task.status == "running":
                 raise ValueError("任务正在执行中")
-            if task.status not in {"pending"}:
-                raise ValueError("仅 pending 状态任务可执行")
+            self.assert_can_execute(task)
             task.status = "running"
             task.error_message = None
             self.db.commit()
         self.add_log(task_id, "start", "running", "开始执行发布任务")
         try:
             result = await self.worker.run(task)
-            task.status = "success" if result.success else "failed"
-            task.error_message = None if result.success else result.message
-            self.add_log(task_id, "finish", "success" if result.success else "failed", result.message)
+            if result.success:
+                task.status = "success"
+                task.error_message = None
+                task.retry_count = 0
+                task.next_retry_at = None
+                self.add_log(task_id, "finish", "success", result.message)
+            else:
+                task.status = "failed"
+                task.error_message = result.message
+                self.add_log(task_id, "finish", "failed", result.message)
+                self._schedule_auto_retry_if_needed(task)
         except Exception as exc:
             task.status = "failed"
             task.error_message = str(exc)
             self.add_log(task_id, "finish", "failed", str(exc))
+            self._schedule_auto_retry_if_needed(task)
         self.db.commit()
         self.db.refresh(task)
         return task
+
+    def _schedule_auto_retry_if_needed(self, task: PublishTask) -> None:
+        if not self.system_config.auto_retry_enabled():
+            task.next_retry_at = None
+            return
+        max_retries = self.system_config.max_auto_retries()
+        delay_minutes = self.system_config.retry_delay_minutes()
+        task.retry_count = (task.retry_count or 0) + 1
+        if task.retry_count <= max_retries:
+            task.next_retry_at = datetime.utcnow() + timedelta(minutes=delay_minutes)
+            message = (
+                f"将于 {delay_minutes} 分钟后自动重试"
+                f"（{task.retry_count}/{max_retries}）"
+            )
+            base = task.error_message or "发布失败"
+            task.error_message = f"{base}；{message}"
+            self.add_log(task.id, "auto_retry", "scheduled", message)
+        else:
+            task.next_retry_at = None
+            base = task.error_message or "发布失败"
+            task.error_message = f"{base}；已达自动重试上限（{max_retries}）"
+            self.add_log(task.id, "auto_retry", "exhausted", task.error_message)
 
     def execute_task_background(self, task_id: int) -> None:
         asyncio.create_task(self._execute_background(task_id))
@@ -250,6 +572,18 @@ class PublishService:
         finally:
             db.close()
 
+    def reopen_to_draft(self, task_id: int) -> PublishTask:
+        task = self.get_task(task_id)
+        if not task:
+            raise ValueError("任务不存在")
+        if task.status != "rejected":
+            raise ValueError("仅 rejected 任务可退回草稿")
+        task.status = "draft"
+        task.error_message = None
+        self.db.commit()
+        self.db.refresh(task)
+        return task
+
     def retry_task(self, task_id: int) -> PublishTask:
         task = self.get_task(task_id)
         if not task:
@@ -258,9 +592,37 @@ class PublishService:
             raise ValueError("仅 failed 任务可重试")
         task.status = "pending"
         task.error_message = None
+        task.next_retry_at = None
         self.db.commit()
         self.db.refresh(task)
         return task
+
+    def claim_auto_retry_task(self) -> int | None:
+        if not self.system_config.auto_retry_enabled():
+            return None
+        now = datetime.utcnow()
+        task = (
+            self.db.query(PublishTask)
+            .filter(
+                PublishTask.status == "failed",
+                PublishTask.next_retry_at.isnot(None),
+                PublishTask.next_retry_at <= now,
+            )
+            .order_by(PublishTask.next_retry_at.asc(), PublishTask.id.asc())
+            .first()
+        )
+        if not task:
+            return None
+        if (task.retry_count or 0) > self.system_config.max_auto_retries():
+            task.next_retry_at = None
+            self.db.commit()
+            return None
+        task.status = "pending"
+        task.next_retry_at = None
+        task.error_message = None
+        self.db.commit()
+        self.add_log(task.id, "auto_retry", "pending", "自动重试已入队")
+        return task.id
 
     def delete_task(self, task_id: int) -> None:
         task = self.get_task(task_id)

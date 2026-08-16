@@ -1,0 +1,8 @@
+template: |
+  为 B站视频生成横版封面图，比例 {ratio}（{ratio_hint}），主题「{topic}」，风格 {style_label}，
+  画面清晰、信息层级分明，适合视频投稿封面。
+template_en: |
+  Bilibili video cover image, ratio {ratio} ({ratio_hint}), topic: {topic}, style: {style_en},
+  clean layout, readable thumbnail for video upload.
+negative_prompt: |
+  blurry, low quality, watermark, cluttered text, distorted face, nsfw

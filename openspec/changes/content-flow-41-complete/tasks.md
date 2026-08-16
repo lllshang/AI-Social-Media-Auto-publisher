@@ -54,11 +54,41 @@
 - [x] 8.4 `sync-to-server.sh` 自动构建前端 + `--delete` 清理旧静态资源
 - [x] 8.5 待审核任务「通过/驳回」按钮（`pending_review` 状态，API 已有）
 
-## 9. 下一 change 待办（未开始）
+## 9. 产品文档对齐路线图（按规划顺序，C 方案风控放最后）
 
-- [ ] 9.1 审核管理独立页面（列表筛选、批量审核、审核记录）
-- [ ] 9.2 Celery/APScheduler 到点自动执行 `publish_time`
-- [ ] 9.3 服务器 Docker 环境小红书扫码登录 + 无头发布完善
-- [ ] 9.4 抖音平台 Adapter（见 `docs/multi-platform-roadmap.md` P1）
-- [ ] 9.5 RBAC 权限、敏感词检测、数据看板
-- [ ] 9.6 已驳回任务支持退回草稿重新编辑
+### 阶段 A — 第一阶段平台与发布（P0）
+
+- [x] A.1 APScheduler 定时发布：`publish_time` 到点自动执行 pending 任务
+- [x] A.2 抖音 Adapter + 前端平台选择/UI
+- [x] A.3 快手 Adapter + 前端平台选择/UI
+- [x] A.4 服务器 Docker 小红书扫码登录 + 无头发布完善
+- [x] A.5 小红书视频发布向导（后端已有 video 类型）
+
+### 阶段 B — 后台模块补全（P1）
+
+- [x] B.1 工作台：失败任务、账号健康、AI 调用统计
+- [x] B.2 账号分组（account_groups）
+- [x] B.3 AI 文生图 UI：多比例、批量生成
+- [x] B.4 提示词重构 API
+- [x] B.5 日志中心（operation_logs、ai_generation_records 查询）
+- [x] B.6 已驳回任务退回草稿
+
+### 阶段 C — 基础设施（P2）
+
+- [x] C.1 Redis 任务队列（替代进程内 BackgroundTasks）
+- [x] C.2 RBAC（roles 表 + 权限）
+- [x] C.3 system_configs 后台可配
+- [x] C.4 COS/OSS 存储 Adapter
+- [x] C.5 Nginx + HTTPS 纳入 compose
+
+### 阶段 E — 产品文档缺口补齐（见独立 change）
+
+> 详细任务：[phase-e-product-gap/tasks.md](../phase-e-product-gap/tasks.md)（用户管理、审核模块、文生图增强、平台 E2E、运维监控等，**不含 D 风控**）
+
+### 阶段 D — 风控 C 方案（最后）
+
+- [ ] D.1 审核管理独立模块（UI 部分见阶段 E.2）
+- [ ] D.2 敏感词检测
+- [ ] D.3 发布频率与并发限制
+- [ ] D.4 本机发布 Worker（审核通过后本机 Chrome 执行）
+- [ ] D.5 图片内容审核

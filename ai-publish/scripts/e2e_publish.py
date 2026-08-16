@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import shutil
 import sys
@@ -16,7 +17,55 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 BASE = "http://127.0.0.1:8765"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SAU_COOKIE = PROJECT_ROOT / "vendor/social-auto-upload/cookies/xiaohongshu_test1.json"
+
+PLATFORM_CONFIG = {
+    "xhs": {
+        "label": "小红书",
+        "cookie_candidates": [
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/xiaohongshu_test1.json",
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/xhs_uploader/account.json",
+        ],
+        "default_account": "test1",
+        "content_types": ("note", "video"),
+    },
+    "douyin": {
+        "label": "抖音",
+        "cookie_candidates": [
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/douyin_uploader/account.json",
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/douyin.json",
+        ],
+        "default_account": "douyin_test",
+        "content_types": ("note", "video"),
+    },
+    "kuaishou": {
+        "label": "快手",
+        "cookie_candidates": [
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/ks_uploader/account.json",
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/kuaishou.json",
+        ],
+        "default_account": "kuaishou_test",
+        "content_types": ("note", "video"),
+    },
+    "channels": {
+        "label": "视频号",
+        "cookie_candidates": [
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/tencent_uploader/account.json",
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/tencent_test.json",
+        ],
+        "default_account": "channels_test",
+        "content_types": ("video",),
+    },
+    "bilibili": {
+        "label": "B站",
+        "cookie_candidates": [
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/bilibili_test.json",
+            PROJECT_ROOT / "vendor/social-auto-upload/cookies/bilibili_uploader/account.json",
+        ],
+        "default_account": "bilibili_test",
+        "content_types": ("video",),
+        "default_tid": 21,
+    },
+}
 
 
 def api(method: str, path: str, token: str | None = None, body: dict | None = None) -> dict:
@@ -29,36 +78,48 @@ def api(method: str, path: str, token: str | None = None, body: dict | None = No
         return json.loads(resp.read())
 
 
-def import_cookie(account_name: str = "test1") -> int:
+def resolve_cookie_path(platform: str, cookie_arg: str | None) -> Path:
+    if cookie_arg:
+        path = Path(cookie_arg).expanduser()
+        if not path.exists():
+            raise FileNotFoundError(f"Cookie 文件不存在: {path}")
+        return path
+    for candidate in PLATFORM_CONFIG[platform]["cookie_candidates"]:
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(
+        f"未找到 {PLATFORM_CONFIG[platform]['label']} Cookie，请通过 --cookie 指定，"
+        f"或在 vendor/social-auto-upload 下导入 Cookie"
+    )
+
+
+def import_cookie(platform: str, account_name: str, cookie_path: Path) -> int:
     from app.database import SessionLocal
     from app.models import AccountCookie, PlatformAccount
     from app.services.platform_account_service import PlatformAccountService
-
-    if not SAU_COOKIE.exists():
-        raise FileNotFoundError(f"找不到 Cookie: {SAU_COOKIE}")
 
     db = SessionLocal()
     try:
         service = PlatformAccountService(db)
         account = (
             db.query(PlatformAccount)
-            .filter(PlatformAccount.platform == "xhs", PlatformAccount.account_name == account_name)
+            .filter(PlatformAccount.platform == platform, PlatformAccount.account_name == account_name)
             .first()
         )
         if not account:
-            account = service.create_account("xhs", account_name)
-            print(f"[1] 创建平台账号 id={account.id}")
+            account = service.create_account(platform, account_name)
+            print(f"[1] 创建平台账号 id={account.id} platform={platform}")
         else:
-            print(f"[1] 使用已有平台账号 id={account.id}")
+            print(f"[1] 使用已有平台账号 id={account.id} platform={platform}")
 
         db.query(AccountCookie).filter(AccountCookie.account_id == account.id).delete()
         db.commit()
 
-        cookie_plain = SAU_COOKIE.read_text(encoding="utf-8")
+        cookie_plain = cookie_path.read_text(encoding="utf-8")
         service.save_cookie(account, cookie_plain)
         cookie_file = Path(service.cookie_file_path(account))
         cookie_file.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(SAU_COOKIE, cookie_file)
+        shutil.copyfile(cookie_path, cookie_file)
         print(f"[2] Cookie 已导入: {cookie_file}")
         return account.id
     finally:
@@ -91,56 +152,100 @@ def upload_material(token: str, image_path: Path) -> int:
     return material["id"]
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="ai-publish 多平台 E2E 发布脚本")
+    parser.add_argument("--platform", choices=PLATFORM_CONFIG.keys(), default="xhs")
+    parser.add_argument("--content-type", choices=("note", "video"), default="note")
+    parser.add_argument("--account", default=None, help="平台账号名，默认按平台预设")
+    parser.add_argument("--cookie", default=None, help="Cookie JSON 文件路径")
+    parser.add_argument("--topic", default="AI平台API发布测试")
+    parser.add_argument("--skip-execute", action="store_true", help="仅验证 API 链路，不触发 Playwright 发布")
+    parser.add_argument("--base-url", default=BASE)
+    return parser.parse_args()
+
+
 def main() -> None:
-    print("=== ai-publish API 端到端发布 ===\n")
+    args = parse_args()
+    global BASE
+    BASE = args.base_url.rstrip("/")
+
+    platform = args.platform
+    cfg = PLATFORM_CONFIG[platform]
+    account_name = args.account or cfg["default_account"]
+    content_type = args.content_type
+    if content_type not in cfg["content_types"]:
+        content_type = cfg["content_types"][0]
+        print(f"平台 {cfg['label']} 不支持 {args.content_type}，已切换为 {content_type}")
+
+    print(f"=== ai-publish E2E | {cfg['label']} | {content_type} ===\n")
 
     token = api("POST", "/api/auth/login", body={"username": "admin", "password": "admin123"})[
         "access_token"
     ]
     print("[0] API 登录 OK")
 
-    account_id = import_cookie("test1")
+    cookie_path = resolve_cookie_path(platform, args.cookie)
+    account_id = import_cookie(platform, account_name, cookie_path)
 
     check = api("POST", f"/api/platform-accounts/{account_id}/check-cookie", token=token)
     print(f"[3] Cookie 校验: {check}")
     if not check.get("valid"):
-        print("Cookie 无效，请在 /docs 调用 login 接口扫码后再试")
+        print("Cookie 无效，请扫码登录或重新导入 Cookie 后再试")
         sys.exit(1)
 
     text = api(
         "POST",
         "/api/ai/text/generate",
         token=token,
-        body={"topic": "AI平台API发布测试", "platform": "xhs"},
+        body={"topic": args.topic, "platform": platform, "content_type": content_type},
     )
     print(f"[4] AI 文案: title={text['title']!r}")
 
     demo_image = PROJECT_ROOT / "vendor/social-auto-upload/videos/demo.png"
+    if not demo_image.exists():
+        raise FileNotFoundError(f"演示图片不存在: {demo_image}")
     material_id = upload_material(token, demo_image)
     print(f"[5] 上传素材 id={material_id} file={demo_image.name}")
 
-    task = api(
-        "POST",
-        "/api/publish-tasks",
-        token=token,
-        body={
-            "title": text["title"],
-            "content": text["content"],
-            "tags": text["tags"],
-            "platform": "xhs",
-            "account_id": account_id,
-            "content_type": "note",
-            "material_ids": [material_id],
-            "submit": True,
-        },
-    )
+    material_ids = [material_id]
+    if content_type == "video":
+        demo_video = PROJECT_ROOT / "vendor/social-auto-upload/videos/demo.mp4"
+        if demo_video.exists():
+            video_id = upload_material(token, demo_video)
+            material_ids = [video_id]
+            print(f"[5b] 上传视频素材 id={video_id}")
+        else:
+            print("[5b] 未找到 demo.mp4，视频任务将仅使用图片素材（可能发布失败）")
+
+    task_body = {
+        "title": text["title"],
+        "content": text["content"],
+        "tags": text["tags"],
+        "platform": platform,
+        "account_id": account_id,
+        "content_type": content_type,
+        "material_ids": material_ids,
+        "submit": True,
+    }
+    if platform == "bilibili":
+        task_body["bilibili_tid"] = cfg.get("default_tid", 21)
+    task = api("POST", "/api/publish-tasks", token=token, body=task_body)
     task_id = task["id"]
     print(f"[6] 发布任务已创建 id={task_id} status={task['status']}")
+
+    if task["status"] == "pending_review":
+        print("[6b] 任务进入待审核，自动通过审核...")
+        task = api("POST", f"/api/publish-tasks/{task_id}/approve", token=token)
+        print(f"     审核后 status={task['status']}")
+
+    if args.skip_execute:
+        print("[7] 已跳过执行（--skip-execute）")
+        return
 
     print("[7] 触发发布（会打开 Chrome，请稍候）...")
     api("POST", f"/api/publish-tasks/{task_id}/execute", token=token)
 
-    for i in range(60):
+    for _ in range(60):
         time.sleep(3)
         task = api("GET", f"/api/publish-tasks/{task_id}", token=token)
         logs = api("GET", f"/api/publish-tasks/{task_id}/logs", token=token)

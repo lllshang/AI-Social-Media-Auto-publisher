@@ -1,0 +1,67 @@
+/** 权限标识 → 中文说明（仅用于界面展示，鉴权仍用英文 key） */
+export const PERMISSION_LABELS = {
+  '*': '全部权限',
+  'dashboard:read': '查看工作台',
+  'accounts:read': '查看平台账号',
+  'accounts:write': '管理平台账号',
+  'materials:read': '查看素材库',
+  'materials:write': '管理素材库',
+  'tasks:read': '查看发布任务',
+  'tasks:write': '管理发布任务',
+  'tasks:execute': '执行发布任务',
+  'review:write': '内容审核',
+  'publish:write': '使用发布向导',
+  'models:read': '查看 AI 模型',
+  'models:write': '配置 AI 模型',
+  'logs:read': '查看日志中心',
+  'settings:write': '系统设置',
+  'users:write': '用户管理',
+  'templates:read': '查看内容模板',
+  'templates:write': '管理内容模板',
+  'trending:read': '查看热点灵感',
+  'trending:write': '抓取热点数据',
+  'avatars:read': '查看数字人/仿真人',
+  'avatars:write': '管理数字人/仿真人',
+}
+
+export const ROLE_LABELS = {
+  admin: '管理员',
+  operator: '运营人员',
+  reviewer: '审核主管',
+  viewer: '只读用户',
+}
+
+export function permissionLabel(perm) {
+  return PERMISSION_LABELS[perm] || perm
+}
+
+export function roleLabel(name) {
+  return ROLE_LABELS[name] || name
+}
+
+/** 角色展示：admin (管理员) */
+export function roleDisplayLabel(name) {
+  const label = ROLE_LABELS[name]
+  return label ? `${name} (${label})` : name
+}
+
+/** 顶栏用户展示：admin (管理员) */
+export function userDisplayLabel(username, roleName) {
+  const label = ROLE_LABELS[roleName]
+  return label ? `${username} (${label})` : username
+}
+
+export function can(permissions, required) {
+  if (!permissions || permissions.length === 0) return false
+  if (permissions.includes('*')) return true
+  return permissions.includes(required)
+}
+
+export function canAny(permissions, requiredList) {
+  return requiredList.some((item) => can(permissions, item))
+}
+
+/** 是否可执行审核（运营或审核主管） */
+export function canReview(permissions) {
+  return canAny(permissions, ['tasks:write', 'review:write'])
+}

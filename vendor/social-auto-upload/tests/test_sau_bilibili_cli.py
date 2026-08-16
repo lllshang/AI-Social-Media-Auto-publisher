@@ -37,9 +37,23 @@ class BilibiliCliTests(unittest.TestCase):
             code = asyncio.run(sau_cli.dispatch(args))
         self.assertEqual(code, 0)
 
-    def test_login_bilibili_account_returns_friendly_message_without_terminal(self):
-        with patch("sau_cli.has_interactive_terminal", return_value=False):
+    def test_login_bilibili_account_delegates_to_cookie_gen(self):
+        fake_outcome = type(
+            "Outcome",
+            (),
+            {
+                "success": True,
+                "status": "success",
+                "message": "B站扫码登录成功",
+                "qrcode_data_url": "data:image/png;base64,abc",
+                "qrcode_path": "/tmp/qr.png",
+            },
+        )()
+        with patch(
+            "uploader.bilibili_uploader.login.bilibili_cookie_gen",
+            new=AsyncMock(return_value=fake_outcome),
+        ):
             result = asyncio.run(sau_cli.login_bilibili_account("creator"))
-        self.assertFalse(result["success"])
-        self.assertIn("local interactive terminal", result["message"].lower())
-        self.assertIn("qrcode.png", result["message"].lower())
+        self.assertTrue(result["success"])
+        self.assertEqual(result["message"], "B站扫码登录成功")
+        self.assertEqual(result["qrcode"]["image_data_url"], "data:image/png;base64,abc")

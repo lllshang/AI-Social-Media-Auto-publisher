@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(64) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
+    role_id BIGINT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -18,10 +19,18 @@ CREATE TABLE IF NOT EXISTS roles (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS account_groups (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(64) NOT NULL UNIQUE,
+    remark VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS platform_accounts (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     platform VARCHAR(32) NOT NULL,
     account_name VARCHAR(128) NOT NULL,
+    remark VARCHAR(255) NULL,
     group_id BIGINT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'inactive',
     created_by BIGINT NULL,
@@ -51,6 +60,8 @@ CREATE TABLE IF NOT EXISTS materials (
     name VARCHAR(128) NULL,
     category VARCHAR(64) NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active',
+    moderation_status VARCHAR(20) NULL,
+    moderation_detail TEXT NULL,
     ai_record_id BIGINT NULL,
     created_by BIGINT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -76,6 +87,7 @@ CREATE TABLE IF NOT EXISTS publish_tasks (
     topic VARCHAR(256) NULL,
     cover_text VARCHAR(128) NULL,
     wizard_step INT NULL,
+    bilibili_tid INT NULL,
     tags JSON NULL,
     platform VARCHAR(32) NOT NULL,
     account_id BIGINT NOT NULL,
@@ -84,10 +96,23 @@ CREATE TABLE IF NOT EXISTS publish_tasks (
     publish_time DATETIME NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'draft',
     error_message TEXT NULL,
+    retry_count INT NOT NULL DEFAULT 0,
+    next_retry_at DATETIME NULL,
     created_by BIGINT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_task_account FOREIGN KEY (account_id) REFERENCES platform_accounts(id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS review_logs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    task_id BIGINT NOT NULL,
+    action VARCHAR(20) NOT NULL,
+    comment TEXT NULL,
+    reviewer_id BIGINT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_review_task_id (task_id),
+    CONSTRAINT fk_review_task FOREIGN KEY (task_id) REFERENCES publish_tasks(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS publish_task_logs (
@@ -119,7 +144,98 @@ CREATE TABLE IF NOT EXISTS operation_logs (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
--- Seed admin: password admin123 (bcrypt)
-INSERT INTO users (username, password_hash, status)
-SELECT 'admin', '$2b$12$sI7NNNo/ivmtH/cVuav7yeneRsXY7KHmv/iYB8IPGoJCRriShdRe6', 'active'
-WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
+CREATE TABLE IF NOT EXISTS sensitive_words (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    word VARCHAR(128) NOT NULL UNIQUE,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    remark VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS content_templates (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    industry VARCHAR(64) NOT NULL,
+    platform VARCHAR(32) NULL,
+    content_type VARCHAR(20) NOT NULL DEFAULT 'note',
+    template_kind VARCHAR(20) NOT NULL DEFAULT 'text',
+    topic VARCHAR(256) NOT NULL,
+    title_hint VARCHAR(256) NULL,
+    content_body TEXT NULL,
+    tags JSON NULL,
+    image_style VARCHAR(32) NULL,
+    image_ratio VARCHAR(16) NULL,
+    brand_color VARCHAR(32) NULL,
+    brand_hint VARCHAR(255) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS trending_fetch_runs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    source VARCHAR(32) NOT NULL,
+    mode VARCHAR(32) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    item_count INT NOT NULL DEFAULT 0,
+    error_message TEXT NULL,
+    started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at DATETIME NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS trending_items (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    platform VARCHAR(32) NOT NULL,
+    snapshot_date VARCHAR(10) NOT NULL,
+    rank INT NOT NULL DEFAULT 0,
+    title VARCHAR(512) NOT NULL,
+    tags JSON NULL,
+    heat_score DECIMAL(12, 4) NOT NULL DEFAULT 0,
+    source_url VARCHAR(1024) NULL,
+    cover_url VARCHAR(1024) NULL,
+    video_url VARCHAR(1024) NULL,
+    duration_seconds INT NULL,
+    aspect_ratio VARCHAR(16) NULL,
+    ref_material_id BIGINT NULL,
+    first_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_trending_platform_date (platform, snapshot_date)
+) ENGINE=InnoDB;
+
+INSERT INTO roles (role_name, permissions)
+SELECT 'admin', JSON_ARRAY('*')
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'admin');
+
+INSERT INTO roles (role_name, permissions)
+SELECT 'operator', JSON_ARRAY(
+    'dashboard:read','accounts:read','accounts:write','materials:read','materials:write',
+    'tasks:read','tasks:write','tasks:execute','publish:write','models:read','models:write','logs:read',
+    'templates:read','templates:write','trending:read','trending:write'
+)
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'operator');
+
+INSERT INTO roles (role_name, permissions)
+SELECT 'viewer', JSON_ARRAY(
+    'dashboard:read','accounts:read','materials:read','tasks:read','models:read','logs:read','templates:read'
+)
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE role_name = 'viewer');
+
+-- Seed default users (bcrypt); passwords: admin123 / operator123 / viewer123
+INSERT INTO users (username, password_hash, role_id, status)
+SELECT 'admin', '$2b$12$sI7NNNo/ivmtH/cVuav7yeneRsXY7KHmv/iYB8IPGoJCRriShdRe6', r.id, 'active'
+FROM roles r
+WHERE r.role_name = 'admin'
+  AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
+
+INSERT INTO users (username, password_hash, role_id, status)
+SELECT 'operator', '$2b$12$MmJpD3IB/Y2ZteE51NKayOnc9F3jiKBlMsh/qmHqrlueCZPqZ0382', r.id, 'active'
+FROM roles r
+WHERE r.role_name = 'operator'
+  AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'operator');
+
+INSERT INTO users (username, password_hash, role_id, status)
+SELECT 'viewer', '$2b$12$1szlK/qd3qusygb/ovtkiONSReORkrg1mw0MSY77dHqMBnlz1ILSy', r.id, 'active'
+FROM roles r
+WHERE r.role_name = 'viewer'
+  AND NOT EXISTS (SELECT 1 FROM users WHERE username = 'viewer');

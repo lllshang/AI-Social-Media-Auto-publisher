@@ -2,7 +2,7 @@
   <div>
     <div class="toolbar">
       <h2 class="page-title">发布任务</h2>
-      <el-button type="primary" @click="$router.push('/publish')">新建发布</el-button>
+      <el-button v-if="can('publish:write')" type="primary" @click="$router.push('/publish')">新建发布</el-button>
     </div>
 
     <div class="page-card filter-bar">
@@ -12,7 +12,7 @@
         </el-form-item>
         <el-form-item label="平台">
           <el-select v-model="filters.platform" clearable placeholder="全部" style="width: 110px">
-            <el-option label="小红书" value="xhs" />
+            <el-option v-for="p in PLATFORMS" :key="p.value" :label="p.label" :value="p.value" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
@@ -40,7 +40,18 @@
       <el-table :data="tasks" v-loading="loading">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="title" label="标题" show-overflow-tooltip />
-        <el-table-column prop="platform" label="平台" width="80" />
+        <el-table-column label="平台" width="90">
+          <template #default="{ row }">{{ platformLabel(row.platform) }}</template>
+        </el-table-column>
+        <el-table-column label="发布账号" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.account_name || `#${row.account_id}` }}</template>
+        </el-table-column>
+        <el-table-column label="执行机器" min-width="110" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.worker_name || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="类型" width="70">
+          <template #default="{ row }">{{ contentTypeLabel(row.content_type) }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="110">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag>
@@ -61,9 +72,9 @@
               <el-button v-if="canDelete(row)" size="small" type="danger" plain @click="removeDraft(row)">删除</el-button>
               <el-button v-if="canApprove(row)" size="small" type="success" @click="approve(row)">通过</el-button>
               <el-button v-if="canReject(row)" size="small" type="danger" @click="reject(row)">驳回</el-button>
-              <el-button v-if="canApprove(row)" size="small" type="success" @click="approve(row)">通过</el-button>
-              <el-button v-if="canReject(row)" size="small" type="danger" @click="reject(row)">驳回</el-button>
+              <el-button v-if="canReopen(row)" size="small" @click="reopen(row)">退回草稿</el-button>
               <el-button v-if="canExecute(row)" size="small" type="primary" @click="execute(row)">执行</el-button>
+              <el-button v-if="canRecover(row)" size="small" type="warning" @click="recover(row)">解除卡住</el-button>
               <el-button v-if="canRetry(row)" size="small" type="warning" @click="retry(row)">重试</el-button>
             </div>
           </template>
@@ -75,6 +86,13 @@
       <template v-if="detail">
         <p><strong>标题：</strong>{{ detail.title }}</p>
         <p><strong>状态：</strong>{{ statusLabel(detail.status) }}</p>
+        <p><strong>平台：</strong>{{ platformLabel(detail.platform) }}</p>
+        <p><strong>发布账号：</strong>{{ detail.account_name || `#${detail.account_id}` }}</p>
+        <p v-if="detail.worker_name"><strong>执行机器：</strong>{{ detail.worker_name }}</p>
+        <p><strong>类型：</strong>{{ contentTypeLabel(detail.content_type) }}</p>
+        <p v-if="detail.platform === 'bilibili' && detail.bilibili_tid">
+          <strong>B站分区：</strong>{{ bilibiliTidLabel(detail.bilibili_tid) }}
+        </p>
         <p v-if="detail.error_message"><strong>备注/错误：</strong>{{ detail.error_message }}</p>
         <p><strong>计划时间：</strong>{{ detail.publish_time ? formatDateTime(detail.publish_time) : '未设置' }}</p>
         <p><strong>正文：</strong></p>
@@ -102,12 +120,18 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '@/api'
+import { PLATFORMS, contentTypeLabel, platformLabel } from '@/constants/platforms'
+import { bilibiliTidLabel } from '@/constants/bilibili'
 import { formatDateTime } from '@/utils/datetime'
+import { usePermission } from '@/composables/usePermission'
 
+const { can } = usePermission()
+
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const tasks = ref([])
@@ -115,11 +139,14 @@ const logVisible = ref(false)
 const detailVisible = ref(false)
 const logs = ref([])
 const detail = ref(null)
+let listPollTimer = null
+const ACTIVE_STATUSES = ['dispatching', 'running']
 
 const statusOptions = [
   { value: 'draft', label: '草稿' },
   { value: 'pending_review', label: '待审核' },
   { value: 'pending', label: '待发布' },
+  { value: 'dispatching', label: '派发中' },
   { value: 'running', label: '执行中' },
   { value: 'success', label: '成功' },
   { value: 'failed', label: '失败' },
@@ -144,6 +171,7 @@ function statusType(status) {
     success: 'success',
     failed: 'danger',
     running: 'warning',
+    dispatching: 'warning',
     pending: 'info',
     pending_review: 'warning',
     rejected: 'danger',
@@ -153,27 +181,35 @@ function statusType(status) {
 }
 
 function canEditDraft(row) {
-  return row.status === 'draft'
+  return can('publish:write') && row.status === 'draft'
 }
 
 function canDelete(row) {
-  return row.status === 'draft'
+  return can('tasks:write') && row.status === 'draft'
 }
 
 function canExecute(row) {
-  return row.status === 'pending'
+  return can('tasks:execute') && row.status === 'pending'
 }
 
 function canRetry(row) {
-  return row.status === 'failed'
+  return can('tasks:execute') && row.status === 'failed'
+}
+
+function canRecover(row) {
+  return can('tasks:execute') && ['running', 'dispatching'].includes(row.status)
 }
 
 function canApprove(row) {
-  return row.status === 'pending_review'
+  return (can('tasks:write') || can('review:write')) && row.status === 'pending_review'
 }
 
 function canReject(row) {
-  return row.status === 'pending_review'
+  return (can('tasks:write') || can('review:write')) && row.status === 'pending_review'
+}
+
+function canReopen(row) {
+  return can('tasks:write') && row.status === 'rejected'
 }
 
 function buildParams() {
@@ -188,10 +224,79 @@ function buildParams() {
   return params
 }
 
+function upsertTask(updated) {
+  const idx = tasks.value.findIndex((t) => t.id === updated.id)
+  if (idx >= 0) {
+    tasks.value.splice(idx, 1, updated)
+  }
+}
+
+function hasActiveTasks(list = tasks.value) {
+  return list.some((t) => ACTIVE_STATUSES.includes(t.status))
+}
+
+function stopListPolling() {
+  if (listPollTimer) {
+    clearInterval(listPollTimer)
+    listPollTimer = null
+  }
+}
+
+function notifyStatusChanges(prevList, nextList) {
+  const prevMap = Object.fromEntries(prevList.map((t) => [t.id, t.status]))
+  for (const task of nextList) {
+    const prev = prevMap[task.id]
+    if (!prev || prev === task.status) continue
+    if (task.status === 'success') {
+      ElMessage.success(`任务 #${task.id} 发布成功`)
+    } else if (task.status === 'failed') {
+      ElMessage.error(task.error_message || `任务 #${task.id} 发布失败`)
+    }
+  }
+}
+
+async function refreshListQuietly() {
+  const prev = tasks.value
+  const list = await api.listTasks(buildParams())
+  notifyStatusChanges(prev, list)
+  tasks.value = list
+  if (!hasActiveTasks(list)) {
+    stopListPolling()
+  }
+}
+
+function startListPolling() {
+  if (listPollTimer) return
+  let attempts = 0
+  const tick = async () => {
+    attempts += 1
+    if (attempts > 120) {
+      stopListPolling()
+      return
+    }
+    try {
+      await refreshListQuietly()
+    } catch {
+      stopListPolling()
+    }
+  }
+  tick()
+  listPollTimer = setInterval(tick, 2000)
+}
+
+function syncListPolling() {
+  if (hasActiveTasks()) {
+    startListPolling()
+  } else {
+    stopListPolling()
+  }
+}
+
 async function load() {
   loading.value = true
   try {
     tasks.value = await api.listTasks(buildParams())
+    syncListPolling()
   } finally {
     loading.value = false
   }
@@ -246,9 +351,14 @@ async function copyComment() {
 
 async function execute(row) {
   try {
-    await api.executeTask(row.id)
-    ElMessage.success('已开始执行，请等待浏览器完成发布')
-    setTimeout(load, 2000)
+    const updated = await api.executeTask(row.id)
+    upsertTask(updated)
+    if (updated.status === 'dispatching') {
+      ElMessage.success('已派发到本机 Worker，等待认领执行…')
+    } else {
+      ElMessage.success('已开始执行，请等待浏览器完成发布')
+    }
+    syncListPolling()
   } catch (e) {
     ElMessage.error(e.message)
   }
@@ -264,10 +374,35 @@ async function retry(row) {
   }
 }
 
+async function recover(row) {
+  try {
+    await ElMessageBox.confirm(
+      '将把该任务标记为「失败」并释放并发槽位，之后可点「重试」再执行。确认本机 Worker 已在线。',
+      '解除卡住',
+      { type: 'warning' },
+    )
+    await api.recoverTask(row.id)
+    ElMessage.success('已标记失败，可点「重试」')
+    load()
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message)
+  }
+}
+
 async function approve(row) {
   try {
     await api.approveTask(row.id)
     ElMessage.success('已通过审核，任务进入待发布')
+    load()
+  } catch (e) {
+    ElMessage.error(e.message)
+  }
+}
+
+async function reopen(row) {
+  try {
+    await api.reopenTask(row.id)
+    ElMessage.success('已退回草稿，可继续编辑')
     load()
   } catch (e) {
     ElMessage.error(e.message)
@@ -289,7 +424,24 @@ async function reject(row) {
   }
 }
 
-onMounted(load)
+function onVisibilityChange() {
+  if (document.visibilityState === 'visible' && hasActiveTasks()) {
+    refreshListQuietly().catch(() => {})
+  }
+}
+
+onMounted(() => {
+  if (route.query.status) {
+    filters.status = String(route.query.status)
+  }
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  load()
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  stopListPolling()
+})
 </script>
 
 <style scoped>

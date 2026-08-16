@@ -105,3 +105,65 @@ sau xiaohongshu upload-note --account test1 --images videos/demo.png --title "�
 ---
 
 **Gate**: 代码分析通过，可进入 Task 2+ 实施。E2E 发布成功需用户在本地完成一次手动 spike 验证（Task 10.1–10.3）。
+
+## 9. 多平台 E2E 脚本结论（阶段 E.5.3）
+
+`scripts/e2e_publish.py` 已扩展 `--platform douyin|kuaishou`、`--content-type note|video`、`--cookie`、`--skip-execute`。
+
+| 平台 | 脚本 | 结论 |
+|------|------|------|
+| xhs | 默认 | API 链路可用；发布依赖有效 Cookie + 本机 Chrome |
+| douyin | `--platform douyin` | Adapter 已注册；需导入抖音 Cookie 后实测 DOM/超时 |
+| kuaishou | `--platform kuaishou` | 同上，Cookie 路径因环境而异，用 `--cookie` 指定 |
+
+未在本环境完成真实发布（无有效多平台 Cookie）。建议部署后按 `daily-usage.md` §5 逐平台跑通并记录日志。
+
+## 10. 视频号 Spike 结论（阶段 E.5.5）
+
+**日期**: 2026-06-10  
+**Vendor 模块**: `uploader/tencent_uploader/main.py`（`tencent_cookie_gen`、`cookie_auth`、`TencentVideo`）  
+**Gate 结论**: ✅ **通过（代码级）** — 首发 **短视频**（`TencentVideo.tencent_upload_video`），不支持图文
+
+| 项 | 结论 |
+|----|------|
+| 登录 | Playwright 扫码，`channels.weixin.qq.com`，与小红书同类流程 |
+| Cookie | `storage_state` JSON，可加密存 DB |
+| 发布 | 仅视频；支持 3:4 封面（`thumbnail_portrait_path`）、短标题（`short_title`） |
+| 定时 | `publish_date` 支持排期 |
+| 风险 | DOM 变更、上传进度等待超时；服务器需 Chromium |
+
+**ai-publish 封装**: `ChannelsPlatformAdapter`（`platform=channels`），注册于 `AdapterFactory`。
+
+**验证命令**:
+
+```bash
+python ai-publish/scripts/e2e_publish.py --platform channels --content-type video --skip-execute
+# 有 Cookie 后去掉 --skip-execute
+sau tencent login --account <name> --headed   # vendor 目录下
+```
+
+## 11. 百家号 Spike 结论（阶段 E.5.6，不交付 Adapter）
+
+**Vendor 模块**: `uploader/baijiahao_uploader/main.py`（`baijiahao_cookie_gen`、`cookie_auth`、`BaiJiaHaoVideo`）
+
+| 项 | 结论 |
+|----|------|
+| CLI | **未**接入 `sau_cli.py`，仅有 `examples/get_baijiahao_cookie.py` |
+| 登录 | Playwright；`page.pause()` 需人工在调试器继续，**不适合** API 无头扫码 |
+| 发布 | 视频为主；定时选择不准确（代码注释标注随机） |
+| 建议 | P4+ 再评估；需重构登录流、补齐 CLI 与 E2E 后再做 Adapter |
+
+**Gate**: ⚠️ **暂缓** — 登录体验与 CLI 成熟度不足，本阶段不实现 `baijiahao` Adapter。
+
+## 12. TikTok Spike 结论（阶段 E.5.6，不交付 Adapter）
+
+**Vendor 模块**: `uploader/tk_uploader/main.py`（`get_tiktok_cookie`、`cookie_auth`、`Video` 上传类）
+
+| 项 | 结论 |
+|----|------|
+| 浏览器 | **Firefox**（非 Chromium），与现有 Docker API 镜像栈不一致 |
+| 登录/发布 | 面向 tiktok.com 国际站；需稳定代理与账号环境 |
+| CLI | 未接入 `sau_cli.py` |
+| 建议 | 海外部署独立 Worker + Firefox 镜像；国内产品文档优先级低 |
+
+**Gate**: ⚠️ **暂缓** — 环境依赖重，与当前国内多平台主线不匹配。

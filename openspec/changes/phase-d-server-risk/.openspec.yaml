@@ -1,0 +1,3 @@
+name: phase-d-server-risk
+status: proposed
+description: 阶段 D 服务器端风控（D.2/D.3/D.5）；D.4 本机 Worker 暂缓，先观测再决策

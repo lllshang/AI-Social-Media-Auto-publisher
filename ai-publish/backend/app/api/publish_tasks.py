@@ -1,11 +1,19 @@
 from datetime import datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal, get_db
-from app.dependencies import get_current_user
+from app.database import get_db
+from app.dependencies import require_any_permission, require_permission
+from app.services.log_service import LogService
+from app.utils.permissions import (
+    PERM_REVIEW_WRITE,
+    PERM_TASKS_EXECUTE,
+    PERM_TASKS_READ,
+    PERM_TASKS_WRITE,
+)
+from app.utils.request_ip import get_client_ip
 from app.models import Material, PublishTask, User
 from app.schemas import (
     MaterialSummary,
@@ -15,6 +23,7 @@ from app.schemas import (
     PublishTaskUpdate,
 )
 from app.services.publish_service import PublishService
+from app.workers.redis_queue import task_queue
 
 router = APIRouter(prefix="/api/publish-tasks", tags=["publish-tasks"])
 
@@ -23,26 +32,24 @@ class RejectTaskRequest(BaseModel):
     reason: str | None = None
 
 
-def _run_execute_task(task_id: int) -> None:
-    import asyncio
-
-    async def _run():
-        db = SessionLocal()
-        try:
-            service = PublishService(db)
-            await service.execute_task(task_id, already_running=True)
-        finally:
-            db.close()
-
-    asyncio.run(_run())
-
-
-def _task_response(task: PublishTask, materials: list[Material] | None = None) -> PublishTaskResponse:
+def _task_response(
+    task: PublishTask,
+    materials: list[Material] | None = None,
+    db: Session | None = None,
+) -> PublishTaskResponse:
     payload = PublishTaskResponse.model_validate(task)
     if materials is not None:
         payload.materials = [
             MaterialSummary(id=m.id, name=m.name, type=m.type, url=m.url) for m in materials
         ]
+    if db is not None:
+        from app.services.platform_account_service import PlatformAccountService
+
+        account_svc = PlatformAccountService(db)
+        account = account_svc.get_account(task.account_id)
+        if account:
+            payload.account_name = account.account_name
+            payload.worker_name = account_svc.get_worker_name(account.worker_id)
     return payload
 
 
@@ -54,10 +61,12 @@ def list_tasks(
     created_from: datetime | None = Query(default=None),
     created_to: datetime | None = Query(default=None),
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_READ)),
 ):
     service = PublishService(db)
-    return [_task_response(task) for task in service.list_tasks(
+    service.expire_stuck_dispatching_tasks()
+    service.expire_stuck_running_tasks()
+    return [_task_response(task, db=db) for task in service.list_tasks(
         status=status,
         platform=platform,
         keyword=keyword,
@@ -70,12 +79,12 @@ def list_tasks(
 def create_task(
     data: PublishTaskCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(PERM_TASKS_WRITE)),
 ):
     service = PublishService(db)
     try:
         if data.submit:
-            initial_status = "pending_review" if service.settings.require_content_review else "pending"
+            initial_status = "pending_review" if service.system_config.require_content_review() else "pending"
         else:
             initial_status = "draft"
         task = service.create_task(
@@ -91,10 +100,11 @@ def create_task(
             material_ids=data.material_ids,
             content_type=data.content_type,
             publish_time=data.publish_time,
+            bilibili_tid=data.bilibili_tid,
             status=initial_status,
             user_id=current_user.id,
         )
-        return _task_response(task, service.get_task_materials(task))
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -103,13 +113,13 @@ def create_task(
 def get_task(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_READ)),
 ):
     service = PublishService(db)
     task = service.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-    return _task_response(task, service.get_task_materials(task))
+    return _task_response(task, service.get_task_materials(task), db=db)
 
 
 @router.put("/{task_id}", response_model=PublishTaskResponse)
@@ -117,7 +127,7 @@ def update_task(
     task_id: int,
     data: PublishTaskUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_WRITE)),
 ):
     service = PublishService(db)
     try:
@@ -133,8 +143,9 @@ def update_task(
             account_id=data.account_id,
             material_ids=data.material_ids,
             publish_time=data.publish_time,
+            bilibili_tid=data.bilibili_tid,
         )
-        return _task_response(task, service.get_task_materials(task))
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -143,12 +154,12 @@ def update_task(
 def submit_task(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_WRITE)),
 ):
     service = PublishService(db)
     try:
         task = service.submit_task(task_id)
-        return _task_response(task, service.get_task_materials(task))
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -156,13 +167,21 @@ def submit_task(
 @router.post("/{task_id}/approve", response_model=PublishTaskResponse)
 def approve_task(
     task_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(require_any_permission(PERM_TASKS_WRITE, PERM_REVIEW_WRITE)),
 ):
     service = PublishService(db)
     try:
-        task = service.approve_task(task_id)
-        return _task_response(task, service.get_task_materials(task))
+        task = service.approve_task(task_id, reviewer_id=current_user.id)
+        LogService(db).add_operation(
+            "review.approve",
+            current_user.id,
+            "publish_task",
+            task_id,
+            ip=get_client_ip(request),
+        )
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -171,13 +190,21 @@ def approve_task(
 def reject_task(
     task_id: int,
     data: RejectTaskRequest,
+    request: Request,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(require_any_permission(PERM_TASKS_WRITE, PERM_REVIEW_WRITE)),
 ):
     service = PublishService(db)
     try:
-        task = service.reject_task(task_id, data.reason)
-        return _task_response(task, service.get_task_materials(task))
+        task = service.reject_task(task_id, data.reason, reviewer_id=current_user.id)
+        LogService(db).add_operation(
+            "review.reject",
+            current_user.id,
+            "publish_task",
+            task_id,
+            ip=get_client_ip(request),
+        )
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -185,35 +212,84 @@ def reject_task(
 @router.post("/{task_id}/execute", response_model=PublishTaskResponse)
 def execute_task(
     task_id: int,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_EXECUTE)),
 ):
     service = PublishService(db)
     task = service.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
-    if task.status == "running":
+    if task.status in {"running", "dispatching"}:
         raise HTTPException(status_code=409, detail="任务正在执行中")
-    if task.status != "pending":
-        raise HTTPException(status_code=400, detail="仅 pending 状态任务可执行")
-    task.status = "running"
-    db.commit()
-    background_tasks.add_task(_run_execute_task, task_id)
-    db.refresh(task)
-    return _task_response(task, service.get_task_materials(task))
+    service.expire_stuck_dispatching_tasks()
+    service.expire_stuck_running_tasks()
+    task = service.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    try:
+        service.assert_can_execute(task)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    account = service.account_service.get_account(task.account_id)
+    worker_bound = bool(account and account.worker_id)
+    if worker_bound:
+        worker_name = service.account_service.get_worker_name(account.worker_id)
+        task.status = "dispatching"
+        task.error_message = None
+        db.commit()
+        db.refresh(task)
+        service.add_log(
+            task_id,
+            "dispatch",
+            "dispatching",
+            f"任务已派发到本机 Worker「{worker_name or account.worker_id}」，等待认领（未占用并发槽）",
+        )
+    else:
+        task.status = "running"
+        db.commit()
+        db.refresh(task)
+    task_queue.enqueue_execute(task_id)
+    return _task_response(task, service.get_task_materials(task), db=db)
+
+
+@router.post("/{task_id}/reopen", response_model=PublishTaskResponse)
+def reopen_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission(PERM_TASKS_WRITE)),
+):
+    service = PublishService(db)
+    try:
+        task = service.reopen_to_draft(task_id)
+        return _task_response(task, service.get_task_materials(task), db=db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{task_id}/recover", response_model=PublishTaskResponse)
+def recover_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission(PERM_TASKS_EXECUTE)),
+):
+    service = PublishService(db)
+    try:
+        task = service.recover_task(task_id)
+        return _task_response(task, service.get_task_materials(task), db=db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{task_id}/retry", response_model=PublishTaskResponse)
 def retry_task(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_EXECUTE)),
 ):
     service = PublishService(db)
     try:
         task = service.retry_task(task_id)
-        return _task_response(task, service.get_task_materials(task))
+        return _task_response(task, service.get_task_materials(task), db=db)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -222,7 +298,7 @@ def retry_task(
 def list_logs(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_READ)),
 ):
     service = PublishService(db)
     if not service.get_task(task_id):
@@ -234,7 +310,7 @@ def list_logs(
 def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_permission(PERM_TASKS_WRITE)),
 ):
     service = PublishService(db)
     try:

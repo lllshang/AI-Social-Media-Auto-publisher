@@ -1,17 +1,28 @@
-from app.adapters.base import AiImageAdapter, AiTextAdapter, PlatformAdapter, StorageAdapter
+from app.adapters.base import AiImageAdapter, AiTextAdapter, AiVideoAdapter, PlatformAdapter, StorageAdapter
+from app.adapters.platform.bilibili import BilibiliPlatformAdapter
+from app.adapters.platform.channels import ChannelsPlatformAdapter
+from app.adapters.platform.douyin import DouyinPlatformAdapter
+from app.adapters.platform.kuaishou import KuaishouPlatformAdapter
 from app.adapters.platform.xhs import XhsPlatformAdapter
 from app.adapters.storage.local import LocalStorageAdapter
 from app.adapters.storage.stub import StubStorageAdapter
 from app.config import get_settings
+from app.utils.bilibili_guard import BILIBILI_DISABLED_MESSAGE
 
 
 class AdapterFactory:
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    def get_platform_adapter(self, platform: str) -> PlatformAdapter:
+    def get_platform_adapter(self, platform: str, *, trust_server: bool = False) -> PlatformAdapter:
+        if platform == "bilibili" and not self.settings.bilibili_enabled and not trust_server:
+            raise ValueError(BILIBILI_DISABLED_MESSAGE)
         registry: dict[str, type[PlatformAdapter]] = {
             "xhs": XhsPlatformAdapter,
+            "douyin": DouyinPlatformAdapter,
+            "kuaishou": KuaishouPlatformAdapter,
+            "bilibili": BilibiliPlatformAdapter,
+            "channels": ChannelsPlatformAdapter,
         }
         adapter_cls = registry.get(platform)
         if not adapter_cls:
@@ -28,12 +39,27 @@ class AdapterFactory:
 
         return AiModelService().get_image_adapter()
 
+    def get_ai_video_adapter(self) -> AiVideoAdapter:
+        from app.services.ai_model_service import AiModelService
+
+        return AiModelService().get_video_adapter()
+
+    def get_digital_human_video_adapter(self) -> AiVideoAdapter:
+        from app.services.ai_model_service import AiModelService
+
+        return AiModelService().get_digital_human_video_adapter()
+
     def get_storage_adapter(self) -> StorageAdapter:
+        storage = self.settings.storage.lower()
+        if storage in {"cos", "oss", "s3"}:
+            from app.adapters.storage.object_storage import ObjectStorageAdapter
+
+            return ObjectStorageAdapter()
         registry: dict[str, type[StorageAdapter]] = {
             "local": LocalStorageAdapter,
             "stub": StubStorageAdapter,
         }
-        adapter_cls = registry.get(self.settings.storage)
+        adapter_cls = registry.get(storage)
         if not adapter_cls:
             raise ValueError(f"Unsupported storage: {self.settings.storage}")
         return adapter_cls()

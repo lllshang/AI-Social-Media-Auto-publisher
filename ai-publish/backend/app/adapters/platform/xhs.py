@@ -22,18 +22,10 @@ class XhsPlatformAdapter:
             sys.path.insert(0, str(vendor))
 
     def _configure_vendor_conf(self) -> None:
-        vendor = Path(self.settings.sau_vendor_path).resolve()
-        if not vendor.exists():
-            return
         try:
-            import conf  # type: ignore
+            from app.utils.vendor_conf import configure_vendor_runtime
 
-            conf.LOCAL_CHROME_HEADLESS = self.settings.playwright_headless
-            from app.utils.playwright_browser import find_chromium_executable
-
-            chrome_path = find_chromium_executable()
-            if chrome_path:
-                conf.LOCAL_CHROME_PATH = chrome_path
+            configure_vendor_runtime()
         except Exception as exc:
             logger.warning("Configure vendor conf skipped: {}", exc)
 
@@ -62,15 +54,24 @@ class XhsPlatformAdapter:
         if context.log_callback:
             await context.log_callback(step, status, message)
 
-    async def login(self, account_id: int, account_name: str, cookie_file: str, qrcode_callback=None) -> LoginResult:
+    async def login(
+        self,
+        account_id: int,
+        account_name: str,
+        cookie_file: str,
+        qrcode_callback=None,
+        publish_proxy: str | None = None,
+    ) -> LoginResult:
         cookie_auth, xiaohongshu_cookie_gen, _, _ = self._import_vendor()
         path = Path(cookie_file)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        max_checks = max(1, self.settings.login_timeout_seconds // 3)
+        from app.utils.login_poll import login_poll_params
+
+        poll_interval, max_checks = login_poll_params(self.settings)
         result = await xiaohongshu_cookie_gen(
             str(path),
-            poll_interval=3,
+            poll_interval=poll_interval,
             max_checks=max_checks,
             headless=self.settings.playwright_headless,
             qrcode_callback=qrcode_callback,
@@ -84,7 +85,7 @@ class XhsPlatformAdapter:
             qrcode_data_url=qrcode.get("image_data_url"),
         )
 
-    async def check_cookie_valid(self, cookie_file: str) -> bool:
+    async def check_cookie_valid(self, cookie_file: str, publish_proxy: str | None = None) -> bool:
         if not Path(cookie_file).exists():
             return False
         cookie_auth, _, _, _ = self._import_vendor()
@@ -108,10 +109,13 @@ class XhsPlatformAdapter:
                     file_path=context.material_paths[0],
                     desc=context.content,
                     tags=context.tags,
+                    thumbnail_path=context.thumbnail_path,
                     publish_date=0,
                     account_file=context.cookie_file,
                     headless=self.settings.playwright_headless,
                 )
+                if context.thumbnail_path:
+                    await self._log_step(context, "upload_cover", "running", "设置视频封面")
                 await self._log_step(context, "upload_media", "running", "上传视频")
                 await uploader.xiaohongshu_upload_video()
             else:
