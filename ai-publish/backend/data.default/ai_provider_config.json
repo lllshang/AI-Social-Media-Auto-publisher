@@ -1,0 +1,86 @@
+{
+  "providers": {
+    "deepseek": {
+      "base_url": "https://api.deepseek.com/v1",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "encrypted_key": "",
+      "models": [
+        { "name": "deepseek-chat", "type": "text" },
+        { "name": "deepseek-reasoner", "type": "text" }
+      ]
+    },
+    "doubao": {
+      "base_url": "https://ark.cn-beijing.volcesengine.com/api/v3",
+      "api_key_env": "DOUBAO_API_KEY",
+      "encrypted_key": "",
+      "models": [
+        { "name": "doubao-seedream-3-0", "type": "image" },
+        { "name": "doubao-seedream-2-0", "type": "image" }
+      ]
+    },
+    "kling": {
+      "base_url": "https://api.klingai.com/v1",
+      "api_key_env": "KLING_API_KEY",
+      "encrypted_key": "",
+      "models": [
+        { "name": "kling-v1-6", "type": "video" },
+        { "name": "kling-v1-5", "type": "video" }
+      ]
+    },
+    "openai": {
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "encrypted_key": "",
+      "models": [
+        { "name": "gpt-4o", "type": "text" },
+        { "name": "gpt-4o-mini", "type": "text" },
+        { "name": "dall-e-3", "type": "image" }
+      ]
+    },
+    "qwen": {
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api_key_env": "QWEN_API_KEY",
+      "encrypted_key": "",
+      "models": [
+        { "name": "qwen-max", "type": "text" },
+        { "name": "qwen-plus", "type": "text" },
+        { "name": "wanx2.1-t2i-turbo", "type": "image" }
+      ]
+    },
+    "gemini": {
+      "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "api_key_env": "GEMINI_API_KEY",
+      "encrypted_key": "",
+      "models": [
+        { "name": "gemini-2.5-flash", "type": "text" },
+        { "name": "gemini-2.5-pro", "type": "text" }
+      ]
+    },
+    "claude": {
+      "base_url": "https://api.anthropic.com/v1",
+      "api_key_env": "CLAUDE_API_KEY",
+      "encrypted_key": "",
+      "models": [
+        { "name": "claude-sonnet-4-20250514", "type": "text" },
+        { "name": "claude-opus-4-20250514", "type": "text" }
+      ]
+    },
+    "ollama": {
+      "base_url": "http://localhost:11434/v1",
+      "api_key_env": "",
+      "encrypted_key": "",
+      "models": [
+        { "name": "llama3.1", "type": "text" },
+        { "name": "qwen2.5", "type": "text" }
+      ]
+    },
+    "custom": {
+      "base_url": "",
+      "api_key_env": "",
+      "encrypted_key": "",
+      "models": [
+        { "name": "custom-model", "type": "text" }
+      ]
+    }
+  }
+}

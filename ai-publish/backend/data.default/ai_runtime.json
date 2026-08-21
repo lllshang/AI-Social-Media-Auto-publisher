@@ -1,0 +1,5 @@
+{
+  "text": { "provider": "deepseek", "model": "deepseek-chat" },
+  "image": { "provider": "doubao", "model": "doubao-seedream-3-0" },
+  "video": { "provider": "kling", "model": "kling-v1-6" }
+}
