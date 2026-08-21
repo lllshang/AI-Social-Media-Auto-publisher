@@ -51,9 +51,9 @@ services:
       PLAYWRIGHT_HEADLESS: "true"
       PLAYWRIGHT_CHROMIUM_EXECUTABLE: /usr/bin/chromium
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      # 仓库内置固定密钥：保证内置默认模型配置在任意服务器均可一致解密。
-      # 如需更高安全性可改为各自服务器的独立值（但内置默认配置需重新保存一次）。
-      COOKIE_ENCRYPTION_KEY: aipublish-default-config-key-2024-do-not-use-in-prod-change-me
+      # 150 服务器正在使用的固定密钥：保证内置真实模型配置（ai_provider_config.json）可解密。
+      # 注意：该密钥与提交到仓库的 ai_provider_config.json 真实 Key 绑定，请保持同步。
+      COOKIE_ENCRYPTION_KEY: dev-cookie-key-change-in-prod
 
       # ============================================================
       # AI 厂商 API Key（私有仓库内置占位，部署前请替换为真实值，否则对应功能不可用）
